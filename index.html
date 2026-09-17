@@ -1407,8 +1407,6 @@ function vJournal(){
      <th style="text-align:left;padding:8px">Date</th>
      <th style="text-align:left;padding:8px">Qté</th>
      <th class="num" style="padding:8px">Montant</th>
-     <th class="num" style="padding:8px">Réglé</th>
-     <th style="text-align:center;padding:8px">Mode</th>
      <th style="text-align:left;padding:8px">N° Chèque</th>
      <th class="num" style="padding:8px;color:var(--red)">Reste dû</th>
     </tr></thead>
@@ -1416,11 +1414,6 @@ function vJournal(){
      ${facNonBanque.map(f=>{
      const regleAALaDate = (f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant), 0);
      const reste=Number(f.montant)-regleAALaDate;
-     const modes=(f.paiements||[]).filter(p=>p.date<=d).map(p=>{
-      if(p.source==="bons")return`<span style="background:rgba(251,191,36,0.15);color:#fbbf24;padding:2px 6px;border-radius:4px;font-size:12px">Bons Naftal</span>`;
-      if(p.source==="banque")return`<span style="background:rgba(99,179,237,0.15);color:#63b3ed;padding:2px 6px;border-radius:4px;font-size:12px">Banque</span>`;
-      return`<span style="background:rgba(72,187,120,0.15);color:#48bb78;padding:2px 6px;border-radius:4px;font-size:12px">Caisse</span>`;
-     }).join(" ");
      const cheques=(f.paiements||[]).filter(p=>p.date<=d && p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
      const isGPL=(f.lignes||[]).some(l=>{const a=article(l.artId);return a&&a.type_a===3;});
      const rowBg=isGPL?"rgba(72,187,120,0.08)":"rgba(237,137,54,0.08)";
@@ -1430,8 +1423,6 @@ function vJournal(){
       <td style="padding:6px 4px">${frDate(f.date)}</td>
       <td style="padding:6px 4px;font-size:12px">${factQtesStr(f)}</td>
       <td class="num" style="padding:6px 4px">${fmt(f.montant)}</td>
-      <td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td>
-      <td style="text-align:center;padding:6px 4px">${modes||"—"}</td>
       <td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td>
       <td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td>
      </tr>`;
