@@ -75,6 +75,7 @@ let DB={tresorerie:[],categories:[],articles:[],tiers:[],mouvements:[],mouv_deta
 let selDate=null;
 
 /* ====== Fonctions utilitaires — copiées telles quelles depuis station.html ====== */
+function factQtesStr(f){return(f.lignes||[]).map(l=>{const a=article(l.artId);return a?esc(a.article)+" : "+fmt(l.qte)+(a.unite?" "+esc(a.unite):""):"";}).filter(Boolean).join("<br>");}
 const PIST=[{c:"P01",t:"G"},{c:"P02",t:"G"},{c:"P03",t:"G"},{c:"P04",t:"G"},{c:"P05",t:"E"},{c:"P06",t:"E"},{c:"P07",t:"E"},{c:"P08",t:"E"},{c:"P09",t:"L"},{c:"P10",t:"L"},{c:"P11",t:"L"},{c:"P12",t:"L"}];
 const fmt=n=>Math.round(Number(n)||0).toLocaleString("fr-FR");
 const fmtQ=n=>{const v=Number(n)||0;return v===Math.round(v)?v.toLocaleString("fr-FR"):v.toLocaleString("fr-FR",{maximumFractionDigits:3});};
@@ -210,19 +211,13 @@ function render(){
   const hasBons=(f.paiements||[]).filter(p=>p.date<=d).some(p=>p.source==="bons");
   return reste>0||hasBons;
  }).sort((a,b)=>b.date.localeCompare(a.date));
- let resteQteGE=0,resteQteGPL=0;
+ let resteGE = 0, resteGPL = 0;
  const resteCarburant=facNonBanque.reduce((s,f)=>{
   const regleAALaDate=(f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant),0);
-  const reste=Number(f.montant)-regleAALaDate;
-  if(reste>0&&Number(f.montant)>0){
-   const ratio=reste/Number(f.montant);
-   (f.lignes||[]).forEach(l=>{
-    const art=Number(l.artId);
-    if(art===1||art===2)resteQteGE+=Number(l.qte)*ratio;
-    else if(art===3)resteQteGPL+=Number(l.qte)*ratio;
-   });
-  }
-  return s+reste;},0);
+  const r=Number(f.montant)-regleAALaDate;
+  const isGPL=(f.lignes||[]).some(l=>{const a=article(l.artId);return a&&a.type_a===3;});
+  if(isGPL) resteGPL += r; else resteGE += r;
+  return s+r;},0);
 
  const cj=caisseDuJour(d);
  const soldePrec=caisseSoldeAvant(d);
@@ -254,7 +249,7 @@ function render(){
   <div class="stat blue"><div class="v">${fmt(soldeBanque)}</div><div class="l">Banque (Cumulé)</div></div>
   <div class="stat green"><div class="v">${fmt(tmCarb)}</div><div class="l">Marge Carburant</div></div>
   <div class="stat"><div class="v">${fmt(tmDiv)}</div><div class="l">Marge Gaz &amp; Lubrifiants</div></div>
-  <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)</div></div>
+  <div class="stat red" style="display:flex;flex-direction:column;justify-content:center"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)</div><div style="font-size:11px;opacity:0.85;margin-top:4px;text-align:center;font-weight:600">G/E: ${fmt(resteGE)} | GPL: ${fmt(resteGPL)}</div></div>
   <div class="stat green"><div class="v">${fmt(tmCarb+tmDiv)}</div><div class="l">Marge Globale</div></div>
  </div>
  <div class="card" style="margin-bottom:12px">
@@ -298,10 +293,8 @@ function render(){
  <div class="card">
   <h2 style="margin-bottom:10px">📋 Suivi règlements carburant — En attente banque</h2>
   ${facNonBanque.length?`<div style="overflow-x:auto"><table style="min-width:620px">
-   <thead><tr style="background:rgba(255,255,255,0.04)"><th style="text-align:left;padding:8px">Facture</th><th style="text-align:left;padding:8px">Fournisseur</th><th style="text-align:left;padding:8px">Date</th><th class="num" style="padding:8px">Qté G/E</th>
-      <th class="num" style="padding:8px">Qté GPL</th><th class="num" style="padding:8px">Montant</th><th class="num" style="padding:8px">Réglé</th><th style="text-align:center;padding:8px">Mode</th><th style="text-align:left;padding:8px">N° Chèque</th><th class="num" style="padding:8px;color:var(--red)">Reste dû</th></tr></thead>
+   <thead><tr style="background:rgba(255,255,255,0.04)"><th style="text-align:left;padding:8px">Facture</th><th style="text-align:left;padding:8px">Fournisseur</th><th style="text-align:left;padding:8px">Date</th><th style="text-align:left;padding:8px">Qté</th><th class="num" style="padding:8px">Montant</th><th class="num" style="padding:8px">Réglé</th><th style="text-align:center;padding:8px">Mode</th><th style="text-align:left;padding:8px">N° Chèque</th><th class="num" style="padding:8px;color:var(--red)">Reste dû</th></tr></thead>
    <tbody>${facNonBanque.map(f=>{
-    let qteGE=0,qteGPL=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2)qteGE+=Number(l.qte);else if(art===3)qteGPL+=Number(l.qte);});
     const regleAALaDate=(f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant),0);
     const reste=Number(f.montant)-regleAALaDate;
     const modes=(f.paiements||[]).filter(p=>p.date<=d).map(p=>{
@@ -309,8 +302,9 @@ function render(){
      if(p.source==="banque")return`<span style="background:rgba(99,179,237,0.15);color:#63b3ed;padding:2px 6px;border-radius:4px;font-size:12px">Banque</span>`;
      return`<span style="background:rgba(72,187,120,0.15);color:#48bb78;padding:2px 6px;border-radius:4px;font-size:12px">Caisse</span>`;}).join(" ");
     const cheques=(f.paiements||[]).filter(p=>p.date<=d&&p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
-    return`<tr><td style="padding:6px 4px">${esc(f.numero||"—")}</td><td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td><td style="padding:6px 4px">${frDate(f.date)}</td><td class="num" style="padding:6px 4px">${fmtQ(qteGE)}</td>
-       <td class="num" style="padding:6px 4px">${fmtQ(qteGPL)}</td><td class="num" style="padding:6px 4px">${fmt(f.montant)}</td><td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td><td style="text-align:center;padding:6px 4px">${modes||"—"}</td><td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td><td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td></tr>`;}).join("")}
+    const isGPL=(f.lignes||[]).some(l=>{const a=article(l.artId);return a&&a.type_a===3;});
+    const rowBg=isGPL?"rgba(72,187,120,0.08)":"rgba(237,137,54,0.08)";
+    return`<tr style="background:${rowBg}"><td style="padding:6px 4px">${esc(f.numero||"—")}</td><td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td><td style="padding:6px 4px">${frDate(f.date)}</td><td style="padding:6px 4px;font-size:12px">${factQtesStr(f)}</td><td class="num" style="padding:6px 4px">${fmt(f.montant)}</td><td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td><td style="text-align:center;padding:6px 4px">${modes||"—"}</td><td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td><td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td></tr>`;}).join("")}
    </tbody></table></div>`:`<p class="subtle">Aucun règlement en attente.</p>`}
  </div>`;}
 
