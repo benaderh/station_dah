@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Station Pro — Pompiste</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0a0e18">
+<style>
+ :root{--bg:#0a0e18;--card:#111827;--line:#1f2937;--muted:#8b95a7;--accent:#2563eb;--ok:#34d399;--red:#f87171;--warn:#fbbf24}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:#e5e9f0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:16px;max-width:520px;margin:0 auto}
+ h1{font-size:18px;margin:0 0 2px}
+ h2{font-size:14px;margin:0 0 10px}
+ .sub{color:var(--muted);font-size:12px;margin-bottom:16px}
+ .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+ label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;margin-top:12px}
+ label:first-child{margin-top:0}
+ select,input{width:100%;background:#0d1424;border:1px solid var(--line);color:#e5e9f0;border-radius:10px;padding:12px;font-size:16px}
+ input:disabled{opacity:.6}
+ button{width:100%;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:15px;font-size:15px;font-weight:700;margin-top:16px}
+ button:disabled{opacity:.4}
+ button.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);font-weight:500;margin-top:8px}
+ .msg{border-radius:10px;padding:12px;font-size:14px;margin-bottom:14px;display:none}
+ .msg.ok{background:#0f2e22;border:1px solid #15532d;color:#6ee7b7;display:block}
+ .msg.err{background:#3b1717;border:1px solid #7f1d1d;color:#fca5a5;display:block}
+ .pist{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px}
+ .pist-head{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:6px}
+ .pist-head b{color:#e5e9f0}
+ .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+ .readonly{background:#0a0f1c;border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:14px;color:var(--muted)}
+ .tag{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;margin-top:4px}
+ .tag.ok{background:#0f2e22;color:#6ee7b7}
+ .tag.err{background:#3b1717;color:#fca5a5}
+ .tag.wait{background:#2a2312;color:var(--warn)}
+ .topline{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+ table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+ td,th{padding:6px 2px;border-bottom:1px solid var(--line);text-align:left}
+ th{color:var(--muted);font-size:11px;text-transform:uppercase}
+ .num{text-align:right}
+</style>
+</head>
+<body>
+<h1>⛽ Espace pompiste</h1>
+<div class="sub" id="subHead">Connexion…</div>
+<div id="msg" class="msg"></div>
+
+<div id="loginBox" class="card" style="display:none">
+ <label>Email</label><input id="email" type="email" autocomplete="username">
+ <label>Mot de passe</label><input id="password" type="password" autocomplete="current-password">
+ <button onclick="doLogin()">Se connecter</button>
+</div>
+
+<div id="appBox" style="display:none"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+const SUPABASE_URL="https://twxpixyjuacreatxncfo.supabase.co";
+const SUPABASE_KEY="sb_publishable_VdDiO_xSqIvBbWak_wPASw__zsfWGby";
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=id=>document.getElementById(id);
+function showMsg(t,type){const m=$("msg");m.textContent=t;m.className="msg "+type;if(type==="ok")setTimeout(()=>{m.className="msg";},4000);}
+
+/* ====== Fonctions utilitaires (mêmes formules que station.html) ====== */
+const PIST=[{c:"P01",t:"G"},{c:"P02",t:"G"},{c:"P03",t:"G"},{c:"P04",t:"G"},{c:"P05",t:"E"},{c:"P06",t:"E"},{c:"P07",t:"E"},{c:"P08",t:"E"},{c:"P09",t:"L"},{c:"P10",t:"L"},{c:"P11",t:"L"},{c:"P12",t:"L"}];
+const GE_SEQ=[1,3,5],GPL_SEQ=[2,4,6];
+const fmt=n=>Math.round(Number(n)||0).toLocaleString("fr-FR");
+function fmtIdx(n){
+ if(n===null||n===""||(n!==0&&!n))return"";
+ const s=String(Math.round(Number(n))).padStart(7,"0");
+ return s.slice(0,2)+" "+s.slice(2,4)+" "+s.slice(4,7);}
+function parseIdx(v){return v===null||v===""?"":String(v).replace(/\D/g,"");}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function frDate(iso){if(!iso)return"—";const p=iso.split("-");return p[2]+"/"+p[1]+"/"+p[0];}
+let DB={indexs:[],tiers:[],articles:[],agent_detail:[]};
+const article=id=>DB.articles.find(a=>String(a.art_id)===String(id));
+function fuelArtId(t){const ta=t==="G"?1:t==="E"?2:3;const a=DB.articles.find(x=>x.type_a===ta);return a?a.art_id:null;}
+function prixFor(t){const a=article(fuelArtId(t));return a?Number(a.pv)||0:0;}
+const idxRow=(d,n)=>DB.indexs.find(r=>r.index_date===d&&r.index_name===n);
+const idxVal=(d,n)=>{const r=idxRow(d,n);return r&&r.index!==null&&r.index!==""?Number(r.index):0;};
+function datesDesc(){return[...new Set(DB.indexs.map(r=>r.index_date))].sort().reverse();}
+function datesAsc(){return[...datesDesc()].reverse();}
+function prevDateOf(d){const a=datesAsc();const i=a.indexOf(d);return i>0?a[i-1]:null;}
+function nextInSeq(seq,cur){const i=seq.indexOf(Number(cur));return i<0?null:seq[(i+1)%seq.length];}
+
+/* ====== État ====== */
+let profile=null,myTier=null,today=null,prevDate=null,myGroup=null,myRole=null,pistolets=[],draftValues={};
+const DRAFT_KEY="stationPro_pompiste_draft";
+function saveDraft(){
+ try{localStorage.setItem(DRAFT_KEY,JSON.stringify({date:today,role:myRole,ord:profile?profile.ord:null,values:draftValues}));}catch(e){}}
+function loadDraft(){
+ try{
+  const raw=localStorage.getItem(DRAFT_KEY);
+  if(!raw)return;
+  const d=JSON.parse(raw);
+  /* le brouillon n'est valable que pour la même journée, le même rôle et le même pompiste —
+     sinon (nouvelle journée, rotation changée) on l'ignore et on repart propre */
+  if(d.date===today&&d.role===myRole&&Number(d.ord)===Number(profile.ord))draftValues=d.values||{};
+  else clearDraft();
+ }catch(e){}}
+function clearDraft(){try{localStorage.removeItem(DRAFT_KEY);}catch(e){} draftValues={};}
+
+/* ====== Authentification ====== */
+async function doLogin(){
+ const email=$("email").value.trim(),password=$("password").value;
+ if(!email||!password){showMsg("Email et mot de passe requis.","err");return;}
+ const{error}=await sb.auth.signInWithPassword({email,password});
+ if(error){showMsg("Connexion refusée : "+error.message,"err");return;}
+ await afterLogin();}
+async function doLogout(){await sb.auth.signOut();location.reload();}
+
+async function afterLogin(){
+ const{data:{user}}=await sb.auth.getUser();
+ if(!user){$("loginBox").style.display="block";$("subHead").textContent="Connecte-toi pour continuer.";return;}
+ const{data:prof,error}=await sb.from("profiles").select("*").eq("id",user.id).maybeSingle();
+ if(error||!prof||prof.role!=="pompiste"){
+  showMsg("Ce compte n'est pas autorisé sur cette page (pompiste uniquement).","err");
+  await sb.auth.signOut();$("loginBox").style.display="block";return;}
+ profile=prof;
+ $("loginBox").style.display="none";
+ $("appBox").style.display="block";
+ await loadContext();}
+
+/* ====== Chargement des données (lecture seule) ====== */
+async function loadContext(){
+ $("subHead").textContent="Chargement…";
+ try{
+  for(const t of["indexs","tiers","articles","agent_detail"]){
+   const{data,error}=await sb.from(t).select("data");
+   if(error)throw error;
+   DB[t]=(data||[]).map(r=>r.data);}
+  myTier=DB.tiers.find(x=>Number(x.ord)===Number(profile.ord)&&x.type==="P");
+  const ds=datesDesc();
+  today=ds[0]||null;
+  prevDate=today?prevDateOf(today):null;
+  if(!today){$("appBox").innerHTML=`<div class="card">Aucune journée ouverte pour l'instant.</div>`;$("subHead").textContent=myTier?esc(myTier.nom):"";return;}
+  const t1row=idxRow(today,"P01"),t2row=idxRow(today,"P09");
+  const t1TierId=t1row?t1row.index_agent:null,t2TierId=t2row?t2row.index_agent:null;
+  const t1Ord=t1TierId?Number((DB.tiers.find(x=>String(x.tier_id)===String(t1TierId))||{}).ord):null;
+  const t2Ord=t2TierId?Number((DB.tiers.find(x=>String(x.tier_id)===String(t2TierId))||{}).ord):null;
+  const myOrd=Number(profile.ord);
+  if(GE_SEQ.includes(myOrd)){
+   myGroup="GE";pistolets=PIST.filter(p=>p.t!=="L");
+   if(myOrd===t1Ord)myRole="sortant";
+   else if(myOrd===nextInSeq(GE_SEQ,t1Ord))myRole="entrant";
+   else myRole="repos";
+  }else{
+   myGroup="GPL";pistolets=PIST.filter(p=>p.t==="L");
+   if(myOrd===t2Ord)myRole="sortant";
+   else if(myOrd===nextInSeq(GPL_SEQ,t2Ord))myRole="entrant";
+   else myRole="repos";}
+  loadDraft();
+  $("subHead").textContent=(myTier?esc(myTier.nom):"Pompiste "+myOrd)+" · "+frDate(today);
+  renderApp();
+ }catch(e){
+  console.error(e);
+  $("appBox").innerHTML=`<div class="card">Erreur de chargement : ${esc(e.message)}</div>`;}}
+
+/* ====== Rendu (indépendant : chaque pompiste saisit pour lui-même, sans attendre l'autre) ====== */
+function renderApp(){
+ if(myRole==="repos"){
+  $("appBox").innerHTML=`<div class="card"><h2>😴 Rien à faire aujourd'hui</h2><p class="sub" style="margin:0">Tu n'es ni sortant ni entrant sur la rotation actuelle.</p></div>${logoutBtn()}`;return;}
+ const rowsHtml=pistolets.map(p=>{
+  const idx0=prevDate?idxVal(prevDate,p.c):0;
+  const defVal=draftValues[p.c]!==undefined?draftValues[p.c]:"";
+  const prix=prixFor(p.t);
+  return`<div class="pist" data-code="${p.c}" data-prix="${prix}" data-idx0="${idx0}">
+   <div class="pist-head"><b>${p.c}</b><span>${p.t==="G"?"Gasoil":p.t==="E"?"Essence":"GPL"}</span></div>
+   ${myRole==="sortant"?`<div class="row2"><div><label>Index veille</label><div class="readonly">${fmtIdx(idx0)}</div></div><div><label>Nouvel index</label><input type="text" inputmode="numeric" class="valInput" value="${fmtIdx(defVal)}" onfocus="this.select()" onchange="onChangeVal(this)"></div></div>
+    <div class="row2" style="margin-top:8px"><div><label>Prix</label><div class="readonly mt-prix">${fmt(prix)} DA</div></div><div><label>Montant</label><div class="readonly mt-out">—</div></div></div>`
+   :`<label>Index de début (à confirmer)</label><input type="text" inputmode="numeric" class="valInput" value="${fmtIdx(defVal)}" onfocus="this.select()" onchange="onChangeVal(this)">`}
+   <div class="tagwrap2"></div>
+  </div>`;}).join("");
+ $("appBox").innerHTML=`
+  <div class="card">
+   <div class="topline"><h2 style="margin:0">${myRole==="sortant"?"🔵 Fin de poste — relevé de sortie":"🟢 Début de poste — confirmation"}</h2></div>
+   <p class="sub" style="margin:0 0 4px">${myRole==="sortant"?"Saisis le nouvel index de chaque pistolet, puis appuie sur Entrée ou touche un autre champ. La quantité et le montant se calculent automatiquement.":"Saisis l'index de départ affiché sur chaque pompe, puis appuie sur Entrée ou touche un autre champ."}</p>
+   ${rowsHtml}
+   <button id="sendBtn" onclick="sendReleve()" disabled>Envoyer à l'administrateur</button>
+  </div>
+  ${myRole==="sortant"?bilanCard():""}
+  ${logoutBtn()}`;
+ refreshCompute();}
+function bilanCard(){
+ if(!myTier)return"";
+ const versements=DB.agent_detail.filter(a=>String(a.id_agent)===String(myTier.tier_id)&&a.date_agent===today);
+ const totalVers=versements.reduce((s,a)=>s+Number(a.mt_agent||0),0);
+ return`<div class="card">
+  <h2>💵 Bilan de la journée — ${frDate(today)}</h2>
+  ${versements.length?`<table><tr><th>Versement</th><th class="num">Montant</th></tr>
+   ${versements.map(m=>`<tr><td>${esc(m.obs_agent||"Avance")}</td><td class="num">${fmt(m.mt_agent)} DA</td></tr>`).join("")}
+   </table>`:`<p class="sub" style="margin:0">Aucun versement enregistré aujourd'hui.</p>`}
+  <table style="margin-top:6px">
+   <tr><td>Total ventes (calculé)</td><td class="num" id="bilanVentes">0 DA</td></tr>
+   <tr><td>Total versements</td><td class="num">${fmt(totalVers)} DA</td></tr>
+   <tr style="font-weight:700"><td>Reste à verser</td><td class="num" id="bilanReste">—</td></tr>
+  </table>
+ </div>`;}
+/* onchange (pas oninput) : se déclenche seulement quand tu quittes le champ
+   (Entrée / Tab / clic ailleurs), jamais pendant que tu tapes — c'est ce qui
+   évite toute perte de focus en cours de saisie. */
+function onChangeVal(el){
+ const digits=parseIdx(el.value);
+ el.value=fmtIdx(digits);
+ const div=el.closest(".pist");
+ draftValues[div.dataset.code]=digits;
+ saveDraft();
+ refreshCompute();}
+function refreshCompute(){
+ let allFilled=true,allOk=true,totalVentes=0;
+ document.querySelectorAll(".pist").forEach(div=>{
+  const prix=Number(div.dataset.prix),idx0=Number(div.dataset.idx0);
+  const input=div.querySelector(".valInput");
+  const val=parseIdx(input.value);
+  const warn=div.querySelector(".tagwrap2");
+  if(myRole==="sortant"){
+   const mtOut=div.querySelector(".mt-out");
+   if(val){
+    const diff=Number(val)-idx0;
+    const mt=diff*prix;totalVentes+=mt;
+    mtOut.textContent=fmt(mt)+" DA ("+diff+" L)";
+    if(diff<0){if(warn)warn.innerHTML=`<span class="tag err">⚠ index inférieur à l'index veille</span>`;allOk=false;}
+    else if(diff>9000){if(warn)warn.innerHTML=`<span class="tag err">⚠ écart supérieur à 9000 L, vérifie la saisie</span>`;allOk=false;}
+    else if(warn)warn.innerHTML="";
+   }else{mtOut.textContent="—";if(warn)warn.innerHTML="";}}
+  if(!val)allFilled=false;});
+ $("sendBtn").disabled=!(allFilled&&allOk);
+ const bv=$("bilanVentes");
+ if(bv){
+  bv.textContent=fmt(totalVentes)+" DA";
+  const versements=DB.agent_detail.filter(a=>String(a.id_agent)===String((myTier||{}).tier_id)&&a.date_agent===today);
+  const totalVers=versements.reduce((s,a)=>s+Number(a.mt_agent||0),0);
+  $("bilanReste").textContent=fmt(totalVentes-totalVers)+" DA";}}
+async function sendReleve(){
+ const btn=$("sendBtn");btn.disabled=true;btn.textContent="Envoi…";
+ try{
+  /* s'assure d'avoir une session/jeton à jour avant d'écrire — évite les échecs
+     RLS liés à un jeton expiré sur un onglet resté ouvert longtemps */
+  const{data:{session}}=await sb.auth.getSession();
+  if(!session){
+   showMsg("Session expirée, reconnexion nécessaire…","err");
+   await sb.auth.signOut();location.reload();return;}
+  const rows=[...document.querySelectorAll(".pist")].map(div=>({
+   id:today+"_"+div.dataset.code+"_"+myRole,
+   rec_date:today,pistolet:div.dataset.code,role:myRole,
+   ord:Number(profile.ord),valeur:Number(div.querySelector(".valInput").value.replace(/\D/g,""))}));
+  const{error}=await sb.from("releve_pending").upsert(rows);
+  if(error)throw error;
+  clearDraft();
+  showMsg("✓ Relevé envoyé à l'administrateur.","ok");
+  btn.textContent="Envoyer à l'administrateur";
+  btn.disabled=true;
+ }catch(e){showMsg("Échec de l'envoi : "+e.message,"err");btn.disabled=false;btn.textContent="Envoyer à l'administrateur";}}
+
+function logoutBtn(){return`<button class="ghost" onclick="doLogout()">Se déconnecter</button>`;}
+
+/* ====== Démarrage ====== */
+(async function start(){
+ const{data:{session}}=await sb.auth.getSession();
+ if(session){await afterLogin();}
+ else{$("loginBox").style.display="block";$("subHead").textContent="Connecte-toi pour continuer.";}
+})();
+</script>
+</body>
+</html>
