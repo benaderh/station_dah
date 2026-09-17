@@ -646,6 +646,8 @@ function vDashboard(){
      <th style="text-align:left;padding:8px">Fournisseur</th>
      <th style="text-align:left;padding:8px">Date</th>
      <th class="num" style="padding:8px">Montant</th>
+     <th class="num" style="padding:8px">Réglé</th>
+     <th style="text-align:center;padding:8px">Mode</th>
      <th style="text-align:left;padding:8px">N° Chèque</th>
      <th class="num" style="padding:8px;color:var(--red)">Reste dû</th>
     </tr></thead>
@@ -653,12 +655,19 @@ function vDashboard(){
      ${facNonBanque.map(f=>{
      const regleAALaDate = (f.paiements||[]).filter(p=>!last || p.date<=last).reduce((s,p)=>s+Number(p.montant), 0);
      const reste=Number(f.montant)-regleAALaDate;
+     const modes=(f.paiements||[]).filter(p=>!last || p.date<=last).map(p=>{
+      if(p.source==="bons")return `<span style="background:rgba(251,191,36,0.15);color:#fbbf24;padding:2px 6px;border-radius:4px;font-size:12px">Bons Naftal</span>`;
+      if(p.source==="banque")return `<span style="background:rgba(99,179,237,0.15);color:#63b3ed;padding:2px 6px;border-radius:4px;font-size:12px">Banque</span>`;
+      return `<span style="background:rgba(72,187,120,0.15);color:#48bb78;padding:2px 6px;border-radius:4px;font-size:12px">Caisse</span>`;
+     }).join(" ");
      const cheques=(f.paiements||[]).filter(p=>(!last || p.date<=last) && p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
      return `<tr>
       <td style="padding:6px 4px">${esc(f.numero||"—")}</td>
       <td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td>
       <td style="padding:6px 4px">${frDate(f.date)}</td>
       <td class="num" style="padding:6px 4px">${fmt(f.montant)}</td>
+      <td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td>
+      <td style="text-align:center;padding:6px 4px">${modes||"—"}</td>
       <td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td>
       <td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td>
      </tr>`;
