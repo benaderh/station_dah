@@ -646,8 +646,6 @@ function vDashboard(){
      <th style="text-align:left;padding:8px">Fournisseur</th>
      <th style="text-align:left;padding:8px">Date</th>
      <th class="num" style="padding:8px">Montant</th>
-     <th class="num" style="padding:8px">Réglé</th>
-     <th style="text-align:center;padding:8px">Mode</th>
      <th style="text-align:left;padding:8px">N° Chèque</th>
      <th class="num" style="padding:8px;color:var(--red)">Reste dû</th>
     </tr></thead>
@@ -655,19 +653,12 @@ function vDashboard(){
      ${facNonBanque.map(f=>{
      const regleAALaDate = (f.paiements||[]).filter(p=>!last || p.date<=last).reduce((s,p)=>s+Number(p.montant), 0);
      const reste=Number(f.montant)-regleAALaDate;
-     const modes=(f.paiements||[]).filter(p=>!last || p.date<=last).map(p=>{
-      if(p.source==="bons")return `<span style="background:rgba(251,191,36,0.15);color:#fbbf24;padding:2px 6px;border-radius:4px;font-size:12px">Bons Naftal</span>`;
-      if(p.source==="banque")return `<span style="background:rgba(99,179,237,0.15);color:#63b3ed;padding:2px 6px;border-radius:4px;font-size:12px">Banque</span>`;
-      return `<span style="background:rgba(72,187,120,0.15);color:#48bb78;padding:2px 6px;border-radius:4px;font-size:12px">Caisse</span>`;
-     }).join(" ");
      const cheques=(f.paiements||[]).filter(p=>(!last || p.date<=last) && p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
      return `<tr>
       <td style="padding:6px 4px">${esc(f.numero||"—")}</td>
       <td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td>
       <td style="padding:6px 4px">${frDate(f.date)}</td>
       <td class="num" style="padding:6px 4px">${fmt(f.montant)}</td>
-      <td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td>
-      <td style="text-align:center;padding:6px 4px">${modes||"—"}</td>
       <td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td>
       <td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td>
      </tr>`;
@@ -704,6 +695,20 @@ async function validateAllReleve(){
   releveList=[];
   toast(n+" pistolet(s) validé(s) sur "+frDate(sel.date),"ok");render();
  }catch(e){toast("Validé localement, mais erreur Supabase (nettoyage) : "+e.message,"err");}}
+async function validateGroupReleve(codes, msg){
+ const groups=releveGrouped().filter(g=>codes.includes(g.code));
+ let n=0;
+ groups.forEach(g=>{if(g.sortant){updateIndex(g.code,g.sortant.valeur);n++;}});
+ try{
+  const ids=[];
+  groups.forEach(g=>{if(g.sortant)ids.push(g.sortant.id);if(g.entrant)ids.push(g.entrant.id);});
+  if(ids.length){const{error}=await sb.from("releve_pending").delete().in("id",ids);if(error)throw error;}
+  releveList=releveList.filter(r=>!codes.includes(r.pistolet));
+  toast(n+" pistolet(s) "+msg+" validé(s)","ok");render();
+ }catch(e){toast("Erreur Supabase: "+e.message,"err");}
+}
+async function validateGEReleve() { await validateGroupReleve(["P01","P02","P03","P04","P05","P06","P07","P08"], "G/E"); }
+async function validateGPLReleve() { await validateGroupReleve(["P09","P10","P11","P12"], "GPL"); }
 function openValidateReleve(code){
  const g=releveGrouped().find(x=>x.code===code);
  if(!g)return;
@@ -770,7 +775,11 @@ function vJournee(){
      const statut=!g.sortant?"Sortant manquant":!g.entrant?"En attente entrant":match?"✓ Concorde":"⚠ Écart";
      return`<tr ondblclick="openValidateReleve('${g.code}')" style="cursor:pointer" title="Double-clic pour valider"><td>${g.code}</td><td class="num">${g.sortant?fmtIdx(g.sortant.valeur):"—"}</td><td class="num">${g.entrant?fmtIdx(g.entrant.valeur):"—"}</td><td>${statut}</td></tr>`;}).join("")||`<tr><td colspan="4" class="subtle">Aucun relevé GPL</td></tr>`}
    </table></div>
-   <button class="btn accent" style="margin-top:10px" onclick="validateAllReleve()">✓ Valider tout sur ${frDate(sel.date)}</button>`
+   <div class="row" style="margin-top:10px;gap:10px">
+    <button class="btn accent" onclick="validateGEReleve()">✓ Valider Gasoil/Essence</button>
+    <button class="btn accent" onclick="validateGPLReleve()">✓ Valider GPL</button>
+    <button class="btn" onclick="validateAllReleve()">✓ Valider tout</button>
+   </div>`
   :`<p class="subtle" style="margin-top:6px">Aucun relevé chargé — clique « Charger » pour vérifier auprès de Supabase.</p>`}
  </div>
  <div class="grid2">
@@ -1266,7 +1275,6 @@ function vJournal(){
     ${ds.map(x=>`<option value="${x}" ${x===d?"selected":""}>${frDate(x)}</option>`).join("")}
    </select>
    <button class="btn" style="background:var(--red);color:#fff;border:none;display:flex;align-items:center;gap:6px" onclick="window.print()">📄 PDF</button>
-   <button class="btn accent" style="display:flex;align-items:center;gap:6px" onclick="window.print()">🖨️ Imprimer</button>
   </div>
  </div>
 
