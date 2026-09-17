@@ -298,9 +298,10 @@ function render(){
  <div class="card">
   <h2 style="margin-bottom:10px">📋 Suivi règlements carburant — En attente banque</h2>
   ${facNonBanque.length?`<div style="overflow-x:auto"><table style="min-width:620px">
-   <thead><tr style="background:rgba(255,255,255,0.04)"><th style="text-align:left;padding:8px">Facture</th><th style="text-align:left;padding:8px">Fournisseur</th><th style="text-align:left;padding:8px">Date</th><th class="num" style="padding:8px">Qté</th><th class="num" style="padding:8px">Montant</th><th class="num" style="padding:8px">Réglé</th><th style="text-align:center;padding:8px">Mode</th><th style="text-align:left;padding:8px">N° Chèque</th><th class="num" style="padding:8px;color:var(--red)">Reste dû</th></tr></thead>
+   <thead><tr style="background:rgba(255,255,255,0.04)"><th style="text-align:left;padding:8px">Facture</th><th style="text-align:left;padding:8px">Fournisseur</th><th style="text-align:left;padding:8px">Date</th><th class="num" style="padding:8px">Qté G/E</th>
+      <th class="num" style="padding:8px">Qté GPL</th><th class="num" style="padding:8px">Montant</th><th class="num" style="padding:8px">Réglé</th><th style="text-align:center;padding:8px">Mode</th><th style="text-align:left;padding:8px">N° Chèque</th><th class="num" style="padding:8px;color:var(--red)">Reste dû</th></tr></thead>
    <tbody>${facNonBanque.map(f=>{
-    const qte=(f.lignes||[]).reduce((s,l)=>s+Number(l.qte),0);
+    let qteGE=0,qteGPL=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2)qteGE+=Number(l.qte);else if(art===3)qteGPL+=Number(l.qte);});
     const regleAALaDate=(f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant),0);
     const reste=Number(f.montant)-regleAALaDate;
     const modes=(f.paiements||[]).filter(p=>p.date<=d).map(p=>{
@@ -308,7 +309,8 @@ function render(){
      if(p.source==="banque")return`<span style="background:rgba(99,179,237,0.15);color:#63b3ed;padding:2px 6px;border-radius:4px;font-size:12px">Banque</span>`;
      return`<span style="background:rgba(72,187,120,0.15);color:#48bb78;padding:2px 6px;border-radius:4px;font-size:12px">Caisse</span>`;}).join(" ");
     const cheques=(f.paiements||[]).filter(p=>p.date<=d&&p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
-    return`<tr><td style="padding:6px 4px">${esc(f.numero||"—")}</td><td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td><td style="padding:6px 4px">${frDate(f.date)}</td><td class="num" style="padding:6px 4px">${fmtQ(qte)}</td><td class="num" style="padding:6px 4px">${fmt(f.montant)}</td><td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td><td style="text-align:center;padding:6px 4px">${modes||"—"}</td><td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td><td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td></tr>`;}).join("")}
+    return`<tr><td style="padding:6px 4px">${esc(f.numero||"—")}</td><td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td><td style="padding:6px 4px">${frDate(f.date)}</td><td class="num" style="padding:6px 4px">${fmtQ(qteGE)}</td>
+       <td class="num" style="padding:6px 4px">${fmtQ(qteGPL)}</td><td class="num" style="padding:6px 4px">${fmt(f.montant)}</td><td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td><td style="text-align:center;padding:6px 4px">${modes||"—"}</td><td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td><td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td></tr>`;}).join("")}
    </tbody></table></div>`:`<p class="subtle">Aucun règlement en attente.</p>`}
  </div>`;}
 
