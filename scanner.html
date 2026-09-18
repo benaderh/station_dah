@@ -172,8 +172,8 @@ async function onScanSuccess(decodedText, decodedResult) {
  a.code_barre = decodedText;
  
  try {
-  // Mise à jour de la table articles sur Supabase (seule la colonne data est nécessaire avec l'id)
-  const {error} = await sb.from("articles").upsert({ art_id: a.art_id, data: a });
+  // Mise à jour de la table articles sur Supabase
+  const {error} = await sb.from("articles").upsert([{ art_id: a.art_id, data: a }]);
   if(error) throw error;
   
   showMsg("✅ Code enregistré pour : " + a.article, "ok");
@@ -193,6 +193,7 @@ async function onScanSuccess(decodedText, decodedResult) {
   }
   
  } catch(e) {
+  console.error("Erreur upsert:", e);
   showMsg("Erreur d'enregistrement : " + e.message, "err");
   a.code_barre = ""; // Annuler localement
   onSelectArt();
