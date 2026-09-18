@@ -552,7 +552,7 @@ const NAV=[
   {id:"categories",ico:"🏷️",label:"Catégories"},
   {id:"referentiel",ico:"⚙️",label:"Référentiel"}]},
  {sec:"Données",items:[{id:"donnees",ico:"💾",label:"Import / Export"}]}];
-const TITLES={dashboard:["Tableau de bord",""],journee:["Journée & Index","Relevé des compteurs, ventes par pompiste et comptes de caisse"],achats:["Achats","Factures carburant et achats divers (lubrifiants, gaz butane)"],fournisseurs:["Fournisseurs & Soldes","Suivi des factures à crédit et règlements"],stock:["Stock & Historique","État des stocks et journal unifié des achats, ventes et charges caisse"],tresorerie:["Trésorerie","Gestion de la caisse et de la banque — encaissements, décaissements, virements"],tiers:["Tiers","Pompistes, fournisseurs et clients — rotation via « ord »"],articles:["Articles","Carburants, lubrifiants et gaz butane"],categories:["Catégories",""],referentiel:["Référentiel","Types de règlements et paramètres"],donnees:["Import / Export","Sauvegarde et transfert des données"],paie:["Paie","Salaires, primes, prêts, avances et manques du personnel"]};
+const TITLES={dashboard:["Tableau de bord",""],journee:["Journée & Index","Relevé des compteurs, ventes par pompiste et comptes de caisse"],achats:["Achats","Factures carburant et achats divers (lubrifiants, gaz butane)"],fournisseurs:["Fournisseurs & Soldes","Suivi des factures à crédit et règlements"],stock:["Stock & Historique","Journal unifié des achats, ventes et charges caisse"],tresorerie:["Trésorerie","Gestion de la caisse et de la banque — encaissements, décaissements, virements"],tiers:["Tiers","Pompistes, fournisseurs et clients — rotation via « ord »"],articles:["Articles","Carburants, lubrifiants et gaz butane"],categories:["Catégories",""],referentiel:["Référentiel","Types de règlements et paramètres"],donnees:["Import / Export","Sauvegarde et transfert des données"],paie:["Paie","Salaires, primes, prêts, avances et manques du personnel"]};
 let view="dashboard";
 let sel={date:null,tierId:null,jourTab:"lub",jdate:null,tresoTab:"caisse",paieAnnee:String(new Date().getFullYear()).slice(-2),paieMois:String(new Date().getMonth()+1).padStart(2,"0")};
 let state={artFilter:"",tierFilter:"",tierTab:"P",histFilter:"",histSens:"",factFilter:"",lubArt:"",lubSearch:"",lubListOpen:false,
@@ -1814,14 +1814,7 @@ function journalTable(){
  }).join("")||`<tr><td colspan="9" class="subtle">Aucun mouvement.</td></tr>`}</table>
  ${total>400?`<p class="subtle" style="margin-top:8px">Affichage limité aux 400 premières lignes sur ${total} — affinez les filtres pour voir le reste.</p>`:""}`;}
 function vStock(){
- const val=DB.articles.filter(a=>[1,2,3].includes(Number(a.type_a))).reduce((s,a)=>s+calcStockCarburant(a.type_a)*Number(a.pa),0)
-  +DB.articles.filter(a=>![1,2,3].includes(Number(a.type_a))).reduce((s,a)=>s+Number(a.qs)*Number(a.pa),0);
  return `
- <div class="card"><h2>📦 Stocks courants</h2>
-  <div class="field" style="margin-bottom:10px;max-width:280px"><label>Recherche article</label><input value="${esc(state.artFilter)}" oninput="state.artFilter=this.value;$('stockWrap').innerHTML=stockTable()"></div>
-  <div id="stockWrap">${stockTable()}</div>
-  <p class="subtle" style="margin-top:8px">Valeur totale estimée (au PA) : <b>${fmt(val)} DA</b>. Stock carburant = achats − litres vendus (index). Double-clic pour modifier.</p>
- </div>
  <div class="card"><h2>🧾 Journal — Achats / Ventes / Charges caisse</h2>
   <div class="row" style="margin-bottom:10px;gap:14px;flex-wrap:wrap">
    <div class="field"><label>Du</label><input type="date" value="${esc(state.jrnDu)}" onchange="state.jrnDu=this.value;jrnRefresh()"></div>
