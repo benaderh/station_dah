@@ -128,10 +128,13 @@ async function afterLogin(){
 async function loadContext(){
  $("subHead").textContent="Chargement…";
  try{
-  for(const t of["indexs","tiers","articles","agent_detail"]){
+  for(const t of["indexs","tiers","articles","agent_detail","mouv_detail"]){
    const{data,error}=await sb.from(t).select("data");
    if(error)throw error;
    DB[t]=(data||[]).map(r=>r.data);}
+  const {data: pendData, error: pendErr} = await sb.from("releve_pending").select("*");
+  if(pendErr) throw pendErr;
+  window.pendingSales = pendData || [];
   myTier=DB.tiers.find(x=>Number(x.ord)===Number(profile.ord)&&x.type==="P");
   const ds=datesDesc();
   today=ds[0]||null;
@@ -153,6 +156,28 @@ async function loadContext(){
    else if(myOrd===nextInSeq(GPL_SEQ,t2Ord))myRole="entrant";
    else myRole="repos";}
   loadDraft();
+  
+  window.myExtraSales = 0;
+  if(myTier) {
+   // Déduire le stock des ventes en attente, et calculer le total des ventes extra non validées
+   window.pendingSales.forEach(r => {
+    if(r.pistolet.startsWith("V_ART_")) {
+     const art_id = r.pistolet.split("_")[2];
+     const a = DB.articles.find(x=>String(x.art_id)===String(art_id));
+     if(a) {
+      a.qs = (Number(a.qs)||0) - Number(r.valeur);
+      if(r.rec_date === today && Number(r.ord) === Number(profile.ord)) {
+       window.myExtraSales += (Number(r.valeur) * Number(a.pv));
+      }
+     }
+    }
+   });
+   
+   // Ajouter le total des ventes extra déjà validées par l'admin (qui sont dans mouv_detail)
+   const myValSales = DB.mouv_detail.filter(m => m.date_m === today && String(m.tier_id) === String(myTier.tier_id) && m.mouvement_id === 0);
+   window.myExtraSales += myValSales.reduce((s,m) => s + (Number(m.total)||0), 0);
+  }
+
   $("subHead").textContent=(myTier?esc(myTier.nom):"Pompiste "+myOrd)+" · "+frDate(today);
   renderApp();
  }catch(e){
@@ -228,6 +253,9 @@ function refreshCompute(){
    }else{mtOut.textContent="—";if(warn)warn.innerHTML="";}}
   if(!val)allFilled=false;});
  $("sendBtn").disabled=!(allFilled&&allOk);
+ 
+ totalVentes += (window.myExtraSales || 0);
+ 
  const bv=$("bilanVentes");
  if(bv){
   bv.textContent=fmt(totalVentes)+" DA";
@@ -369,9 +397,19 @@ async function sendVente(art_id, qteInputId, pv){
   const {error} = await sb.from("releve_pending").upsert([row]);
   if(error) throw error;
   showMsg("✓ Vente envoyée : " + qte + "x " + a.article, "ok");
+  
+  // Mise à jour locale (visuelle)
+  a.qs = (Number(a.qs)||0) - qte;
+  window.myExtraSales = (window.myExtraSales || 0) + (qte * Number(a.pv));
+  refreshCompute();
+  
   $(qteInputId).value = 1;
-  if(qteInputId==='gazQte') calcGazMt(pv);
-  else { $("lubResult").style.display="none"; }
+  if(qteInputId==='gazQte') {
+   calcGazMt(a.pv);
+   renderGaz(); // Rafraîchit l'affichage du stock gaz
+  } else { 
+   $("lubResult").style.display="none"; 
+  }
  } catch(e) {
   showMsg("Erreur d'envoi : " + e.message, "err");
  }
