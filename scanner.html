@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Scanner Inventaire</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0a0e18">
+<style>
+ :root{--bg:#0a0e18;--card:#111827;--line:#1f2937;--muted:#8b95a7;--accent:#2563eb;--ok:#34d399;--red:#f87171;--warn:#fbbf24}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:#e5e9f0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:16px;max-width:520px;margin:0 auto}
+ h1{font-size:18px;margin:0 0 2px}
+ .sub{color:var(--muted);font-size:12px;margin-bottom:16px}
+ .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+ label{display:block;font-size:13px;color:var(--muted);margin-bottom:8px;font-weight:600}
+ select,input{width:100%;background:#0d1424;border:1px solid var(--line);color:#e5e9f0;border-radius:10px;padding:14px;font-size:16px}
+ button{width:100%;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:700;margin-top:16px;cursor:pointer}
+ button:disabled{opacity:.4}
+ .msg{border-radius:10px;padding:12px;font-size:14px;margin-bottom:14px;display:none}
+ .msg.ok{background:#0f2e22;border:1px solid #15532d;color:#6ee7b7;display:block}
+ .msg.err{background:#3b1717;border:1px solid #7f1d1d;color:#fca5a5;display:block}
+ #reader{width:100%;background:#fff;border-radius:10px;overflow:hidden;margin-top:16px}
+</style>
+</head>
+<body>
+<h1>📸 Assignation Codes-barres</h1>
+<div class="sub" id="subHead">Connexion…</div>
+<div id="msg" class="msg"></div>
+
+<div id="loginBox" class="card" style="display:none">
+ <label>Email Admin/Patron</label><input id="email" type="email" autocomplete="username">
+ <label>Mot de passe</label><input id="password" type="password" autocomplete="current-password">
+ <button onclick="doLogin()">Se connecter</button>
+</div>
+
+<div id="appBox" style="display:none">
+ <div class="card">
+  <label>1. Choisir l'article à scanner</label>
+  <select id="artSelect" onchange="onSelectArt()"></select>
+  <div id="artInfo" style="margin-top:10px;font-size:14px;font-weight:bold"></div>
+ </div>
+ 
+ <div class="card">
+  <label>2. Scanner le code-barre du produit</label>
+  <button id="scanBtn" onclick="toggleScanner()">Démarrer la caméra</button>
+  <div id="reader" style="display:none"></div>
+  <p class="sub" style="margin-top:12px">Placez le code-barre devant la caméra. L'enregistrement est automatique.</p>
+ </div>
+ 
+ <button onclick="doLogout()" style="background:transparent;border:1px solid var(--line);color:var(--muted)">Se déconnecter</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script>
+const SUPABASE_URL="https://twxpixyjuacreatxncfo.supabase.co";
+const SUPABASE_KEY="sb_publishable_VdDiO_xSqIvBbWak_wPASw__zsfWGby";
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+function $(id){return document.getElementById(id);}
+function showMsg(txt,type){const m=$("msg");m.textContent=txt;m.className="msg "+type;setTimeout(()=>m.className="msg",5000);}
+
+let articles = [];
+let html5QrcodeScanner = null;
+let scanning = false;
+
+async function doLogin(){
+ const email=$("email").value.trim(),password=$("password").value;
+ if(!email||!password){showMsg("Identifiants requis","err");return;}
+ $("loginBox").style.display="none";$("subHead").textContent="Connexion...";
+ const {data,error} = await sb.auth.signInWithPassword({email,password});
+ if(error){$("loginBox").style.display="block";$("subHead").textContent="";showMsg("Erreur: "+error.message,"err");return;}
+ checkRole(data.user);
+}
+
+async function doLogout(){
+ await sb.auth.signOut();
+ location.reload();
+}
+
+async function checkRole(user){
+ const {data,error}=await sb.from("profiles").select("role").eq("id",user.id).single();
+ if(error||!data||(data.role!=="admin" && data.role!=="patron")){
+  showMsg("Accès refusé. Compte Admin ou Patron requis.","err");
+  await sb.auth.signOut();
+  $("loginBox").style.display="block";
+  return;
+ }
+ loadData();
+}
+
+async function loadData(){
+ $("subHead").textContent = "Chargement des articles depuis Supabase...";
+ const {data,error} = await sb.from("articles").select("*");
+ if(error){showMsg("Erreur chargement: "+error.message,"err");return;}
+ 
+ // On ne prend que les lubrifiants actifs
+ articles = (data||[]).map(r=>r.data).filter(a=>Number(a.type_a)===0 && Number(a.actif)===1); 
+ 
+ // Tri : ceux sans code-barre d'abord, puis ordre alphabétique
+ articles.sort((a,b) => {
+  const aDone = (a.code_barre && a.code_barre.trim()!=="") ? 1 : 0;
+  const bDone = (b.code_barre && b.code_barre.trim()!=="") ? 1 : 0;
+  if(aDone !== bDone) return aDone - bDone;
+  return (a.article||"").localeCompare(b.article||"");
+ });
+ 
+ renderSelect();
+ $("subHead").textContent = "Sélectionnez un article et scannez son code-barre.";
+ $("appBox").style.display = "block";
+}
+
+function renderSelect(){
+ const sel = $("artSelect");
+ sel.innerHTML = articles.map(a => {
+  const isDone = a.code_barre && a.code_barre.trim() !== "";
+  const prefix = isDone ? "✅ " : "⏳ ";
+  return `<option value="${a.art_id}">${prefix}${a.article}</option>`;
+ }).join("");
+ onSelectArt();
+}
+
+function onSelectArt(){
+ const id = Number($("artSelect").value);
+ const a = articles.find(x => x.art_id === id);
+ if(!a) return;
+ if(a.code_barre && a.code_barre.trim() !== ""){
+  $("artInfo").innerHTML = `<span style="color:var(--ok)">Déjà assigné : ${a.code_barre}</span>`;
+ } else {
+  $("artInfo").innerHTML = `<span style="color:var(--warn)">Aucun code-barre. Prêt à scanner.</span>`;
+ }
+}
+
+function toggleScanner(){
+ if(scanning) {
+  if(html5QrcodeScanner) html5QrcodeScanner.clear();
+  $("reader").style.display = "none";
+  $("scanBtn").textContent = "Démarrer la caméra";
+  scanning = false;
+ } else {
+  $("reader").style.display = "block";
+  $("scanBtn").textContent = "Arrêter la caméra";
+  html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
+  html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+  scanning = true;
+ }
+}
+
+async function onScanSuccess(decodedText, decodedResult) {
+ if(!scanning) return;
+ const id = Number($("artSelect").value);
+ const a = articles.find(x => x.art_id === id);
+ if(!a) {
+  showMsg("Sélectionnez d'abord un article.", "err");
+  return;
+ }
+ 
+ // On vérifie si ce code barre est déjà attribué à un autre article
+ const existing = articles.find(x => x.code_barre === decodedText && x.art_id !== id);
+ if(existing) {
+  if(html5QrcodeScanner) html5QrcodeScanner.pause(true);
+  showMsg("⚠️ Ce code est déjà utilisé pour : " + existing.article, "err");
+  setTimeout(() => { if(scanning && html5QrcodeScanner) html5QrcodeScanner.resume(); }, 3000);
+  return;
+ }
+ 
+ if(html5QrcodeScanner) html5QrcodeScanner.pause(true);
+ $("artInfo").innerHTML = `<span style="color:var(--accent)">Enregistrement en cours...</span>`;
+ 
+ a.code_barre = decodedText;
+ 
+ try {
+  // Mise à jour de la table articles sur Supabase (seule la colonne data est nécessaire avec l'id)
+  const {error} = await sb.from("articles").upsert({ art_id: a.art_id, data: a });
+  if(error) throw error;
+  
+  showMsg("✅ Code enregistré pour : " + a.article, "ok");
+  
+  // Rafraîchir la liste déroulante
+  const prevVal = $("artSelect").value;
+  renderSelect();
+  $("artSelect").value = prevVal; // Resélectionne le même pour ne pas perdre le focus
+  
+  // Chercher le prochain article sans code-barre
+  const next = articles.find(x => (!x.code_barre || x.code_barre.trim() === ""));
+  if(next) {
+   $("artSelect").value = next.art_id;
+   onSelectArt();
+  } else {
+   showMsg("🎉 Tous les articles ont un code-barre !", "ok");
+  }
+  
+ } catch(e) {
+  showMsg("Erreur d'enregistrement : " + e.message, "err");
+  a.code_barre = ""; // Annuler localement
+  onSelectArt();
+ }
+ 
+ if(scanning && html5QrcodeScanner) {
+  setTimeout(() => { html5QrcodeScanner.resume(); }, 1500);
+ }
+}
+
+function onScanFailure(error) {
+ // Les erreurs de scan sont fréquentes (images floues en cours d'autofocus), on les ignore silencieusement.
+}
+
+/* Démarrage */
+(async function start(){
+ const{data:{session}}=await sb.auth.getSession();
+ if(session){await checkRole(session.user);}
+ else{$("loginBox").style.display="block";$("subHead").textContent="Connecte-toi pour continuer.";}
+})();
+</script>
+</body>
+</html>

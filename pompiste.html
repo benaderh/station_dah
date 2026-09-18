@@ -54,6 +54,7 @@
 <div id="appBox" style="display:none"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
 <script>
 const SUPABASE_URL="https://twxpixyjuacreatxncfo.supabase.co";
 const SUPABASE_KEY="sb_publishable_VdDiO_xSqIvBbWak_wPASw__zsfWGby";
@@ -178,7 +179,7 @@ function renderApp(){
    ${rowsHtml}
    <button id="sendBtn" onclick="sendReleve()" disabled>Envoyer à l'administrateur</button>
   </div>
-  ${myRole==="sortant"?bilanCard():""}
+  ${myRole==="sortant"?bilanCard()+renderGaz()+renderLub():""}
   ${logoutBtn()}`;
  refreshCompute();}
 function bilanCard(){
@@ -251,6 +252,127 @@ async function sendReleve(){
   btn.textContent="Envoyer à l'administrateur";
   btn.disabled=true;
  }catch(e){showMsg("Échec de l'envoi : "+e.message,"err");btn.disabled=false;btn.textContent="Envoyer à l'administrateur";}}
+
+// ---- VENTES GAZ ET LUBRIFIANTS ----
+function renderGaz(){
+ const g = DB.articles.find(a=>Number(a.type_a)===9);
+ if(!g) return "";
+ return `<div class="card">
+  <h2>🔥 Gaz Butane</h2>
+  <div style="font-weight:bold;margin-bottom:6px">${esc(g.article)}</div>
+  <div class="row2">
+   <div>Stock: <b>${fmtQ(g.qs)}</b></div>
+   <div>Prix: <b>${fmt(g.pv)} DA</b></div>
+  </div>
+  <div class="row2" style="margin-top:10px;align-items:center">
+   <div style="display:flex;gap:4px">
+    <button class="btn" style="margin:0;padding:8px" onclick="adjQte('gazQte',-1,${g.pv})">-</button>
+    <input id="gazQte" type="number" value="1" style="text-align:center;padding:8px;width:100%" oninput="calcGazMt(${g.pv})" onfocus="this.select()">
+    <button class="btn" style="margin:0;padding:8px" onclick="adjQte('gazQte',1,${g.pv})">+</button>
+   </div>
+   <div style="text-align:right">Mt: <b id="gazMt" style="color:var(--accent)">${fmt(g.pv)} DA</b></div>
+  </div>
+  <button class="btn accent" style="width:100%;margin-top:10px" ondblclick="sendVente(${g.art_id}, 'gazQte', ${g.pv})">Ok (Double-clic)</button>
+ </div>`;
+}
+
+let html5QrcodeScanner = null;
+function renderLub(){
+ return `<div class="card">
+  <h2>🛢️ Lubrifiants</h2>
+  <button class="btn" style="width:100%;margin-bottom:10px" onclick="startScanner()">📸 Scanner Code-barre</button>
+  <div id="reader" style="width:100%;margin-bottom:10px;display:none;background:#fff;border-radius:8px;overflow:hidden"></div>
+  <div id="lubResult" style="display:none;border:1px solid var(--line);padding:10px;border-radius:6px">
+   <div id="lubName" style="font-weight:bold;color:var(--accent);margin-bottom:6px"></div>
+   <div class="row2">
+    <div>Stock: <b id="lubStock"></b></div>
+    <div>Prix: <b id="lubPrix"></b> DA</div>
+   </div>
+   <div class="row2" style="margin-top:10px;align-items:center">
+    <div style="display:flex;gap:4px">
+     <button class="btn" style="margin:0;padding:8px" onclick="adjQte('lubQte',-1,0)">-</button>
+     <input id="lubQte" type="number" value="1" style="text-align:center;padding:8px;width:100%" oninput="calcLubMt()" onfocus="this.select()">
+     <button class="btn" style="margin:0;padding:8px" onclick="adjQte('lubQte',1,0)">+</button>
+    </div>
+    <div style="text-align:right">Mt: <b id="lubMt" style="color:var(--accent)"></b> DA</div>
+   </div>
+   <button class="btn accent" style="width:100%;margin-top:10px" id="lubOkBtn">Ok (Double-clic)</button>
+  </div>
+ </div>`;
+}
+
+function startScanner() {
+ $("lubResult").style.display = "none";
+ $("reader").style.display = "block";
+ if(!html5QrcodeScanner) {
+  html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
+  html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+ }
+}
+function onScanSuccess(decodedText, decodedResult) {
+ const a = DB.articles.find(x => x.code_barre === decodedText && Number(x.type_a) === 0);
+ if(a) {
+  html5QrcodeScanner.clear();
+  html5QrcodeScanner = null;
+  $("reader").style.display = "none";
+  $("lubResult").style.display = "block";
+  $("lubName").textContent = a.article;
+  $("lubStock").textContent = fmtQ(a.qs) + " " + (a.unite||"");
+  $("lubPrix").textContent = fmt(a.pv);
+  $("lubQte").value = 1;
+  $("lubQte").dataset.art = a.art_id;
+  $("lubQte").dataset.pv = a.pv;
+  calcLubMt();
+  $("lubOkBtn").ondblclick = () => sendVente(a.art_id, 'lubQte', a.pv);
+ } else {
+  showMsg("Article introuvable pour ce code-barre.", "err");
+ }
+}
+function onScanFailure(error) {}
+
+function adjQte(id, d, pv){
+ const el = $(id);
+ let v = (Number(el.value)||0) + d;
+ if(v<1) v=1;
+ el.value = v;
+ if(id==='gazQte') calcGazMt(pv);
+ else calcLubMt();
+}
+function calcGazMt(pv){
+ const qte = Number($('gazQte').value)||0;
+ $('gazMt').textContent = fmt(qte * pv) + " DA";
+}
+function calcLubMt(){
+ const el = $('lubQte');
+ const qte = Number(el.value)||0;
+ const pv = Number(el.dataset.pv)||0;
+ $('lubMt').textContent = fmt(qte * pv) + " DA";
+}
+async function sendVente(art_id, qteInputId, pv){
+ const qte = Number($(qteInputId).value)||0;
+ if(qte <= 0) return;
+ const a = DB.articles.find(x => String(x.art_id) === String(art_id));
+ if(!a) return;
+ const id = today + "_" + (new Date().getTime()) + "_V_" + art_id;
+ const row = {
+  id: id,
+  rec_date: today,
+  pistolet: "V_ART_"+art_id,
+  role: myRole,
+  ord: Number(profile.ord),
+  valeur: qte
+ };
+ try {
+  const {error} = await sb.from("releve_pending").upsert([row]);
+  if(error) throw error;
+  showMsg("✓ Vente envoyée : " + qte + "x " + a.article, "ok");
+  $(qteInputId).value = 1;
+  if(qteInputId==='gazQte') calcGazMt(pv);
+  else { $("lubResult").style.display="none"; }
+ } catch(e) {
+  showMsg("Erreur d'envoi : " + e.message, "err");
+ }
+}
 
 function logoutBtn(){return`<button class="ghost" onclick="doLogout()">Se déconnecter</button>`;}
 

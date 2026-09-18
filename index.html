@@ -698,13 +698,69 @@ function releveGrouped(){
 async function validateAllReleve(){
  const groups=releveGrouped();
  let n=0;
- groups.forEach(g=>{if(g.sortant){updateIndex(g.code,g.sortant.valeur);n++;}});
+ groups.forEach(g=>{if(g.sortant&&!g.code.startsWith("V_ART_")){updateIndex(g.code,g.sortant.valeur);n++;}});
+ const ventes=releveList.filter(r=>r.pistolet.startsWith("V_ART_"));
+ let vCount=0;
+ ventes.forEach(v=>{
+  const art_id=Number(v.pistolet.replace("V_ART_",""));
+  const a=article(art_id);
+  if(a){
+   const pTier=DB.tiers.find(t=>Number(t.ord)===v.ord&&t.type==="P");
+   if(pTier){
+    const op=getOrCreateOp(sel.date,pTier.tier_id);
+    const mid=uid();
+    DB.mouv_detail.push({mouv_detail_id:mid,id_operation:op.operation_id,id_art:art_id,quantite:v.valeur,prix_u:a.pv,remise:0,montant_ligne:v.valeur*a.pv});
+    a.qs=(Number(a.qs)||0)-v.valeur;
+    refreshOpMontant(op.operation_id);
+    vCount++;
+   }
+  }
+ });
+ save();
  try{
   const ids=releveList.map(r=>r.id);
   if(ids.length){const{error}=await sb.from("releve_pending").delete().in("id",ids);if(error)throw error;}
   releveList=[];
-  toast(n+" pistolet(s) validé(s) sur "+frDate(sel.date),"ok");render();
- }catch(e){toast("Validé localement, mais erreur Supabase (nettoyage) : "+e.message,"err");}}
+  toast(n+" pistolet(s) et "+vCount+" vente(s) validés sur "+frDate(sel.date),"ok");render();
+ }catch(e){toast("Validé localement, mais erreur Supabase : "+e.message,"err");}
+}
+async function validateVentesReleve(){
+ const ventes=releveList.filter(r=>r.pistolet.startsWith("V_ART_"));
+ if(!ventes.length){toast("Aucune vente à valider","err");return;}
+ let vCount=0;const ids=[];
+ ventes.forEach(v=>{
+  const art_id=Number(v.pistolet.replace("V_ART_",""));const a=article(art_id);
+  if(a){
+   const pTier=DB.tiers.find(t=>Number(t.ord)===v.ord&&t.type==="P");
+   if(pTier){
+    const op=getOrCreateOp(sel.date,pTier.tier_id);
+    const mid=uid();
+    DB.mouv_detail.push({mouv_detail_id:mid,id_operation:op.operation_id,id_art:art_id,quantite:v.valeur,prix_u:a.pv,remise:0,montant_ligne:v.valeur*a.pv});
+    a.qs=(Number(a.qs)||0)-v.valeur;
+    refreshOpMontant(op.operation_id);vCount++;ids.push(v.id);
+   }
+  }
+ });
+ save();
+ try{
+  if(ids.length){const{error}=await sb.from("releve_pending").delete().in("id",ids);if(error)throw error;}
+  releveList=releveList.filter(r=>!r.pistolet.startsWith("V_ART_"));
+  toast(vCount+" vente(s) validée(s)","ok");render();
+ }catch(e){toast("Erreur Supabase: "+e.message,"err");}
+}
+async function validateVenteReleve(id, art_id, qte, tier_id){
+ const a=article(art_id);if(!a||!tier_id)return;
+ const op=getOrCreateOp(sel.date,tier_id);
+ const mid=uid();
+ DB.mouv_detail.push({mouv_detail_id:mid,id_operation:op.operation_id,id_art:art_id,quantite:qte,prix_u:a.pv,remise:0,montant_ligne:qte*a.pv});
+ a.qs=(Number(a.qs)||0)-qte;refreshOpMontant(op.operation_id);save();
+ try{
+  const{error}=await sb.from("releve_pending").delete().eq("id",id);
+  if(error)throw error;
+  releveList=releveList.filter(r=>r.id!==id);
+  toast("Vente validée","ok");render();
+ }catch(e){toast("Erreur Supabase: "+e.message,"err");}
+}
 async function validateGroupReleve(codes, msg){
  const groups=releveGrouped().filter(g=>codes.includes(g.code));
  let n=0;
@@ -785,9 +841,19 @@ function vJournee(){
      const statut=!g.sortant?"Sortant manquant":!g.entrant?"En attente entrant":match?"✓ Concorde":"⚠ Écart";
      return`<tr ondblclick="openValidateReleve('${g.code}')" style="cursor:pointer" title="Double-clic pour valider"><td>${g.code}</td><td class="num">${g.sortant?fmtIdx(g.sortant.valeur):"—"}</td><td class="num">${g.entrant?fmtIdx(g.entrant.valeur):"—"}</td><td>${statut}</td></tr>`;}).join("")||`<tr><td colspan="4" class="subtle">Aucun relevé GPL</td></tr>`}
    </table></div>
+    <h3 style="margin:12px 0 6px">🛒 Ventes Gaz & Lubrifiants</h3>
+    <div style="overflow-x:auto"><table style="min-width:480px"><tr><th>Pompiste</th><th>Article</th><th class="num">Qté</th><th>Statut</th></tr>
+    ${releveList.filter(r=>r.pistolet.startsWith('V_ART_')).map(r=>{
+     const art_id=Number(r.pistolet.replace('V_ART_',''));
+     const a=article(art_id);const nom=a?a.article:r.pistolet;
+     const pTier=DB.tiers.find(t=>Number(t.ord)===r.ord&&t.type==="P");
+     const pNom=pTier?pTier.nom:"Ord "+r.ord;
+     return`<tr ondblclick="validateVenteReleve('${r.id}',${art_id},${r.valeur},${pTier?pTier.tier_id:0})" style="cursor:pointer" title="Double-clic pour valider"><td>${esc(pNom)}</td><td>${esc(nom)}</td><td class="num">${fmtQ(r.valeur)}</td><td>En attente</td></tr>`;}).join("")||`<tr><td colspan="4" class="subtle">Aucune vente en attente</td></tr>`}
+   </table></div>
    <div class="row" style="margin-top:10px;gap:10px">
     <button class="btn accent" onclick="validateGEReleve()">✓ Valider Gasoil/Essence</button>
     <button class="btn accent" onclick="validateGPLReleve()">✓ Valider GPL</button>
+    <button class="btn accent" onclick="validateVentesReleve()">✓ Valider Ventes</button>
     <button class="btn" onclick="validateAllReleve()">✓ Valider tout</button>
    </div>`
   :`<p class="subtle" style="margin-top:6px">Aucun relevé chargé — clique « Charger » pour vérifier auprès de Supabase.</p>`}
@@ -1961,7 +2027,7 @@ function vArticles(){
   <p class="subtle" style="margin-top:8px">Double-clic sur une ligne pour modifier l'article.</p>
  </div>`;}
 function openArticleModal(id){
- const a=id?article(id):{article:"",id_cat:DB.categories[0].cat_id,unite:"unité",type_a:0,coeff:1,qs:0,pa:0,pv:0,actif:1};
+ const a=id?article(id):{article:"",id_cat:DB.categories[0].cat_id,unite:"unité",type_a:0,coeff:1,qs:0,pa:0,pv:0,actif:1,code_barre:""};
  openModal(`<h2>${id?"Modifier":"Ajouter"} un article</h2>
  <input type="hidden" id="aId" value="${id||""}">
  <div class="row">
@@ -1972,6 +2038,7 @@ function openArticleModal(id){
   <div class="field"><label>Unité</label><input id="aUnite" value="${esc(a.unite)}" style="width:80px"></div>
  </div>
  <div class="row" style="margin-top:10px">
+  <div class="field"><label>Code-barre</label><input id="aCodeBarre" value="${esc(a.code_barre||"")}" style="width:120px" placeholder="Scan..."></div>
   <div class="field"><label>Stock (qs)</label><input id="aQs" type="number" value="${a.qs}" style="width:100px"></div>
   <div class="field"><label>PA</label><input id="aPa" type="number" value="${a.pa}" style="width:100px"></div>
   <div class="field"><label>PV</label><input id="aPv" type="number" value="${a.pv}" style="width:100px"></div>
@@ -1985,7 +2052,7 @@ function saveArticle(){
  const nom=$("aNom").value.trim();
  if(!nom){toast("Désignation obligatoire","err");return;}
  const data={article:nom,id_cat:Number($("aCat").value),type_a:Number($("aType").value),unite:$("aUnite").value||"unité",
-  qs:Number($("aQs").value)||0,pa:Number($("aPa").value)||0,pv:Number($("aPv").value)||0,coeff:Number($("aCoeff").value)||1};
+  code_barre:$("aCodeBarre").value.trim(),qs:Number($("aQs").value)||0,pa:Number($("aPa").value)||0,pv:Number($("aPv").value)||0,coeff:Number($("aCoeff").value)||1};
  if(id){Object.assign(article(id),data);toast("Article modifié","ok");}
  else{const nid=DB.articles.reduce((s,x)=>Math.max(s,Number(x.art_id)||0),0)+1;
   DB.articles.push(Object.assign({art_id:nid,actif:1},data));toast("Article ajouté","ok");}
