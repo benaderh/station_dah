@@ -158,6 +158,7 @@ async function loadContext(){
   loadDraft();
   
   window.myExtraSales = 0;
+  window.myExtraSalesList = [];
   if(myTier) {
    // Déduire le stock des ventes en attente, et calculer le total des ventes extra non validées
    window.pendingSales.forEach(r => {
@@ -167,7 +168,9 @@ async function loadContext(){
      if(a) {
       a.qs = (Number(a.qs)||0) - Number(r.valeur);
       if(r.rec_date === today && Number(r.ord) === Number(profile.ord)) {
-       window.myExtraSales += (Number(r.valeur) * Number(a.pv));
+       const mt = Number(r.valeur) * Number(a.pv);
+       window.myExtraSales += mt;
+       window.myExtraSalesList.push({ article: a.article, qte: Number(r.valeur), prix: Number(a.pv), mt: mt, status: '⏳' });
       }
      }
     }
@@ -175,7 +178,12 @@ async function loadContext(){
    
    // Ajouter le total des ventes extra déjà validées par l'admin (qui sont dans mouv_detail)
    const myValSales = DB.mouv_detail.filter(m => m.date_m === today && String(m.tier_id) === String(myTier.tier_id) && m.mouvement_id === 0);
-   window.myExtraSales += myValSales.reduce((s,m) => s + (Number(m.total)||0), 0);
+   myValSales.forEach(m => {
+    const mt = Number(m.total)||0;
+    window.myExtraSales += mt;
+    const a = DB.articles.find(x=>String(x.art_id)===String(m.art_id));
+    window.myExtraSalesList.push({ article: a ? a.article : "Article inconnu", qte: Number(m.qte), prix: Number(m.pv), mt: mt, status: '✅' });
+   });
   }
 
   $("subHead").textContent=(myTier?esc(myTier.nom):"Pompiste "+myOrd)+" · "+frDate(today);
@@ -206,22 +214,34 @@ function renderApp(){
    ${rowsHtml}
    <button id="sendBtn" onclick="sendReleve()" disabled>Envoyer à l'administrateur</button>
   </div>
-  ${myRole==="sortant"?bilanCard()+renderGaz()+renderLub():""}
+  ${myRole==="sortant"?`<div id="bilanContainer">${bilanCard()}</div>`+renderGaz()+renderLub():""}
   ${logoutBtn()}`;
  refreshCompute();}
 function bilanCard(){
  if(!myTier)return"";
  const versements=DB.agent_detail.filter(a=>String(a.id_agent)===String(myTier.tier_id)&&a.date_agent===today);
  const totalVers=versements.reduce((s,a)=>s+Number(a.mt_agent||0),0);
+ 
+ const salesHtml = (window.myExtraSalesList && window.myExtraSalesList.length) ?
+  `<div style="margin-bottom:12px">
+    <h3 style="font-size:13px;margin:0 0 6px 0;color:var(--accent)">🛒 Ventes Gaz & Lubrifiants</h3>
+    <table><tr><th>Article</th><th class="num">Qté</th><th class="num">Prix</th><th class="num">Montant</th></tr>
+    ${window.myExtraSalesList.map(s => `<tr><td>${s.status} ${esc(s.article)}</td><td class="num">${s.qte}</td><td class="num">${fmt(s.prix)}</td><td class="num">${fmt(s.mt)} DA</td></tr>`).join("")}
+    <tr style="font-weight:700"><td>Total</td><td></td><td></td><td class="num">${fmt(window.myExtraSales)} DA</td></tr>
+    </table>
+   </div>` : '';
+
  return`<div class="card">
   <h2>💵 Bilan de la journée — ${frDate(today)}</h2>
+  ${salesHtml}
+  <h3 style="font-size:13px;margin:0 0 6px 0;color:var(--warn)">💸 Versements</h3>
   ${versements.length?`<table><tr><th>Versement</th><th class="num">Montant</th></tr>
    ${versements.map(m=>`<tr><td>${esc(m.obs_agent||"Avance")}</td><td class="num">${fmt(m.mt_agent)} DA</td></tr>`).join("")}
-   </table>`:`<p class="sub" style="margin:0">Aucun versement enregistré aujourd'hui.</p>`}
-  <table style="margin-top:6px">
-   <tr><td>Total ventes (calculé)</td><td class="num" id="bilanVentes">0 DA</td></tr>
+   </table>`:`<p class="sub" style="margin:0 0 12px 0">Aucun versement enregistré aujourd'hui.</p>`}
+  <table style="margin-top:12px;border-top:1px solid var(--line);padding-top:6px">
+   <tr><td>Total ventes (Carburants + Articles)</td><td class="num" id="bilanVentes">0 DA</td></tr>
    <tr><td>Total versements</td><td class="num">${fmt(totalVers)} DA</td></tr>
-   <tr style="font-weight:700"><td>Reste à verser</td><td class="num" id="bilanReste">—</td></tr>
+   <tr style="font-weight:700;color:var(--ok)"><td>Reste à verser</td><td class="num" id="bilanReste">—</td></tr>
   </table>
  </div>`;}
 /* onchange (pas oninput) : se déclenche seulement quand tu quittes le champ
@@ -400,7 +420,14 @@ async function sendVente(art_id, qteInputId, pv){
   
   // Mise à jour locale (visuelle)
   a.qs = (Number(a.qs)||0) - qte;
-  window.myExtraSales = (window.myExtraSales || 0) + (qte * Number(a.pv));
+  const mt = qte * Number(a.pv);
+  window.myExtraSales = (window.myExtraSales || 0) + mt;
+  if(!window.myExtraSalesList) window.myExtraSalesList = [];
+  window.myExtraSalesList.push({ article: a.article, qte: qte, prix: a.pv, mt: mt, status: '⏳' });
+  
+  if($("bilanContainer")) {
+   $("bilanContainer").innerHTML = bilanCard();
+  }
   refreshCompute();
   
   $(qteInputId).value = 1;
