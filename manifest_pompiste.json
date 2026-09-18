@@ -1,0 +1,12 @@
+{
+  "name": "Station Pompiste",
+  "short_name": "Pompiste",
+  "start_url": "./pompiste.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a0e18",
+  "theme_color": "#0a0e18",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

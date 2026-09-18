@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Scanner Inventaire</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest_scanner.json">
 <meta name="theme-color" content="#0a0e18">
 <style>
  :root{--bg:#0a0e18;--card:#111827;--line:#1f2937;--muted:#8b95a7;--accent:#2563eb;--ok:#34d399;--red:#f87171;--warn:#fbbf24}
@@ -134,15 +135,15 @@ function onSelectArt(){
 
 function toggleScanner(){
  if(scanning) {
-  if(html5QrcodeScanner) html5QrcodeScanner.clear();
+  if(html5QrcodeScanner) html5QrcodeScanner.stop().then(() => html5QrcodeScanner.clear()).catch(e=>console.log(e));
   $("reader").style.display = "none";
   $("scanBtn").textContent = "Démarrer la caméra";
   scanning = false;
  } else {
   $("reader").style.display = "block";
   $("scanBtn").textContent = "Arrêter la caméra";
-  html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
-  html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+  if(!html5QrcodeScanner) html5QrcodeScanner = new Html5Qrcode("reader");
+  html5QrcodeScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: {width: 250, height: 250} }, onScanSuccess, onScanFailure).catch(e => showMsg("Caméra indisponible : " + e.message, "err"));
   scanning = true;
  }
 }
@@ -212,6 +213,10 @@ function onScanFailure(error) {
  if(session){await checkRole(session.user);}
  else{$("loginBox").style.display="block";$("subHead").textContent="Connecte-toi pour continuer.";}
 })();
+
+if("serviceWorker" in navigator){
+ navigator.serviceWorker.register("sw.js").catch(e=>console.error("Service worker non enregistré",e));
+}
 </script>
 </body>
 </html>
