@@ -552,10 +552,11 @@ const NAV=[
   {id:"categories",ico:"🏷️",label:"Catégories"},
   {id:"referentiel",ico:"⚙️",label:"Référentiel"}]},
  {sec:"Données",items:[{id:"donnees",ico:"💾",label:"Import / Export"}]}];
-const TITLES={dashboard:["Tableau de bord",""],journee:["Journée & Index","Relevé des compteurs, ventes par pompiste et comptes de caisse"],achats:["Achats","Factures carburant et achats divers (lubrifiants, gaz butane)"],fournisseurs:["Fournisseurs & Soldes","Suivi des factures à crédit et règlements"],stock:["Stock & Historique","État des stocks et historique complet des mouvements"],tresorerie:["Trésorerie","Gestion de la caisse et de la banque — encaissements, décaissements, virements"],tiers:["Tiers","Pompistes, fournisseurs et clients — rotation via « ord »"],articles:["Articles","Carburants, lubrifiants et gaz butane"],categories:["Catégories",""],referentiel:["Référentiel","Types de règlements et paramètres"],donnees:["Import / Export","Sauvegarde et transfert des données"],paie:["Paie","Salaires, primes, prêts, avances et manques du personnel"]};
+const TITLES={dashboard:["Tableau de bord",""],journee:["Journée & Index","Relevé des compteurs, ventes par pompiste et comptes de caisse"],achats:["Achats","Factures carburant et achats divers (lubrifiants, gaz butane)"],fournisseurs:["Fournisseurs & Soldes","Suivi des factures à crédit et règlements"],stock:["Stock & Historique","État des stocks et journal unifié des achats, ventes et charges caisse"],tresorerie:["Trésorerie","Gestion de la caisse et de la banque — encaissements, décaissements, virements"],tiers:["Tiers","Pompistes, fournisseurs et clients — rotation via « ord »"],articles:["Articles","Carburants, lubrifiants et gaz butane"],categories:["Catégories",""],referentiel:["Référentiel","Types de règlements et paramètres"],donnees:["Import / Export","Sauvegarde et transfert des données"],paie:["Paie","Salaires, primes, prêts, avances et manques du personnel"]};
 let view="dashboard";
 let sel={date:null,tierId:null,jourTab:"lub",jdate:null,tresoTab:"caisse",paieAnnee:String(new Date().getFullYear()).slice(-2),paieMois:String(new Date().getMonth()+1).padStart(2,"0")};
-let state={artFilter:"",tierFilter:"",tierTab:"P",histFilter:"",histSens:"",factFilter:"",lubArt:"",lubSearch:"",lubListOpen:false};
+let state={artFilter:"",tierFilter:"",tierTab:"P",histFilter:"",histSens:"",factFilter:"",lubArt:"",lubSearch:"",lubListOpen:false,
+ jrnDu:"",jrnAu:"",jrnSens:"",jrnCat:"",jrnArtQ:"",jrnMode:"",jrnTier:"",jrnSort:"date",jrnSortDir:"desc"};
 let factLines=[],factType="CE";
 let factForm={fourn:"",num:"",date:todayISO(),mode:"credit",cheque:""};
 function setView(v){view=v;render();}
@@ -1707,24 +1708,111 @@ function vFournisseurs(){
   <div id="factHistWrap">${factHistTable()}</div>
  </div>`;}
 /* ================= VUE : STOCK & HISTORIQUE ================= */
-function histTable(){
- const q=state.histFilter.toLowerCase();
- const sf=state.histSens||""; // filtre sens
- const ops=DB.mouvements.map(m=>({id:String(m.operation_id),d:m.date_m,tier:m.id_tier,sens:m.sens}));
+function modeLabel(code){return{E:"Caisse",C:"Banque",B:"Bons Naftal",T:"Crédit"}[code]||code||"—";}
+/* Construit le journal unifié : achats + ventes (mouv_detail, y compris ventes carburant
+   reconstituées depuis les index pompes) + autres charges payées par caisse/banque (trésorerie). */
+function journalRows(){
  const rows=[];
+ /* --- stock de départ par article (avant tout mouvement), pour calculer un solde chronologique --- */
+ const stockInit={};
+ DB.articles.forEach(a=>{
+  if([1,2,3].includes(Number(a.type_a))){
+   stockInit[a.art_id]=DB.meta.stockInitial?(Number(DB.meta.stockInitial[a.type_a])||0):0;
+  }else{
+   let net=0;
+   DB.mouv_detail.forEach(md=>{if(String(md.id_art)!==String(a.art_id))return;
+    const op=DB.mouvements.find(m=>String(m.operation_id)===String(md.id_operation));if(!op)return;
+    net+=op.sens==="E"?Number(md.quantite):-Number(md.quantite);});
+   stockInit[a.art_id]=(Number(a.qs)||0)-net;
+  }
+ });
+ /* --- achats & ventes (lubrifiant, gaz butane, carburant acheté) --- */
  DB.mouv_detail.forEach(md=>{
-  const o=ops.find(x=>x.id===String(md.id_operation));if(!o)return;
-  if(sf&&o.sens!==sf)return;
+  const op=DB.mouvements.find(m=>String(m.operation_id)===String(md.id_operation));if(!op)return;
   const a=article(md.id_art);if(!a)return;
-  const s=(a.article+" "+tierNom(o.tier)+" "+o.d).toLowerCase();
-  if(!s.includes(q))return;
-  rows.push({d:o.d,sens:o.sens,tier:o.tier,art:a,q:Number(md.quantite),pu:Number(md.prix_u)});});
- rows.sort((a,b)=>b.d.localeCompare(a.d));
- return`<table><tr><th>Date</th><th>Sens</th><th>Tiers</th><th>Article</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Montant</th></tr>
- ${rows.slice(0,300).map(r=>`<tr><td>${frDate(r.d)}</td>
-  <td>${r.sens==="E"?'<span class="pill ok">Achat</span>':'<span class="pill mid">Vente</span>'}</td>
-  <td>${tierNom(r.tier)}</td><td>${esc(r.art.article)}</td><td class="num">${fmt(r.q)}</td>
-  <td class="num">${fmt(r.pu)}</td><td class="num">${fmt(r.q*r.pu)}</td></tr>`).join("")||`<tr><td colspan="7" class="subtle">Aucun mouvement.</td></tr>`}</table>`;}
+  rows.push({date:op.date_m,sens:op.sens,art:a,artId:a.art_id,qte:Number(md.quantite),pu:Number(md.prix_u),
+   mt:Number(md.quantite)*Number(md.prix_u),modeCode:op.sens==="S"?"E":normMode(op.mode_paiement),
+   tierId:op.id_tier,cat:[1,2,3].includes(Number(a.type_a))?"carb":"gl",source:"mouv"});
+ });
+ /* --- ventes carburant, reconstituées depuis les compteurs de pompes (table indexs) --- */
+ datesAsc().forEach(d=>{
+  const g=calcGroup(d);
+  [["G",g.g,1],["E",g.e,2],["L",g.gpl,3]].forEach(([code,grp,ta])=>{
+   if(grp.q>0){
+    const a=DB.articles.find(x=>Number(x.type_a)===ta);if(!a)return;
+    rows.push({date:d,sens:"S",art:a,artId:a.art_id,qte:grp.q,pu:grp.q?grp.m/grp.q:0,mt:grp.m,
+     modeCode:"E",tierId:code==="L"?g.t2:g.t1,cat:"carb",source:"index"});
+   }
+  });
+ });
+ /* --- solde stock : on rejoue les mouvements par ordre chronologique --- */
+ rows.sort((a,b)=>a.date.localeCompare(b.date));
+ const running=Object.assign({},stockInit);
+ rows.forEach(r=>{
+  running[r.artId]=(running[r.artId]||0)+(r.sens==="E"?r.qte:-r.qte);
+  r.solde=running[r.artId];r.soldeType="stock";
+ });
+ /* --- autres charges payées par caisse / banque (décaissements directs + retraits Med/Chemssou) --- */
+ ["caisse","banque"].forEach(compte=>{
+  getLedger(compte).forEach(l=>{
+   const isCharge=(l.source==="treso"&&l.sens==="S"&&!/^Virement/.test(l.libelle))||(l.source==="agent"&&l.sens==="S");
+   if(!isCharge)return;
+   rows.push({date:l.date,sens:"C",art:null,artId:null,qte:null,pu:null,mt:l.montant,
+    modeCode:compte==="caisse"?"E":"C",tierId:null,cat:null,source:l.source,libelle:l.libelle,
+    solde:l.solde,soldeType:compte});
+  });
+ });
+ return rows;}
+function journalFiltered(){
+ let rows=journalRows();
+ if(state.jrnDu)rows=rows.filter(r=>r.date>=state.jrnDu);
+ if(state.jrnAu)rows=rows.filter(r=>r.date<=state.jrnAu);
+ if(state.jrnSens)rows=rows.filter(r=>r.sens===state.jrnSens);
+ if(state.jrnCat)rows=rows.filter(r=>r.cat===state.jrnCat);
+ if(state.jrnArtQ){const q=state.jrnArtQ.toLowerCase();rows=rows.filter(r=>r.art&&r.art.article.toLowerCase().includes(q));}
+ if(state.jrnMode)rows=rows.filter(r=>r.modeCode===state.jrnMode);
+ if(state.jrnTier)rows=rows.filter(r=>String(r.tierId)===String(state.jrnTier));
+ const dir=state.jrnSortDir==="asc"?1:-1,key=state.jrnSort||"date";
+ rows.sort((a,b)=>{
+  let va,vb;
+  switch(key){
+   case"art":va=a.art?a.art.article:(a.libelle||"");vb=b.art?b.art.article:(b.libelle||"");break;
+   case"tier":va=tierNom(a.tierId);vb=tierNom(b.tierId);break;
+   case"qte":va=a.qte||0;vb=b.qte||0;break;
+   case"pu":va=a.pu||0;vb=b.pu||0;break;
+   case"mt":va=a.mt||0;vb=b.mt||0;break;
+   case"mode":va=modeLabel(a.modeCode);vb=modeLabel(b.modeCode);break;
+   case"solde":va=a.solde||0;vb=b.solde||0;break;
+   default:va=a.date;vb=b.date;}
+  if(va<vb)return-1*dir;if(va>vb)return 1*dir;return 0;});
+ return rows;}
+function jrnTh(label,key){
+ const active=state.jrnSort===key,arrow=active?(state.jrnSortDir==="asc"?" ▲":" ▼"):"";
+ return`<th style="cursor:pointer;user-select:none" onclick="jrnSetSort('${key}')" title="Trier">${label}${arrow}</th>`;}
+function jrnSetSort(key){
+ if(state.jrnSort===key)state.jrnSortDir=state.jrnSortDir==="asc"?"desc":"asc";
+ else{state.jrnSort=key;state.jrnSortDir=key==="date"?"desc":"asc";}
+ $("jrnWrap").innerHTML=journalTable();}
+function jrnRefresh(){$("jrnWrap").innerHTML=journalTable();}
+function jrnReset(){
+ state.jrnDu="";state.jrnAu="";state.jrnSens="";state.jrnCat="";state.jrnArtQ="";state.jrnMode="";state.jrnTier="";
+ render();}
+function journalTable(){
+ const rows=journalFiltered(),total=rows.length,shown=rows.slice(0,400);
+ return`<table><tr>
+ ${jrnTh("Date","date")}<th>Type</th>${jrnTh("Tiers","tier")}${jrnTh("Article",'art')}
+ ${jrnTh("Qté","qte")}${jrnTh("Prix","pu")}${jrnTh("Mt","mt")}${jrnTh("Mode","mode")}${jrnTh("Solde","solde")}</tr>
+ ${shown.map(r=>{
+  const typeBadge=r.sens==="E"?'<span class="pill ok">Achat</span>':r.sens==="S"?'<span class="pill mid">Vente</span>':'<span class="pill warn">Charge</span>';
+  const artLabel=r.art?esc(r.art.article):esc(r.libelle||"—");
+  const qte=r.qte!=null?fmtQ(r.qte)+(r.art&&r.art.unite?" "+esc(r.art.unite):""):"—";
+  const pu=r.pu!=null?fmt(r.pu):"—";
+  const soldeLabel=r.soldeType==="stock"?fmtQ(r.solde)+(r.art&&r.art.unite?" "+esc(r.art.unite):""):fmt(r.solde)+" DA";
+  return`<tr><td>${frDate(r.date)}</td><td>${typeBadge}</td><td>${r.tierId?tierNom(r.tierId):"—"}</td>
+  <td>${artLabel}</td><td class="num">${qte}</td><td class="num">${pu}</td>
+  <td class="num">${fmt(r.mt)}</td><td>${modeLabel(r.modeCode)}</td><td class="num">${soldeLabel}</td></tr>`;
+ }).join("")||`<tr><td colspan="9" class="subtle">Aucun mouvement.</td></tr>`}</table>
+ ${total>400?`<p class="subtle" style="margin-top:8px">Affichage limité aux 400 premières lignes sur ${total} — affinez les filtres pour voir le reste.</p>`:""}`;}
 function vStock(){
  const val=DB.articles.filter(a=>[1,2,3].includes(Number(a.type_a))).reduce((s,a)=>s+calcStockCarburant(a.type_a)*Number(a.pa),0)
   +DB.articles.filter(a=>![1,2,3].includes(Number(a.type_a))).reduce((s,a)=>s+Number(a.qs)*Number(a.pa),0);
@@ -1734,18 +1822,51 @@ function vStock(){
   <div id="stockWrap">${stockTable()}</div>
   <p class="subtle" style="margin-top:8px">Valeur totale estimée (au PA) : <b>${fmt(val)} DA</b>. Stock carburant = achats − litres vendus (index). Double-clic pour modifier.</p>
  </div>
- <div class="card"><h2>🧾 Historique des mouvements <span class="subtle">(ventes & achats)</span></h2>
+ <div class="card"><h2>🧾 Journal — Achats / Ventes / Charges caisse</h2>
   <div class="row" style="margin-bottom:10px;gap:14px;flex-wrap:wrap">
-   <div class="field" style="min-width:220px"><label>Recherche (article, tiers, date aaaa-mm-jj)</label><input value="${esc(state.histFilter)}" oninput="state.histFilter=this.value;$('histWrap').innerHTML=histTable()"></div>
-   <div class="field"><label>Filtre</label>
+   <div class="field"><label>Du</label><input type="date" value="${esc(state.jrnDu)}" onchange="state.jrnDu=this.value;jrnRefresh()"></div>
+   <div class="field"><label>Au</label><input type="date" value="${esc(state.jrnAu)}" onchange="state.jrnAu=this.value;jrnRefresh()"></div>
+   <div class="field"><label>Type</label>
     <div class="tabs" style="margin:0">
-     <button class="${!state.histSens?'active':''}" onclick="state.histSens='';$('histWrap').innerHTML=histTable()">Tout</button>
-     <button class="${state.histSens==='E'?'active':''}" onclick="state.histSens='E';$('histWrap').innerHTML=histTable()">Achats</button>
-     <button class="${state.histSens==='S'?'active':''}" onclick="state.histSens='S';$('histWrap').innerHTML=histTable()">Ventes</button>
+     <button class="${!state.jrnSens?'active':''}" onclick="state.jrnSens='';jrnRefresh()">Tout</button>
+     <button class="${state.jrnSens==='E'?'active':''}" onclick="state.jrnSens='E';jrnRefresh()">Achats</button>
+     <button class="${state.jrnSens==='S'?'active':''}" onclick="state.jrnSens='S';jrnRefresh()">Ventes</button>
+    </div>
+   </div>
+   <div class="field"><label>Catégorie</label>
+    <div class="tabs" style="margin:0">
+     <button class="${!state.jrnCat?'active':''}" onclick="state.jrnCat='';jrnRefresh()">Tous</button>
+     <button class="${state.jrnCat==='carb'?'active':''}" onclick="state.jrnCat='carb';jrnRefresh()">Carburant</button>
+     <button class="${state.jrnCat==='gl'?'active':''}" onclick="state.jrnCat='gl';jrnRefresh()">Gaz &amp; Lubrifiant</button>
     </div>
    </div>
   </div>
-  <div id="histWrap">${histTable()}</div>
+  <div class="row" style="margin-bottom:10px;gap:14px;flex-wrap:wrap;align-items:flex-end">
+   <div class="field" style="min-width:220px"><label>Article</label>
+    <input list="jrnArtList" value="${esc(state.jrnArtQ)}" placeholder="Rechercher un article…" oninput="state.jrnArtQ=this.value;jrnRefresh()">
+    <datalist id="jrnArtList">${DB.articles.map(a=>`<option value="${esc(a.article)}">`).join("")}</datalist>
+   </div>
+   <div class="field"><label>Mode</label>
+    <select onchange="state.jrnMode=this.value;jrnRefresh()">
+     <option value="" ${!state.jrnMode?"selected":""}>Tous</option>
+     <option value="E" ${state.jrnMode==='E'?"selected":""}>💵 Caisse</option>
+     <option value="C" ${state.jrnMode==='C'?"selected":""}>🏦 Banque</option>
+     <option value="B" ${state.jrnMode==='B'?"selected":""}>🎫 Bons Naftal</option>
+     <option value="T" ${state.jrnMode==='T'?"selected":""}>⏳ Crédit</option>
+    </select>
+   </div>
+   <div class="field"><label>Tiers</label>
+    <select onchange="state.jrnTier=this.value;jrnRefresh()">
+     <option value="">Tous</option>
+     <optgroup label="Fournisseurs">${DB.tiers.filter(t=>t.type==="F").map(t=>`<option value="${t.tier_id}" ${String(state.jrnTier)===String(t.tier_id)?"selected":""}>${tierNom(t.tier_id)}</option>`).join("")}</optgroup>
+     <optgroup label="Clients">${DB.tiers.filter(t=>t.type==="C").map(t=>`<option value="${t.tier_id}" ${String(state.jrnTier)===String(t.tier_id)?"selected":""}>${tierNom(t.tier_id)}</option>`).join("")}</optgroup>
+     <optgroup label="Pompistes">${DB.tiers.filter(t=>t.type==="P").map(t=>`<option value="${t.tier_id}" ${String(state.jrnTier)===String(t.tier_id)?"selected":""}>${tierNom(t.tier_id)}</option>`).join("")}</optgroup>
+    </select>
+   </div>
+   <div class="field"><button class="btn" onclick="jrnReset()">↺ Réinitialiser les filtres</button></div>
+  </div>
+  <div id="jrnWrap">${journalTable()}</div>
+  <p class="subtle" style="margin-top:8px">Cliquez sur un en-tête de colonne pour trier. <b>Solde</b> = stock restant de l'article pour les achats/ventes, solde de caisse/banque pour les charges. Ventes carburant reconstituées depuis les index pompes (table <i>indexs</i>) ; achats, ventes lubrifiant/gaz butane depuis <i>mouv_detail</i> ; charges directes (hors paiement de facture) depuis la trésorerie et les retraits Med/Chemssou (<i>agent_detail</i>).</p>
  </div>`;}
 function stockTable(){
  const arts=DB.articles.filter(a=>state.artFilter===""||a.article.toLowerCase().includes(state.artFilter.toLowerCase()));
