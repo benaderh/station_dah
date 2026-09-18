@@ -126,10 +126,46 @@ function onSelectArt(){
  const id = Number($("artSelect").value);
  const a = articles.find(x => x.art_id === id);
  if(!a) return;
- if(a.code_barre && a.code_barre.trim() !== ""){
-  $("artInfo").innerHTML = `<span style="color:var(--ok)">Déjà assigné : ${a.code_barre}</span>`;
- } else {
-  $("artInfo").innerHTML = `<span style="color:var(--warn)">Aucun code-barre. Prêt à scanner.</span>`;
+ 
+ const val = a.code_barre ? a.code_barre : "";
+ $("artInfo").innerHTML = `
+  <div style="margin-top:12px;background:#0d1424;padding:12px;border-radius:10px;border:1px solid var(--line)">
+   <label style="margin-top:0">Code-barre :</label>
+   <div style="display:flex;gap:8px">
+    <input id="manualCode" type="text" value="${val}" placeholder="Aucun code" style="margin:0;padding:10px;font-size:14px;background:#111827">
+    <button onclick="saveManualCode()" style="margin:0;width:auto;padding:10px 16px;background:var(--ok);color:#0f2e22">💾</button>
+   </div>
+   <div style="font-size:11px;color:var(--muted);margin-top:6px">Pour effacer, videz le champ et cliquez sur 💾</div>
+  </div>`;
+}
+
+async function saveManualCode() {
+ const id = Number($("artSelect").value);
+ const a = articles.find(x => x.art_id === id);
+ if(!a) return;
+ 
+ const val = $("manualCode").value.trim();
+ const existing = articles.find(x => x.code_barre === val && x.art_id !== id && val !== "");
+ if(existing) {
+  showMsg("⚠️ Ce code est déjà utilisé pour : " + existing.article, "err");
+  return;
+ }
+ 
+ $("artInfo").innerHTML = `<span style="color:var(--accent)">Enregistrement en cours...</span>`;
+ a.code_barre = val;
+ 
+ try {
+  const {error} = await sb.from("articles").upsert([{ id: String(a.art_id), data: a }]);
+  if(error) throw error;
+  
+  showMsg(val ? "✅ Code modifié manuellement" : "🗑️ Code effacé", "ok");
+  const prevVal = $("artSelect").value;
+  renderSelect();
+  $("artSelect").value = prevVal;
+  onSelectArt();
+ } catch(e) {
+  showMsg("Erreur d'enregistrement : " + e.message, "err");
+  onSelectArt();
  }
 }
 
