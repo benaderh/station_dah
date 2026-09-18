@@ -67,6 +67,7 @@ function showMsg(t,type){const m=$("msg");m.textContent=t;m.className="msg "+typ
 const PIST=[{c:"P01",t:"G"},{c:"P02",t:"G"},{c:"P03",t:"G"},{c:"P04",t:"G"},{c:"P05",t:"E"},{c:"P06",t:"E"},{c:"P07",t:"E"},{c:"P08",t:"E"},{c:"P09",t:"L"},{c:"P10",t:"L"},{c:"P11",t:"L"},{c:"P12",t:"L"}];
 const GE_SEQ=[1,3,5],GPL_SEQ=[2,4,6];
 const fmt=n=>Math.round(Number(n)||0).toLocaleString("fr-FR");
+const fmtQ=n=>Number(n||0).toLocaleString("fr-FR",{maximumFractionDigits:2});
 function fmtIdx(n){
  if(n===null||n===""||(n!==0&&!n))return"";
  const s=String(Math.round(Number(n))).padStart(7,"0");
