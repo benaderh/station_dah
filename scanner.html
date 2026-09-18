@@ -173,7 +173,7 @@ async function onScanSuccess(decodedText, decodedResult) {
  
  try {
   // Mise à jour de la table articles sur Supabase
-  const {error} = await sb.from("articles").upsert([{ art_id: a.art_id, data: a }]);
+  const {error} = await sb.from("articles").upsert([{ id: String(a.art_id), data: a }]);
   if(error) throw error;
   
   showMsg("✅ Code enregistré pour : " + a.article, "ok");
