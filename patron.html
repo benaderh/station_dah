@@ -132,7 +132,16 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 <base target="_blank">
 </head>
 <body>
-<div class="shell">
+<div id="loginBox" class="modal-wrap" style="display:none;z-index:999;background:var(--bg)">
+ <div class="card" style="width:340px;margin:auto">
+  <h2 style="text-align:center;margin-bottom:20px;font-size:20px">🔐 Connexion Patron</h2>
+  <div id="loginMsg" class="msg" style="display:none;margin-bottom:12px;padding:10px;border-radius:8px"></div>
+  <div class="field"><label>Email</label><input id="loginEmail" type="email"></div>
+  <div class="field" style="margin-top:10px"><label>Mot de passe</label><input id="loginPassword" type="password"></div>
+  <button class="btn accent" style="width:100%;margin-top:20px;padding:12px;font-size:15px" onclick="doLogin()">Se connecter</button>
+ </div>
+</div>
+<div class="shell" id="appShell" style="display:none">
  <aside class="sidebar">
   <div class="logo">⛽ Station<b>Pro</b></div>
   <div id="nav"></div>
@@ -564,7 +573,7 @@ function render(){
  $("nav").innerHTML=NAV.map(s=>`<div class="nav-sec">${s.sec}</div>`+s.items.map(i=>`<div class="nav-item ${view===i.id?"active":""}" onclick="setView('${i.id}')"><span class="ico">${i.ico}</span>${i.label}</div>`).join("")).join("");
  $("vTitle").textContent=TITLES[view][0];
  $("vSub").textContent=TITLES[view][1];
- $("topRight").innerHTML= view==="dashboard" ? "" : `<span class="chip">📅 ${frDate(todayISO())}</span>
+ $("topRight").innerHTML= view==="dashboard" ? `<button class="btn sm red" onclick="doLogout()">Déconnexion</button>` : `<button class="btn sm red" onclick="doLogout()" style="margin-right:10px">Déconnexion</button><span class="chip">📅 ${frDate(todayISO())}</span>
   <span class="chip gold">Caisse <b>${fmt(caisseSolde())} DA</b></span>
   <span class="chip blue">Banque <b>${fmt(banqueSolde())} DA</b></span>`;
  const V={dashboard:vJournal,journee:vJournee,achats:vAchats,fournisseurs:vFournisseurs,stock:vStock,tresorerie:vTresorerie,paie:vPaie,tiers:vTiers,articles:vArticles,categories:vCategories,referentiel:vReferentiel,donnees:vDonnees};
@@ -2260,12 +2269,44 @@ function toast(msg,type){
  t.textContent=msg;
  $("toast-root").appendChild(t);
  setTimeout(()=>{t.style.opacity="0";t.style.transition="opacity .4s";setTimeout(()=>t.remove(),400);},3200);}
+/* ================= AUTHENTIFICATION ================= */
+async function doLogin(){
+ const email=$("loginEmail").value.trim(),password=$("loginPassword").value;
+ const msg=$("loginMsg");
+ if(!email||!password){msg.textContent="Email et mot de passe requis";msg.style.display="block";msg.style.background="#3b1717";msg.style.color="#fca5a5";return;}
+ msg.style.display="none";
+ const btn=document.querySelector("#loginBox .btn"); btn.textContent="Connexion..."; btn.disabled=true;
+ const{error}=await sb.auth.signInWithPassword({email,password});
+ btn.textContent="Se connecter"; btn.disabled=false;
+ if(error){msg.textContent=error.message;msg.style.display="block";msg.style.background="#3b1717";msg.style.color="#fca5a5";return;}
+ await afterLogin();
+}
+async function doLogout(){
+ await sb.auth.signOut(); location.reload();
+}
+async function afterLogin(){
+ const{data:{user}}=await sb.auth.getUser();
+ if(!user){$("loginBox").style.display="flex";$("appShell").style.display="none";return;}
+ const{data:prof}=await sb.from("profiles").select("*").eq("id",user.id).maybeSingle();
+ if(!prof||(prof.role!=="patron" && prof.role!=="admin")){
+  await sb.auth.signOut();
+  const msg=$("loginMsg");msg.textContent="Accès refusé (patron requis).";msg.style.display="block";msg.style.background="#3b1717";msg.style.color="#fca5a5";
+  $("loginBox").style.display="flex";$("appShell").style.display="none";return;
+ }
+ $("loginBox").style.display="none";
+ $("appShell").style.display="flex";
+ $("view").innerHTML='<div class="empty"><div class="big">⏳</div>Connexion à Supabase…</div>';
+ await loadDB();
+ render();
+}
+
 (async function start(){
  if("serviceWorker" in navigator){
   navigator.serviceWorker.register("sw.js").catch(e=>console.error("Service worker non enregistré",e));}
- $("view").innerHTML='<div class="empty"><div class="big">⏳</div>Connexion à Supabase…</div>';
- await loadDB();
- render();})();
+ const{data:{session}}=await sb.auth.getSession();
+ if(session){await afterLogin();}
+ else{$("loginBox").style.display="flex";}
+})();
 </script>
 </body>
 </html>
