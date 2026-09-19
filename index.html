@@ -1109,7 +1109,9 @@ function addLubVente(){
  if(!state.lubArt||qte<=0||pu<0){toast("Article ou quantité invalide","err");return;}
  if(!sel.tierId){toast("Sélectionnez un pompiste","err");return;}
  const a=article(state.lubArt);
- if(Number(a.qs)<qte&&!confirm("Stock insuffisant ("+fmt(a.qs)+"). Enregistrer quand même ?"))return;
+ if(Number(a.qs)<qte){confirmModal("Stock insuffisant", "Stock insuffisant ("+fmt(a.qs)+"). Enregistrer quand même ?", "saveEditLubVente_confirm('"+mdId+"','"+opId+"')");return;}
+ saveEditLubVente_confirm(mdId,opId);}
+function saveEditLubVente_confirm(mdId,opId){const qte=Number($("edQte").value);const tId=$("edTier").value;const tnom=tierNom(tId);const a=article($("edArt").value);
  const op=getOrCreateOp(sel.date,sel.tierId);
  addMouvLine(op.operation_id,state.lubArt,qte,pu);
  save();
@@ -1122,7 +1124,9 @@ function addGazVente(){
  const qte=Number($("gazQte").value);
  if(!g||qte<=0){toast("Quantité invalide","err");return;}
  if(!sel.tierId){toast("Sélectionnez un pompiste","err");return;}
- if(Number(g.qs)<qte&&!confirm("Stock insuffisant ("+fmt(g.qs)+"). Enregistrer quand même ?"))return;
+ if(Number(g.qs)<qte){confirmModal("Stock insuffisant", "Stock insuffisant ("+fmt(g.qs)+"). Enregistrer quand même ?", "saveEditGazVente_confirm('"+mdId+"','"+opId+"')");return;}
+ saveEditGazVente_confirm(mdId,opId);}
+function saveEditGazVente_confirm(mdId,opId){const qte=Number($("edQteG").value);const tId=$("edTierG").value;const tnom=tierNom(tId);const g=article($("edArtG").value);
  const op=getOrCreateOp(sel.date,sel.tierId);
  addMouvLine(op.operation_id,g.art_id,qte,Number(g.pv));
  save();render();toast("Vente gaz butane enregistrée : "+fmt(qte*g.pv)+" DA","ok");}
@@ -1153,7 +1157,7 @@ function openEditReglement(id){
   <div class="field"><label>Montant</label><input id="erMt" type="number" value="${a.mt_agent}" style="width:120px"></div>
  </div>
  <div style="text-align:right;margin-top:18px;display:flex;justify-content:space-between">
-  <button class="btn red" onclick="if(confirm('Supprimer ce règlement ?')){delReglement('${id}');closeModal();}">🗑 Supprimer</button>
+  <button class="btn red" onclick="confirmModal('Supprimer règlement', 'Supprimer ce règlement ?', 'delReglement(\'${id}\');closeModal()')">🗑 Supprimer</button>
   <div style="display:flex;gap:8px">
    <button class="btn" onclick="closeModal()">Annuler</button>
    <button class="btn accent" onclick="saveEditReglement('${id}')">✔ Enregistrer</button>
@@ -1627,7 +1631,7 @@ function openFactureEdit(fid){
  <p class="subtle" style="margin-top:8px">Réglé actuellement : <b>${fmt(f.regle)} DA</b>. En mode Cash le règlement est réajusté sur le nouveau total ; en mode Crédit, le réglé déjà versé est conservé (plafonné au nouveau total).</p>
  <div style="text-align:right;margin-top:16px">
   <button class="btn" onclick="closeModal()">Annuler</button>
-  <button class="btn red" onclick="if(confirm('Supprimer définitivement cette facture ?')){deleteFacture('${f.id}');}">🗑 Supprimer</button>
+  <button class="btn red" onclick="confirmModal('Supprimer facture', 'Supprimer définitivement cette facture ?', 'deleteFacture(\'${f.id}\')')">🗑 Supprimer</button>
   <button class="btn accent" onclick="saveFactureEdit('${f.id}')">✔ Enregistrer</button>
  </div>`);}
 function saveFactureEdit(fid){
@@ -1748,7 +1752,9 @@ function doRegler(fid){
  const mt=Number($("payMt").value);
  if(mt<=0){toast("Montant invalide","err");return;}
  const reste=Number(f.montant)-Number(f.regle);
- if(mt>reste&&!confirm("Montant supérieur au reste dû. Continuer ?"))return;
+ if(mt>reste){confirmModal("Montant supérieur", "Montant supérieur au reste dû. Continuer ?", "doRegler_confirm('"+fid+"')");return;}
+ doRegler_confirm(fid);}
+function doRegler_confirm(fid){const mt=Number($("regMontant").value);
  f.regle=Number(f.regle)+mt;
  f.paiements=f.paiements||[];
  const src=$("paySrc").value;
@@ -1999,10 +2005,11 @@ function saveTier(){
   toast("Tiers ajouté","ok");}
  save();closeModal();render();}
 function delTier(id){
- if(DB.indexs.some(r=>String(r.index_agent)===String(id))){toast("Impossible : pompiste déjà planifié sur des journées","err");return;}
  if(DB.mouvements.some(m=>String(m.id_tier)===String(id))){toast("Impossible : tiers utilisé dans des mouvements","err");return;}
- if(DB.factures.some(f=>String(f.fournisseurId)===String(id))){toast("Impossible : fournisseur lié à des factures","err");return;}
- if(!confirm("Supprimer ce tiers ?"))return;
+ if(DB.factures.some(f=>String(f.fourn)===String(id))){toast("Impossible : tiers utilisé dans une facture","err");return;}
+ confirmModal("Supprimer ce tiers ?", "Voulez-vous vraiment supprimer ce tiers ?", "doDelTier('"+id+"')");
+}
+function doDelTier(id){
  DB.tiers=DB.tiers.filter(t=>String(t.tier_id)!==String(id));
  save();render();toast("Tiers supprimé","ok");}
 /* ================= VUE : ARTICLES ================= */
@@ -2010,13 +2017,10 @@ function artTable(){
  const q=state.artFilter.toLowerCase();
  const arts=DB.articles.filter(a=>a.article.toLowerCase().includes(q));
  return`<table><tr><th>Article</th><th>Catégorie</th><th>Type</th><th>Unité</th><th class="num">Magasin</th><th class="num">Vitrine</th><th class="num">PA</th><th class="num">PV</th><th>Actif</th></tr>
- ${arts.map(a=>`<tr ondblclick="openArticleModal(${a.art_id})" style="cursor:pointer" title="Double-clic pour modifier"><td>${esc(a.article)}</td><td>${catName(a.id_cat)}</td>
-  <td>${{0:"Lubrifiant",9:"Gaz butane",1:"Gasoil",2:"Essence",3:"GPL"}[a.type_a]||"—"}</td>
-  <td>${esc(a.unite)}</td><td class="num">${fmt(a.qs)}</td><td class="num">${fmt(a.qs_vitrine||0)}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
-  <td><button class="btn sm" onclick="event.stopPropagation();toggleArt(${a.art_id})">${Number(a.actif)?"✅":"⛔"}</button></td>
-  <td style="white-space:nowrap"><button class="btn sm" onclick="event.stopPropagation();alimVitrine(${a.art_id})" title="Alimenter Vitrine">📥</button>
-  <button class="btn sm" onclick="event.stopPropagation();openArticleModal(${a.art_id})">✏️</button>
-  <button class="btn sm red" onclick="event.stopPropagation();delArticle(${a.art_id})">🗑</button></td></tr>`).join("")}</table>`;}
+ ${arts.map(a=>`<tr ondblclick="openArticleModal(${a.art_id})" style="cursor:pointer" title="Double-clic pour gérer"><td>${esc(a.article)}</td><td>${catName(a.id_cat)}</td>
+  <td>${{0:"Lubrifiant",9:"Gaz butane",1:"Gasoil",2:"Essence",3:"GPL"}[a.type_a]||"❓"}</td>
+  <td>${esc(a.unite)}</td><td class="num">${fmt(a.qs)}</td><td class="num">${Number(a.type_a)===0?fmt(a.qs_vitrine||0):"—"}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
+  <td><button class="btn sm" onclick="event.stopPropagation();toggleArt(${a.art_id})">${Number(a.actif)?"✅":"⛔"}</button></td></tr>`).join("")}</table>`;}
 function vArticles(){
  return `
  <div class="card"><h2>🛢️ Articles</h2>
@@ -2029,6 +2033,17 @@ function vArticles(){
  </div>`;}
 function openArticleModal(id){
  const a=id?article(id):{article:"",id_cat:DB.categories[0].cat_id,unite:"unité",type_a:0,coeff:1,qs:0,qs_vitrine:0,pa:0,pv:0,actif:1,code_barre:""};
+ const vitrineHtml = (id && Number(a.type_a)===0) ? `
+  <div style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:16px">
+   <h3 style="margin-top:0">📥 Alimenter la vitrine</h3>
+   <p class="subtle" style="margin:4px 0 10px">Transférer du magasin vers la vitrine. Magasin actuel: ${fmt(a.qs)}</p>
+   <div class="row" style="align-items:flex-end">
+    <div class="field"><label>Quantité à transférer</label><input type="number" id="qteVitrine" style="width:120px" min="1" max="${a.qs}"></div>
+    <button class="btn accent" onclick="execAlimVitrine(${id})">Transférer</button>
+   </div>
+  </div>` : '';
+ const delHtml = id ? `<button class="btn red" onclick="delArticle(${id})">🗑 Supprimer</button>` : '';
+
  openModal(`<h2>${id?"Modifier":"Ajouter"} un article</h2>
  <input type="hidden" id="aId" value="${id||""}">
  <div class="row">
@@ -2041,222 +2056,19 @@ function openArticleModal(id){
  <div class="row" style="margin-top:10px">
   <div class="field"><label>Code-barre</label><input id="aCodeBarre" value="${esc(a.code_barre||"")}" style="width:120px" placeholder="Scan..."></div>
   <div class="field"><label>Magasin (qs)</label><input id="aQs" type="number" value="${a.qs}" style="width:70px"></div>
-  <div class="field"><label>Vitrine</label><input id="aQsVitrine" type="number" value="${a.qs_vitrine||0}" style="width:70px"></div>
+  ${Number(a.type_a)===0?`<div class="field"><label>Vitrine</label><input id="aQsVitrine" type="number" value="${a.qs_vitrine||0}" style="width:70px"></div>`:''}
   <div class="field"><label>PA</label><input id="aPa" type="number" value="${a.pa}" style="width:70px"></div>
   <div class="field"><label>PV</label><input id="aPv" type="number" value="${a.pv}" style="width:70px"></div>
   <div class="field"><label>Coeff</label><input id="aCoeff" type="number" value="${a.coeff}" style="width:70px"></div>
  </div>
- <div style="text-align:right;margin-top:16px">
-  <button class="btn" onclick="closeModal()">Annuler</button>
-  <button class="btn accent" onclick="saveArticle()">✔ Enregistrer</button></div>`);}
-function saveArticle(){
- const id=$("aId").value;
- const nom=$("aNom").value.trim();
- if(!nom){toast("Désignation obligatoire","err");return;}
- const data={article:nom,id_cat:Number($("aCat").value),type_a:Number($("aType").value),unite:$("aUnite").value||"unité",
-  code_barre:$("aCodeBarre").value.trim(),qs:Number($("aQs").value)||0,qs_vitrine:Number($("aQsVitrine").value)||0,pa:Number($("aPa").value)||0,pv:Number($("aPv").value)||0,coeff:Number($("aCoeff").value)||1};
- if(id){Object.assign(article(id),data);toast("Article modifié","ok");}
- else{const nid=DB.articles.reduce((s,x)=>Math.max(s,Number(x.art_id)||0),0)+1;
-  DB.articles.push(Object.assign({art_id:nid,actif:1},data));toast("Article ajouté","ok");}
- save();closeModal();render();}
-function delArticle(id){
- if(DB.mouv_detail.some(m=>String(m.id_art)===String(id))){toast("Impossible : article utilisé dans des mouvements","err");return;}
- if(!confirm("Supprimer cet article ?"))return;
- DB.articles=DB.articles.filter(a=>String(a.art_id)!==String(id));
- save();render();toast("Article supprimé","ok");}
-function toggleArt(id){const a=article(id);a.actif=Number(a.actif)?0:1;save();render();}
-function alimVitrine(id){
- const a=article(id);
- const q=prompt("Alimenter la vitrine pour "+a.article+"\\nStock magasin : "+fmt(a.qs)+"\\n\\nQuantité à transférer :");
- const n=Number(q);
- if(!n||n<=0)return;
- if(n>Number(a.qs)&&!confirm("Attention, le magasin n'a pas assez de stock ("+fmt(a.qs)+"). Transférer quand même ?"))return;
- a.qs=(Number(a.qs)||0)-n;
- a.qs_vitrine=(Number(a.qs_vitrine)||0)+n;
- save();render();toast(n+" unités transférées à la vitrine","ok");
-}
-/* ================= VUE : CATÉGORIES ================= */
-function vCategories(){
- return `
- <div class="card"><h2>🏷️ Catégories</h2>
-  <table><tr><th>ID</th><th>Catégorie</th><th class="num">Articles</th></tr>
-  ${DB.categories.map(c=>`<tr><td>${c.cat_id}</td><td>${esc(c.cat)}</td>
-   <td class="num">${DB.articles.filter(a=>String(a.id_cat)===String(c.cat_id)).length}</td>
-   <td><button class="btn sm red" onclick="delCategorie(${c.cat_id})">🗑</button></td></tr>`).join("")}</table>
-  <div class="row" style="margin-top:12px">
-   <div class="field"><label>Nouvelle catégorie</label><input id="newCat" style="width:180px"></div>
-   <button class="btn accent" onclick="addCategorie()">＋ Ajouter</button>
+ ${vitrineHtml}
+ <div style="display:flex;justify-content:space-between;margin-top:16px">
+  <div>${delHtml}</div>
+  <div style="display:flex;gap:10px">
+   <button class="btn" onclick="closeModal()">Annuler</button>
+   <button class="btn accent" onclick="saveArticle()">✔ Enregistrer</button>
   </div>
- </div>`;}
-function addCategorie(){
- const n=$("newCat").value.trim();
- if(!n){toast("Nom obligatoire","err");return;}
- const nid=DB.categories.reduce((s,c)=>Math.max(s,Number(c.cat_id)||0),0)+1;
- DB.categories.push({cat_id:nid,cat:n});
- save();render();toast("Catégorie ajoutée","ok");}
-function delCategorie(id){
- if(DB.articles.some(a=>String(a.id_cat)===String(id))){toast("Impossible : des articles utilisent cette catégorie","err");return;}
- if(!confirm("Supprimer cette catégorie ?"))return;
- DB.categories=DB.categories.filter(c=>String(c.cat_id)!==String(id));
- save();render();toast("Catégorie supprimée","ok");}
-/* ================= VUE : RÉFÉRENTIEL ================= */
-function vReferentiel(){
- return `
- <div class="grid2">
-  <div class="card"><h2>⚙️ Types de règlements (table agent)</h2>
-   <table><tr><th>Type</th><th>Libellé</th><th>Actif</th></tr>
-   ${DB.agent.map(a=>`<tr><td class="num">${a.agent_type}</td>
-    <td><input data-agent="${a.agent_id}" value="${esc(a.agent_libelle)}" style="width:160px"></td>
-    <td><select data-actif="${a.agent_id}">
-     <option value="Oui" ${(a.actif==="Oui"||a.actif===1||a.actif===true)?"selected":""}>Oui</option>
-     <option value="Non" ${(a.actif==="Non"||a.actif===0||a.actif===false)?"selected":""}>Non</option>
-    </select></td>
-   </tr>`).join("")}</table>
-   <p class="subtle" style="margin:8px 0">Actif = Oui : affiché dans la liste de sélection des règlements. Actif = Non : usage interne uniquement (Butane, Lubrifiants).</p>
-   <button class="btn accent" onclick="saveAgentLabels()">✔ Enregistrer les libellés & statuts</button>
-  </div>
-  <div class="card"><h2>🔧 Paramètres</h2>
-   <div class="row">
-    <div class="field"><label>Tiers « Clients divers » (ventes sans pompiste)</label>
-     <select id="metaCD">${DB.tiers.filter(t=>t.type==="C").map(t=>`<option value="${t.tier_id}" ${String(t.tier_id)===String(metaCD())?"selected":""}>${tierNom(t.tier_id)}</option>`).join("")}</select></div>
-   </div>
-   <div class="row" style="margin-top:10px">
-    <div class="field"><label>Fournisseur carburant par défaut</label>
-     <select id="metaFournCarb">${DB.tiers.filter(t=>t.type==="F").map(t=>`<option value="${t.tier_id}" ${String(t.tier_id)===String(DB.meta.fournisseurCarburantId)?"selected":""}>${tierNom(t.tier_id)}</option>`).join("")}</select></div>
-   </div>
-   <div class="row" style="margin-top:10px">
-    <div class="field"><label>Solde caisse initial</label><input id="metaCaisse" type="number" value="${DB.meta.caisseInit}" style="width:130px"></div>
-    <div class="field"><label>Solde banque initial</label><input id="metaBanque" type="number" value="${DB.meta.banqueInit}" style="width:130px"></div>
-   </div>
-   <div class="row" style="margin-top:10px">
-    <div class="field"><label>Stock initial Gasoil</label><input id="metaStockG" type="number" value="${(DB.meta.stockInitial&&DB.meta.stockInitial[1])||0}" style="width:130px"></div>
-    <div class="field"><label>Stock initial Essence</label><input id="metaStockE" type="number" value="${(DB.meta.stockInitial&&DB.meta.stockInitial[2])||0}" style="width:130px"></div>
-    <div class="field"><label>Stock initial GPL</label><input id="metaStockL" type="number" value="${(DB.meta.stockInitial&&DB.meta.stockInitial[3])||0}" style="width:130px"></div>
-   </div>
-   <div style="margin-top:12px"><button class="btn accent" onclick="saveMeta()">✔ Enregistrer</button></div>
-   <h3>Rotation des pompistes</h3>
-   <p class="subtle">Groupe Gasoil/Essence : ordre 1→3→5→1 · Groupe GPL : 2→4→6→2. Géré automatiquement à la création de chaque journée (code VBA <i>NouvelAgent</i>).</p>
-  </div>
- </div>`;}
-function saveAgentLabels(){
- document.querySelectorAll("[data-agent]").forEach(inp=>{
-  const a=DB.agent.find(x=>String(x.agent_id)===inp.dataset.agent);
-  if(a)a.agent_libelle=inp.value;});
- document.querySelectorAll("[data-actif]").forEach(sel=>{
-  const a=DB.agent.find(x=>String(x.agent_id)===sel.dataset.actif);
-  if(a)a.actif=sel.value;});
- save();toast("Libellés et statuts enregistrés","ok");}
-function saveMeta(){
- DB.meta.clientsDiversId=Number($("metaCD").value);
- DB.meta.fournisseurCarburantId=Number($("metaFournCarb").value);
- DB.meta.caisseInit=Number($("metaCaisse").value)||0;
- DB.meta.banqueInit=Number($("metaBanque").value)||0;
- DB.meta.stockInitial = DB.meta.stockInitial || {};
- DB.meta.stockInitial[1] = Number($("metaStockG")?$("metaStockG").value:0)||0;
- DB.meta.stockInitial[2] = Number($("metaStockE")?$("metaStockE").value:0)||0;
- DB.meta.stockInitial[3] = Number($("metaStockL")?$("metaStockL").value:0)||0;
- if(!factForm.fourn||factForm.fourn===factForm._prevDefault)factForm.fourn=DB.meta.fournisseurCarburantId;
- factForm._prevDefault=DB.meta.fournisseurCarburantId;
- save();toast("Paramètres enregistrés","ok");}
-/* ================= VUE : TRÉSORERIE ================= */
-function vTresorerie(){
- const sc=tresoSolde("caisse"),sb=tresoSolde("banque");
- const tab=sel.tresoTab||"caisse";
- const ledger=getLedger(tab).slice().reverse();
- function opTable(ops){
-  if(!ops.length)return`<p class="subtle" style="margin-top:10px">Aucun historique disponible.</p>`;
-  return`<table style="margin-top:10px;font-size:12.5px">
-  <tr><th>Date</th><th>Sens</th><th>Source</th><th>Libellé / Obs.</th><th class="num">Montant</th><th class="num">Solde progressif</th></tr>
-  ${ops.map(t=>`<tr ${t.source==="treso"?`ondblclick="openEditTresoOp('${t.id}')" style="cursor:pointer" title="Double-clic pour modifier"`:""}>
-   <td>${frDate(t.date)}</td>
-   <td>${t.sens==="E"?'<span class="pill ok">Débit (+)</span>':'<span class="pill warn">Crédit (-)</span>'}</td>
-   <td><span class="pill neutral">${t.source}</span></td>
-   <td><b>${esc(t.libelle)}</b><div class="subtle">${esc(t.obs||"—")}</div></td>
-   <td class="num" style="color:${t.sens==="E"?"var(--green)":"var(--red)"};font-weight:700">${t.sens==="E"?"+":"-"} ${fmt(t.montant)} DA</td>
-   <td class="num" style="font-weight:700">${fmt(t.solde)} DA</td>
-  </tr>`).join("")}
-  </table>`;}
- return `
- <div class="grid-stats">
-  <div class="stat gold"><div class="v">${fmt(sc)}</div><div class="l">💵 Solde Caisse</div></div>
-  <div class="stat blue"><div class="v">${fmt(sb)}</div><div class="l">🏦 Solde Banque</div></div>
-  <div class="stat green"><div class="v">${fmt(sc+sb)}</div><div class="l">Total trésorerie</div></div>
- </div>
- <div class="card" style="margin-top:16px">
-  <h2>⇄ Virement entre comptes</h2>
-  <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
-   <div class="field"><label>De</label><select id="virDe"><option value="caisse">💵 Caisse</option><option value="banque">🏦 Banque</option></select></div>
-   <div class="field"><label>Vers</label><select id="virVers"><option value="banque">🏦 Banque</option><option value="caisse">💵 Caisse</option></select></div>
-   <div class="field"><label>Montant (DA)</label><input id="virMt" type="number" min="1" style="width:130px" placeholder="0"></div>
-   <div class="field"><label>Date</label><input id="virDate" type="date" value="${todayISO()}"></div>
-   <div class="field"><label>Obs.</label><input id="virObs" style="width:130px" placeholder="Optionnel"></div>
-   <button class="btn blue" onclick="virementTreso($('virDe').value,$('virVers').value,Number($('virMt').value),$('virDate').value||todayISO(),$('virObs').value)">⇄ Effectuer le virement</button>
-  </div>
- </div>
- <div class="card">
-  <div class="tabs">
-   <button class="${tab==="caisse"?"active":""}" onclick="sel.tresoTab='caisse';render()">💵 Caisse</button>
-   <button class="${tab==="banque"?"active":""}" onclick="sel.tresoTab='banque';render()">🏦 Banque</button>
-  </div>
-  <h2 style="margin-top:0">${tab==="caisse"?"💵 Caisse":"🏦 Banque"} — Solde : <span style="color:${tab==="caisse"?"var(--accent)":"var(--accent2)"};">${fmt(tab==="caisse"?sc:sb)} DA</span></h2>
-  <h3>Ajouter une opération</h3>
-  <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
-   <div class="field"><label>Sens</label><select id="tresoSens"><option value="S">－ Décaissement (charge)</option><option value="E">＋ Encaissement</option></select></div>
-   <div class="field" style="flex:1;min-width:160px"><label>Libellé *</label><input id="tresoLib" placeholder="Ex: Loyer, Salaire, Recette…"></div>
-   <div class="field"><label>Montant (DA) *</label><input id="tresoMt" type="number" min="1" style="width:130px"></div>
-   <div class="field"><label>Date</label><input id="tresoDate" type="date" value="${todayISO()}"></div>
-   <div class="field"><label>Obs.</label><input id="tresoObs" style="width:120px" placeholder="Optionnel"></div>
-   <button class="btn ${tab==="caisse"?"accent":"blue"}" onclick="
-    if(addTresoOp('${tab}',$('tresoSens').value,$('tresoLib').value,Number($('tresoMt').value),$('tresoObs').value,$('tresoDate').value||todayISO()))render();
-   ">＋ Ajouter</button>
-  </div>
-  <h3 style="margin-top:14px">Grand Livre (Historique complet)</h3>
-  ${opTable(ledger)}
-  <p class="subtle" style="margin-top:12px">Historique unifié incluant versements agents, factures et opérations directes.</p>
- </div>`;}
-
-/* ================= VUE : PAIE ================= */
-const RUBRIQUES={1:"Salaire",2:"Prime",3:"Prêt",4:"Prêt_Rembour",5:"Avance",6:"Avance_Rembour",7:"Manque",9:"Net"};
-/* sens : gains +1 / retenues -1 (4 Prêt_Rembour et 5 Avance = -1 ; 7 Manque = retenue) */
-const RUB_SENS={1:1,2:1,3:1,4:-1,5:-1,6:1,7:-1,9:1};
-const TARIF_GE=3000,TARIF_GPL=2400; /* journaliers pompistes : Gasoil/Essence et GPL */
-function perDates(annee,mois){const y=2000+Number(annee),m=Number(mois);const dim=new Date(y,m,0).getDate();const out=[];for(let d=1;d<=dim;d++)out.push(y+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0"));return out;}
-function nextPeriod(annee,mois){let a=Number(annee),m=Number(mois)+1;if(m>12){m=1;a=(a+1)%100;}return{annee:String(a).padStart(2,"0"),mois:String(m).padStart(2,"0")};}
-function personnelList(){return DB.tiers.filter(t=>t.type==="P"&&Number(t.aff)===1&&(t.pos===""||t.pos===null||t.pos===undefined||Number(t.pos)===1));}
-function nextPaieCle(){return DB.paie.reduce((s,l)=>Math.max(s,Number(l.cle)||0),0)+1;}
-function paieLines(annee,mois,tierId){return DB.paie.filter(l=>String(l.annee)===String(annee)&&String(l.mois)===String(mois)&&(!tierId||String(l.idp_tier)===String(tierId)));}
-function netPaie(annee,mois,tid){return paieLines(annee,mois,tid).filter(l=>Number(l.rubrique)!==9).reduce((s,l)=>s+(RUB_SENS[l.rubrique]||1)*Number(l.prix),0);}
-function isPompiste(t){const o=Number(t.ord)||0;return o>=1&&o<=6;}
-/* Nombre de jours travaillés par un pompiste sur la période, issu de la table indexs */
-function pompisteDays(tid,annee,mois){
- const geCodes=["P01","P02","P03","P04","P05","P06","P07","P08"],gplCodes=["P09","P10","P11","P12"];
- let dGE=0,dGPL=0;
- perDates(annee,mois).forEach(d=>{
-  const rows=DB.indexs.filter(r=>r.index_date===d&&String(r.index_agent)===String(tid));
-  if(rows.some(r=>geCodes.includes(r.index_name)))dGE++;
-  if(rows.some(r=>gplCodes.includes(r.index_name)))dGPL++;});
- return{ge:dGE,gpl:dGPL};}
-/* Manque = différence positive (ventes - règlements) sur les journées de la période */
-function manquePeriode(tid,annee,mois){
- let total=0,dates=[];
- perDates(annee,mois).forEach(d=>{
-  const t=totauxCaisse(tid,d);
-  if(t.diff!==null&&Number(t.diff)>0){total+=Number(t.diff);dates.push(d);}});
- return{total:total,dates:dates};}
-/* ---- Actualiser : recalcule salaires + récupère avances (agent_detail type 99) et manques ---- */
-function actualiserPaie(){
- const a=sel.paieAnnee,m=sel.paieMois;
- const dates=perDates(a,m),first=dates[0],last=dates[dates.length-1];
- const dim=dates.length;let seq=nextPaieCle();
- personnelList().forEach(t=>{
-  /* remplace les lignes auto (1 Salaire, 5 Avance, 7 Manque) ; primes/prêts manuels conservés */
-  DB.paie=DB.paie.filter(l=>!(String(l.annee)===String(a)&&String(l.mois)===String(m)&&String(l.idp_tier)===String(t.tier_id)&&[1,5,7].includes(Number(l.rubrique))));
-  if(isPompiste(t)){
-   const d=pompisteDays(t.tier_id,a,m);
-   if(d.ge>0)DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:1,sens:1,nj:d.ge,prix:d.ge*TARIF_GE});
-   if(d.gpl>0)DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:1,sens:1,nj:d.gpl,prix:d.gpl*TARIF_GPL});
-   if(d.ge===0&&d.gpl===0)DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:1,sens:1,nj:0,prix:0});
-  }else{
+ </div>`);}else{
    DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:1,sens:1,nj:dim,prix:Number(t.pu)||0});}
   DB.agent_detail.filter(x=>String(x.id_agent)===String(t.tier_id)&&Number(x.type_agent)===99&&x.date_agent>=first&&x.date_agent<=last)
    .forEach(x=>{DB.paie.push({cle:seq++,annee:a,mois:m,date_p:x.date_agent,idp_tier:t.tier_id,rubrique:5,sens:-1,nj:0,prix:Number(x.mt_agent)||0});});
@@ -2268,7 +2080,8 @@ function actualiserPaie(){
 function validerPeriode(){
  const cur=sel.paieMois+"/"+sel.paieAnnee;
  const np=nextPeriod(sel.paieAnnee,sel.paieMois);
- if(!confirm("Valider la période "+cur+" ?\n\nLes lignes Net seront calculées pour cette période, puis les lignes Salaire de la période "+np.mois+"/"+np.annee+" seront créées."))return;
+ confirmModal("Valider la période "+cur, "Les lignes Net seront calculées pour cette période, puis les lignes Salaire de la période "+np.mois+"/"+np.annee+" seront créées.", "doValiderPeriode()");return;}
+function doValiderPeriode(){const cur=state.paieCur;
  let seq=nextPaieCle();
  const lastCur=perDates(sel.paieAnnee,sel.paieMois).pop();
  personnelList().forEach(t=>{
@@ -2308,7 +2121,9 @@ function savePaieLine(){
  DB.paie.push({cle:nextPaieCle(),annee:sel.paieAnnee,mois:sel.paieMois,date_p:$("plDate").value||todayISO(),idp_tier:tid,rubrique:rub,sens:RUB_SENS[rub]||1,nj:nj,prix:prix});
  save();closeModal();render();toast("Ligne de paie ajoutée","ok");}
 function delPaieLine(cle){
- if(!confirm("Supprimer cette ligne de paie ?"))return;
+ confirmModal("Supprimer", "Supprimer cette ligne de paie ?", "doDelPaieLine("+cle+")");
+}
+function doDelPaieLine(cle){
  DB.paie=DB.paie.filter(l=>String(l.cle)!==String(cle));
  save();render();toast("Ligne supprimée","ok");}
 /* ---- Vue Paie ---- */
@@ -2414,7 +2229,7 @@ function tryParseJSON(v){
  if((s[0]==="{"&&s[s.length-1]==="}")||(s[0]==="["&&s[s.length-1]==="]")){
   try{return JSON.parse(s);}catch(e){return v;}}
  return v;}
-function doImportXlsx(ev){
+function doImportXlsx(ev){window.lastEv=ev;
  const file=ev.target.files[0];if(!file)return;
  const r=new FileReader();
  r.onload=()=>{
@@ -2442,7 +2257,8 @@ function doImportXlsx(ev){
     newDB.meta=Object.assign(defaultDB().meta,meta);
     foundAny=true;}
    if(!foundAny)throw new Error("Aucune feuille reconnue");
-   if(!confirm("Remplacer TOUTES les données actuelles par le fichier Excel importé ?"))return;
+   confirmModal("Attention danger", "Remplacer TOUTES les données actuelles par le fichier Excel importé ?", "doImportXlsx_confirm()");return;}
+function doImportXlsx_confirm(){const ev = window.lastEv;
    DB=newDB;
    if(!DB.meta.fournisseurCarburantId)DB.meta.fournisseurCarburantId=21;
    if(!DB.meta.qteMemoire)DB.meta.qteMemoire={Gasoil:20000,Essence:7000,GPL:8000};
@@ -2450,12 +2266,29 @@ function doImportXlsx(ev){
   }catch(e){toast("Fichier Excel invalide : "+e.message,"err");}};
  r.readAsArrayBuffer(file);}
 function doReset(){
- if(!confirm("Tout effacer ? Exportez d'abord vos données !"))return;
- if(!confirm("Êtes-vous absolument sûr ?"))return;
+ confirmModal("EFFACEMENT TOTAL", "Tout effacer ? Exportez d'abord vos données ! Êtes-vous absolument sûr ?", "doReset_confirm()");return;}
+function doReset_confirm(){
  DB=defaultDB();save();render();toast("Base réinitialisée","err");}
 /* ================= MODAL & TOAST ================= */
 function openModal(html){$("modal-root").innerHTML=`<div class="modal-wrap" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;}
 function closeModal(){$("modal-root").innerHTML="";}
+function confirmModal(title, text, actionCode) {
+ openModal(`<h2>⚠️ ${esc(title)}</h2>
+  <p style="margin:14px 0 16px">${esc(text)}</p>
+  <div style="display:flex;justify-content:flex-end;gap:10px">
+   <button class="btn" onclick="closeModal()">Annuler</button>
+   <button class="btn red" onclick="${actionCode.replace(/"/g, '&quot;')}">Oui, continuer</button>
+  </div>`);
+}
+function promptModal(title, text, defaultVal, actionCallbackName) {
+ openModal(`<h2>💬 ${esc(title)}</h2>
+  <p style="margin:14px 0 6px">${esc(text)}</p>
+  <div class="field" style="margin-bottom:16px"><input id="promptInput" value="${esc(defaultVal||'')}"></div>
+  <div style="display:flex;justify-content:flex-end;gap:10px">
+   <button class="btn" onclick="closeModal()">Annuler</button>
+   <button class="btn accent" onclick="${actionCallbackName}(document.getElementById('promptInput').value);closeModal()">Valider</button>
+  </div>`);
+}
 function toast(msg,type){
  const t=document.createElement("div");
  t.className="toast "+(type||"");
