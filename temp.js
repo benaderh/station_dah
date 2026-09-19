@@ -1,48 +1,168 @@
 
+/* ================= DONNÉES ================= */
+const DB_KEY="stationPro_v1";
+const PIST=[
+ {c:"P01",t:"G"},{c:"P02",t:"G"},{c:"P03",t:"G"},{c:"P04",t:"G"},
+ {c:"P05",t:"E"},{c:"P06",t:"E"},{c:"P07",t:"E"},{c:"P08",t:"E"},
+ {c:"P09",t:"L"},{c:"P10",t:"L"},{c:"P11",t:"L"},{c:"P12",t:"L"}];
+function defaultDB(){return{tresorerie:[],
+ categories:[{cat_id:1,cat:"Carburant"},{cat_id:2,cat:"Lubrifiant"},{cat_id:3,cat:"Gaz Butane"}],
+ articles:[
+  {art_id:1,article:"Gasoil",id_cat:1,unite:"L",type_a:1,coeff:1,qs:0,pa:0,pv:115,actif:1},
+  {art_id:2,article:"Essence",id_cat:1,unite:"L",type_a:2,coeff:1,qs:0,pa:0,pv:145,actif:1},
+  {art_id:3,article:"GPL",id_cat:1,unite:"L",type_a:3,coeff:1,qs:0,pa:0,pv:75,actif:1},
+  {art_id:4,article:"Bouteille gaz butane",id_cat:3,unite:"unité",type_a:9,coeff:1,qs:0,pa:0,pv:0,actif:1},
+  {art_id:5,article:"Huile moteur 20W50",id_cat:2,unite:"bidon",type_a:0,coeff:1,qs:0,pa:0,pv:0,actif:1},
+  {art_id:6,article:"Huile hydraulique",id_cat:2,unite:"bidon",type_a:0,coeff:1,qs:0,pa:0,pv:0,actif:1}],
+ tiers:[
+  {tier_id:1,nom:"Kaci",prenom:"Amine",type:"P",aff:1,stat:1,pos:"",entre:"",sortie:"",pu:0,ord:1},
+  {tier_id:2,nom:"Benali",prenom:"Sofiane",type:"P",aff:1,stat:1,pos:"",entre:"",sortie:"",pu:0,ord:2},
+  {tier_id:3,nom:"Merbah",prenom:"Karim",type:"P",aff:1,stat:1,pos:"",entre:"",sortie:"",pu:0,ord:3},
+  {tier_id:4,nom:"Haddad",prenom:"Yacine",type:"P",aff:1,stat:1,pos:"",entre:"",sortie:"",pu:0,ord:4},
+  {tier_id:5,nom:"Slimani",prenom:"Rachid",type:"P",aff:1,stat:1,pos:"",entre:"",sortie:"",pu:0,ord:5},
+  {tier_id:6,nom:"Bouzid",prenom:"Nabil",type:"P",aff:1,stat:1,pos:"",entre:"",sortie:"",pu:0,ord:6},
+  {tier_id:21,nom:"Naftal",prenom:"",type:"F",aff:1,stat:1,pos:"",entre:"",sortie:"",pu:0,ord:0},
+  {tier_id:22,nom:"Fourn. gaz & lubrifiants",prenom:"",type:"F",aff:1,stat:1,pos:"",entre:"",sortie:"",pu:0,ord:0},
+  {tier_id:24,nom:"Clients divers",prenom:"",type:"C",aff:1,stat:1,pos:"",entre:"",sortie:"",pu:0,ord:0}],
+ mouvements:[],mouv_detail:[],agent_detail:[],indexs:[],factures:[],paie:[],
+ agent:[
+  {agent_id:1,agent_type:1,agent_libelle:"Espèce",actif:"Oui"},
+  {agent_id:2,agent_type:2,agent_libelle:"Med",actif:"Oui"},
+  {agent_id:3,agent_type:3,agent_libelle:"Bons Naftal",actif:"Oui"},
+  {agent_id:4,agent_type:4,agent_libelle:"Bons Autres",actif:"Oui"},
+  {agent_id:5,agent_type:5,agent_libelle:"TPE",actif:"Oui"},
+  {agent_id:6,agent_type:6,agent_libelle:"Groupe Electogène",actif:"Oui"},
+  {agent_id:7,agent_type:7,agent_libelle:"chemsou",actif:"Oui"},
+  {agent_id:8,agent_type:8,agent_libelle:"laamri",actif:"Oui"},
+  {agent_id:9,agent_type:9,agent_libelle:"Autres",actif:"Oui"},
+  {agent_id:10,agent_type:10,agent_libelle:"Butane",actif:"Non"},
+  {agent_id:11,agent_type:11,agent_libelle:"Lubrifiants",actif:"Non"}],
+ meta:{clientsDiversId:24,caisseInit:0,banqueInit:0,fournisseurCarburantId:21,qteMemoire:{Gasoil:20000,Essence:7000,GPL:8000}}};}
+/* ================= PERSISTANCE (Supabase, source unique) =================
+   Plus de copie locale complète (IndexedDB) : au démarrage et à chaque retour
+   réseau, on lit directement depuis Supabase. DB reste un objet en mémoire
+   pour que toute la logique métier (find/filter/map) ne change pas.
+   Seule la file d'attente ci-dessous persiste localement (localStorage) —
+   volontairement minuscule : juste les enregistrements pas encore envoyés,
+   jamais l'historique complet. */
 const SUPABASE_URL="https://twxpixyjuacreatxncfo.supabase.co";
 const SUPABASE_KEY="sb_publishable_VdDiO_xSqIvBbWak_wPASw__zsfWGby";
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const TABLES=["tresorerie","categories","articles","tiers","mouvements","mouv_detail","agent_detail","indexs","factures","paie","agent"];
+const ID_FIELD={tresorerie:"id",categories:"cat_id",articles:"art_id",tiers:"tier_id",mouvements:"mouvement_id",mouv_detail:"mouv_detail_id",agent_detail:"cle_id",indexs:"index_id",factures:"id",paie:"cle",agent:"agent_id"};
+function extractDate(rec){return rec.date||rec.date_m||rec.date_p||rec.date_agent||rec.index_date||null;}
+let DB=defaultDB();
+let dbReady=false;
+let lastSynced={};TABLES.forEach(t=>lastSynced[t]=new Map());
+lastSynced.meta="";
+function patchDefaults(){
+ DB.agent=[{agent_id:1,agent_type:1,agent_libelle:"Espèce",actif:"Oui"},{agent_id:2,agent_type:2,agent_libelle:"Med",actif:"Oui"},{agent_id:3,agent_type:3,agent_libelle:"Bons Naftal",actif:"Oui"},{agent_id:4,agent_type:4,agent_libelle:"Bons Autres",actif:"Oui"},{agent_id:5,agent_type:5,agent_libelle:"TPE",actif:"Oui"},{agent_id:6,agent_type:6,agent_libelle:"Groupe Electogène",actif:"Oui"},{agent_id:7,agent_type:7,agent_libelle:"chemsou",actif:"Oui"},{agent_id:8,agent_type:8,agent_libelle:"laamri",actif:"Oui"},{agent_id:9,agent_type:9,agent_libelle:"Autres",actif:"Oui"},{agent_id:10,agent_type:10,agent_libelle:"Butane",actif:"Non"},{agent_id:11,agent_type:11,agent_libelle:"Lubrifiants",actif:"Non"}];
+ if(!DB.meta.fournisseurCarburantId)DB.meta.fournisseurCarburantId=21;
+ if(!DB.meta.qteMemoire)DB.meta.qteMemoire={Gasoil:20000,Essence:7000,GPL:8000};
+ if(!DB.tresorerie)DB.tresorerie=[];
+ if(!DB.paie)DB.paie=[];}
+async function loadDB(){
+ try{
+  const newDB=defaultDB();
+  for(const t of TABLES){
+   const{data,error}=await sb.from(t).select("id,data");
+   if(error)throw error;
+   if(data&&data.length){
+    newDB[t]=data.map(r=>r.data);
+    lastSynced[t]=new Map(data.map(r=>[String(r.id),JSON.stringify(r.data)]));
+   }else{
+    /* table vide côté Supabase : on y pousse les valeurs par défaut de l'app */
+    for(const rec of newDB[t]){
+     await sb.from(t).upsert({id:String(rec[ID_FIELD[t]]),data:rec,rec_date:extractDate(rec)});}
+    lastSynced[t]=new Map(newDB[t].map(rec=>[String(rec[ID_FIELD[t]]),JSON.stringify(rec)]));}}
+  const{data:metaRow}=await sb.from("meta").select("data").eq("id","singleton").maybeSingle();
+  if(metaRow)newDB.meta=metaRow.data;
+  else await sb.from("meta").upsert({id:"singleton",data:newDB.meta});
+  DB=newDB;
+  lastSynced.meta=JSON.stringify(DB.meta);
+ }catch(e){
+  console.error("Erreur de connexion Supabase",e);
+  toast("Connexion à Supabase impossible (réseau ?) — "+e.message,"err");
+  DB=defaultDB();}
+ patchDefaults();
+ loadQueue();
+ /* réapplique les changements pas encore confirmés sur Supabase, pour que
+    tu les revoies dans l'app même après un rechargement en pleine coupure */
+ for(const op of pendingQueue){
+  if(op.table==="meta"){if(op.action==="upsert")DB.meta=op.record;continue;}
+  const idField=ID_FIELD[op.table];if(!idField)continue;
+  const arr=DB[op.table];if(!arr)continue;
+  const idx=arr.findIndex(r=>String(r[idField])===op.id);
+  if(op.action==="delete"){if(idx>=0)arr.splice(idx,1);}
+  else{if(idx>=0)arr[idx]=op.record;else arr.push(op.record);}}
+ flushQueue();
+ dbReady=true;}
+/* ---- file d'attente locale (juste les changements pas encore envoyés) ---- */
+const QUEUE_KEY="stationPro_pendingSync";
+let pendingQueue=[],flushing=false;
+function loadQueue(){try{pendingQueue=JSON.parse(localStorage.getItem(QUEUE_KEY))||[];}catch(e){pendingQueue=[];}updatePendingBadge();}
+function persistQueue(){localStorage.setItem(QUEUE_KEY,JSON.stringify(pendingQueue));updatePendingBadge();}
+function updatePendingBadge(){const el=$("pendingBadge");if(el)el.textContent=pendingQueue.length?"🔄 "+pendingQueue.length+" en attente":"";}
+function queueOp(table,id,action,record){
+ pendingQueue=pendingQueue.filter(op=>!(op.table===table&&op.id===id));
+ pendingQueue.push({table,id,action,record:record||null});}
+function save(){
+ for(const t of TABLES){
+  const idField=ID_FIELD[t],currMap=new Map();
+  for(const rec of DB[t]){
+   const id=String(rec[idField]),json=JSON.stringify(rec);
+   currMap.set(id,json);
+   if(lastSynced[t].get(id)!==json)queueOp(t,id,"upsert",rec);}
+  for(const id of lastSynced[t].keys())if(!currMap.has(id))queueOp(t,id,"delete",null);
+  lastSynced[t]=currMap;}
+ const metaJson=JSON.stringify(DB.meta);
+ if(lastSynced.meta!==metaJson){queueOp("meta","singleton","upsert",DB.meta);lastSynced.meta=metaJson;}
+ persistQueue();
+ flushQueue();}
+async function flushQueue(){
+ if(flushing||!pendingQueue.length)return;
+ if(typeof navigator!=="undefined"&&navigator.onLine===false)return;
+ flushing=true;
+ while(pendingQueue.length){
+  const op=pendingQueue[0];
+  try{
+   if(op.action==="delete"){
+    const{error}=await sb.from(op.table).delete().eq("id",op.id);
+    if(error)throw error;
+   }else{
+    const row={id:op.id,data:op.record};
+    if(op.table!=="meta")row.rec_date=extractDate(op.record);
+    const{error}=await sb.from(op.table).upsert(row);
+    if(error)throw error;}
+   pendingQueue.shift();
+   persistQueue();
+  }catch(e){
+   console.error("Erreur de synchronisation",op,e);
+   break;/* réseau probablement coupé en cours de route : on retentera plus tard */}}
+ flushing=false;}
+window.addEventListener("online",flushQueue);
+setInterval(flushQueue,15000);
+/* ================= HELPERS ================= */
 const $=id=>document.getElementById(id);
-
-/* ====== Connexion ====== */
-async function doLogin(){
- const email=$("email").value.trim(),password=$("password").value;
- if(!email||!password){$("status").textContent="Email et mot de passe requis.";return;}
- const{error}=await sb.auth.signInWithPassword({email,password});
- if(error){$("status").textContent="Connexion refusée : "+error.message;return;}
- loadAndRender();}
-async function checkAuth(){
- const{data:{session}}=await sb.auth.getSession();
- if(!session){$("loginBox").style.display="block";$("status").textContent="Connecte-toi pour continuer.";return false;}
- const{data:{user}}=await sb.auth.getUser();
- const{data:prof}=await sb.from("profiles").select("role").eq("id",user.id).maybeSingle();
- if(!prof||(prof.role!=="patron"&&prof.role!=="admin")){
-  $("status").textContent="Ce compte n'est pas autorisé sur cette page.";
-  await sb.auth.signOut();$("loginBox").style.display="block";return false;}
- $("loginBox").style.display="none";
- return true;}
-
-/* ====== Données ====== */
-const TABLES=["tresorerie","categories","articles","tiers","mouvements","mouv_detail","agent_detail","indexs","factures","agent"];
-let DB={tresorerie:[],categories:[],articles:[],tiers:[],mouvements:[],mouv_detail:[],agent_detail:[],indexs:[],factures:[],agent:[],meta:{}};
-let selDate=null;
-
-/* ====== Fonctions utilitaires — copiées telles quelles depuis station.html ====== */
-const PIST=[{c:"P01",t:"G"},{c:"P02",t:"G"},{c:"P03",t:"G"},{c:"P04",t:"G"},{c:"P05",t:"E"},{c:"P06",t:"E"},{c:"P07",t:"E"},{c:"P08",t:"E"},{c:"P09",t:"L"},{c:"P10",t:"L"},{c:"P11",t:"L"},{c:"P12",t:"L"}];
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const fmt=n=>Math.round(Number(n)||0).toLocaleString("fr-FR");
 const fmtQ=n=>{const v=Number(n)||0;return v===Math.round(v)?v.toLocaleString("fr-FR"):v.toLocaleString("fr-FR",{maximumFractionDigits:3});};
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
-function frDate(iso){if(!iso)return"—";const p=iso.split("-");return p[2]+"/"+p[1]+"/"+p[0];}
 function todayISO(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function addDays(iso,n){const d=new Date(iso+"T00:00:00");d.setDate(d.getDate()+n);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function frDate(iso){if(!iso)return"—";const p=iso.split("-");return p[2]+"/"+p[1]+"/"+p[0];}
 const article=id=>DB.articles.find(a=>String(a.art_id)===String(id));
 const tier=id=>DB.tiers.find(t=>String(t.tier_id)===String(id));
 const tierNom=id=>{const t=tier(id);return t?esc(t.nom+" "+(t.prenom||"")).trim():"—";};
+const catName=id=>{const c=DB.categories.find(x=>String(x.cat_id)===String(id));return c?esc(c.cat):"—";};
 const agentLib=ty=>{if(Number(ty)===99)return"Avance sur salaire";const a=DB.agent.find(x=>Number(x.agent_type)===Number(ty));return a?esc(a.agent_libelle):"—";};
 function fuelArtId(t){const ta=t==="G"?1:t==="E"?2:3;const a=DB.articles.find(x=>x.type_a===ta);return a?a.art_id:null;}
 function prixFor(t){const a=article(fuelArtId(t));return a?Number(a.pv)||0:0;}
+/* ================= INDEXS ================= */
 const idxRow=(d,n)=>DB.indexs.find(r=>r.index_date===d&&r.index_name===n);
 const idxVal=(d,n)=>{const r=idxRow(d,n);return r&&r.index!==null&&r.index!==""?Number(r.index):0;};
-function datesAsc(){return[...new Set(DB.indexs.map(r=>r.index_date))].sort();}
+function datesDesc(){return[...new Set(DB.indexs.map(r=>r.index_date))].sort().reverse();}
+function datesAsc(){return[...datesDesc()].reverse();}
 function prevDateOf(d){const a=datesAsc();const i=a.indexOf(d);return i>0?a[i-1]:null;}
 function calcGroup(d){
  const prev=prevDateOf(d);
@@ -56,6 +176,138 @@ function calcGroup(d){
  const sum=t=>rows.filter(r=>r.type===t).reduce((s,r)=>({q:s.q+r.diff,m:s.m+r.mt}),{q:0,m:0});
  const r1=idxRow(d,"P01"),r2=idxRow(d,"P09");
  return{rows,g:sum("G"),e:sum("E"),gpl:sum("L"),t1:r1?r1.index_agent:null,t2:r2?r2.index_agent:null};}
+/* ---- Format index : 7 chiffres → ## ## ### ---- */
+function fmtIdx(n){
+ if(n===null||n===""||(n!==0&&!n))return"";
+ const s=String(Math.round(Number(n))).padStart(7,"0");
+ return s.slice(0,2)+" "+s.slice(2,4)+" "+s.slice(4,7);}
+function parseIdx(v){
+ return v===null||v===""?"":String(v).replace(/\D/g,"");}
+/* Construire la liste ordonnée des codes de pistolets pour la nav TAB */
+function pistCodes(){return PIST.map(p=>p.c);}
+function pistCard(r){
+ const cls=r.idx1===null?"empty":"";
+ const dispVal=r.idx1===null?fmtIdx(r.idx0):fmtIdx(r.idx1);
+ const codes=pistCodes();
+ const myIdx=codes.indexOf(r.code);
+ const nextCode=myIdx>=0&&myIdx<codes.length-1?codes[myIdx+1]:null;
+ const onTabNav=`if(event.key==='Tab'||event.key==='Enter'){event.preventDefault();this.blur();${nextCode?`setTimeout(()=>{const nx=document.getElementById('pist_${nextCode}');if(nx){nx.focus();nx.select();}},10);`:""}}`;
+ return `<div class="pist ${cls}">
+  <div class="pist-code">${r.code}</div>
+  <div class="pist-idx0" title="Index veille (index0)">${fmtIdx(r.idx0)}</div>
+  <input id="pist_${r.code}" type="text" inputmode="numeric" value="${dispVal}"
+   ondblclick="showIndexChoices('${r.code}', event)"
+   onfocus="this.select()"
+   onkeydown="${onTabNav}"
+   onchange="updateIndexFmt('${r.code}',this.value)">
+  <div class="pist-diff ${r.diff<0?"neg":""}">${r.idx1===null?"—":fmtQ(r.diff)+" L"}</div>
+  <div class="pist-meta"><span>PU <b>${fmt(r.pu)}</b></span><span><b>${fmt(r.mt)}</b> DA</span></div>
+ </div>`;}
+function updateIndex(code,val){
+ const r=idxRow(sel.date,code);
+ if(r){r.index=val===""?null:Number(val);}
+ else{DB.indexs.push({index_id:uid(),index_date:sel.date,index_name:code,index_agent:null,index:val===""?null:Number(val),index_prix:prixFor(PIST.find(p=>p.c===code).t)});}
+ const row=calcGroup(sel.date).rows.find(x=>x.code===code);
+ if(row.idx1!==null&&row.idx1<row.idx0)toast("⚠ "+code+" inférieur à l'index veille","err");
+ const foc = document.activeElement ? document.activeElement.id : null;
+ save();render();
+ if(foc){const el=document.getElementById(foc);if(el){el.focus();if(el.select)el.select();}}
+}
+function updateIndexFmt(code,rawVal){
+ const digits=parseIdx(rawVal);
+ updateIndex(code,digits===""?"":Number(digits));}
+
+function showIndexChoices(code, event){
+  const g = releveGrouped().find(x=>x.code===code);
+  if(!g || (!g.sortant && !g.entrant)) return;
+  const oldMenu = document.getElementById('idx-menu');
+  if(oldMenu) oldMenu.remove();
+  const m = document.createElement('div');
+  m.id = 'idx-menu';
+  m.style.cssText = 'position:fixed;background:var(--card);border:1px solid var(--line);border-radius:6px;box-shadow:0 10px 25px rgba(0,0,0,0.5);z-index:9999;padding:6px;display:flex;flex-direction:column;gap:4px;';
+  m.style.left = (event.clientX + 10) + 'px';
+  m.style.top = (event.clientY + 10) + 'px';
+  let html = `<div style="font-size:12px;color:var(--muted);padding:4px 8px;font-weight:600">Choisir l'index (${code})</div>`;
+  if(g.sortant) html += `<button class="btn" style="text-align:left;justify-content:space-between" onclick="updateIndexFmt('${code}', '${g.sortant.valeur}');document.getElementById('idx-menu').remove()">Sortant: <b>${fmtIdx(g.sortant.valeur)}</b></button>`;
+  if(g.entrant) html += `<button class="btn" style="text-align:left;justify-content:space-between" onclick="updateIndexFmt('${code}', '${g.entrant.valeur}');document.getElementById('idx-menu').remove()">Entrant: <b>${fmtIdx(g.entrant.valeur)}</b></button>`;
+  html += `<button class="btn" style="text-align:left;color:var(--red)" onclick="document.getElementById('idx-menu').remove()">Annuler</button>`;
+  m.innerHTML = html;
+  document.body.appendChild(m);
+  setTimeout(()=>{
+    const close = (e)=>{if(m&&!m.contains(e.target)){m.remove();document.removeEventListener('click',close);}};
+    document.addEventListener('click', close);
+  },10);
+}
+function nouvelAgent(id){
+ if(!id)return id;const t=tier(id);if(!t)return id;
+ const nx={1:3,3:5,5:1,2:4,4:6,6:2}[Number(t.ord)];
+ const nt=DB.tiers.find(x=>x.type==="P"&&Number(x.ord)===Number(nx));
+ return nt?nt.tier_id:id;}
+function createFirstDay(){
+ const d=todayISO();
+ if(datesDesc().length){toast("Des journées existent déjà","err");return;}
+ const t1=DB.tiers.find(x=>x.type==="P"&&Number(x.ord)===1);
+ const t2=DB.tiers.find(x=>x.type==="P"&&Number(x.ord)===2);
+ PIST.forEach(p=>DB.indexs.push({index_id:uid(),index_date:d,index_name:p.c,index_agent:p.t==="L"?(t2?t2.tier_id:null):(t1?t1.tier_id:null),index:0,index_prix:prixFor(p.t)}));
+ save();sel.date=d;sel.tierId=t1?t1.tier_id:null;render();toast("Première journée créée : "+frDate(d),"ok");}
+function addJournee(){
+ const asc=datesAsc();
+ if(!asc.length){createFirstDay();return;}
+ const last=asc[asc.length-1],prev=asc.length>1?asc[asc.length-2]:null;
+ for(const p of PIST){
+  const r=idxRow(last,p.c);
+  if(!r||r.index===null||r.index===""){toast("Index manquant : "+p.c+" — complétez la journée du "+frDate(last),"err");return;}
+  const v0=prev?idxVal(prev,p.c):0;
+  if(Number(r.index)<v0){toast(p.c+" ("+fmt(r.index)+") < index veille ("+fmt(v0)+")","err");return;}}
+ const dNew=addDays(last,1);
+ if(datesDesc().includes(dNew)){toast("La journée du "+frDate(dNew)+" existe déjà","err");return;}
+ const aT1=nouvelAgent(idxRow(last,"P01").index_agent);
+ const aT2=nouvelAgent(idxRow(last,"P09").index_agent);
+ PIST.forEach(p=>{
+  const r=idxRow(last,p.c);
+  DB.indexs.push({index_id:uid(),index_date:dNew,index_name:p.c,index_agent:p.t==="L"?aT2:aT1,index:r?r.index:0,index_prix:prixFor(p.t)});
+ });
+ save();sel.date=dNew;sel.tierId=aT1;render();
+ toast("Journée "+frDate(dNew)+" créée — rotation appliquée (ord 1→3→5 / 2→4→6)","ok");}
+/* ================= MOUVEMENTS ================= */
+function getOp(d,tid){return DB.mouvements.find(m=>m.date_m===d&&String(m.id_tier)===String(tid)&&m.sens==="S");}
+function getOrCreateOp(d,tid){
+ let op=getOp(d,tid);
+ if(!op){const nid=DB.mouvements.reduce((s,m)=>Math.max(s,Number(m.operation_id)||0),0)+1;
+  op={mouvement_id:nid,operation_id:nid,date_m:d,sens:"S",mode_paiement:"Espèce",id_tier:tid,remise:0,montant_paye:0,obs:"",type_m:""};
+  DB.mouvements.push(op);}
+ return op;}
+function refreshOpMontant(opId){
+ const t=DB.mouv_detail.filter(x=>String(x.id_operation)===String(opId)).reduce((s,x)=>s+Number(x.quantite)*Number(x.prix_u),0);
+ const m=DB.mouvements.find(x=>String(x.operation_id)===String(opId));if(m)m.montant_paye=t;}
+function addMouvLine(opId,artId,qte,pu){
+ DB.mouv_detail.push({mouv_detail_id:uid(),id_operation:opId,id_art:artId,quantite:qte,prix_u:pu,prix_v:0,qte_r:0});
+ refreshOpMontant(opId);
+ const a=article(artId);if(a)a.qs=(Number(a.qs)||0)-Number(qte);}
+/* ================= AGENT_DETAIL ================= */
+function upsertAgentDetail(tid,type,mt,obs){
+ const ex=DB.agent_detail.find(x=>String(x.id_agent)===String(tid)&&x.date_agent===sel.date&&Number(x.type_agent)===Number(type));
+ if(ex){ex.mt_agent=mt;if(obs!==undefined)ex.obs_agent=obs;}
+ else DB.agent_detail.push({cle_id:uid(),id_agent:tid,date_agent:sel.date,type_agent:type,id_art_agent:null,mt_agent:mt,obs_agent:obs||""});}
+function totauxCaisse(tid,d){
+ const ops=DB.mouvements.filter(m=>m.date_m===d&&String(m.id_tier)===String(tid)).map(m=>String(m.operation_id));
+ let tLub=0,tGb=0;
+ DB.mouv_detail.forEach(md=>{if(ops.includes(String(md.id_operation))){const a=article(md.id_art);if(!a)return;
+  if(Number(a.type_a)===0)tLub+=Number(md.quantite)*Number(md.prix_u);
+  if(Number(a.type_a)===9)tGb+=Number(md.quantite)*Number(md.prix_u);}});
+ const ads=DB.agent_detail.filter(x=>String(x.id_agent)===String(tid)&&x.date_agent===d);
+ const tDetail=ads.filter(x=>Number(x.type_agent)!==1).reduce((s,x)=>s+Number(x.mt_agent),0);
+ const tEspece=ads.filter(x=>Number(x.type_agent)===1).reduce((s,x)=>s+Number(x.mt_agent),0);
+ const g=calcGroup(d);
+ const isT1=String(g.t1)===String(tid),isT2=String(g.t2)===String(tid);
+ const carb=isT1?g.g.m+g.e.m:(isT2?g.gpl.m:0);
+ const diff=(isT1||isT2)?carb+tLub+tGb-tDetail-tEspece:null;
+ return{tLub,tGb,tDetail,tEspece,carb,diff,isT1,isT2};}
+function venteTypeMontant(d,ta){
+ const ops=DB.mouvements.filter(m=>m.date_m===d).map(m=>String(m.operation_id));
+ let s=0;DB.mouv_detail.forEach(md=>{if(ops.includes(String(md.id_operation))){const a=article(md.id_art);
+  if(a&&Number(a.type_a)===ta)s+=Number(md.quantite)*Number(md.prix_u);}});return s;}
+/* ================= CAISSSE / BANQUE / FOURNISSEURS ================= */
 function normMode(m){if(m==="cash"||m==="Espèce"||m==="E")return"E";if(m==="credit"||m==="Crédit"||m==="T")return"T";if(m==="banque"||m==="Chèque"||m==="C")return"C";if(m==="bons"||m==="Bons Naftal"||m==="B")return"B";return String(m||"E");}
 function getLedger(compte){
  const ledger=[];
@@ -72,8 +324,62 @@ function caisseDuJour(d){
  led.forEach(l=>{if(l.source==="agent"&&l.sens==="E")espece+=l.montant;if(l.source==="agent"&&l.sens==="S")sorties+=l.montant;if((l.source==="facture"||l.source==="treso")&&l.sens==="S")paiements+=l.montant;if(l.source==="treso"&&l.sens==="E")espece+=l.montant;});
  return{espece,sorties,paiements,net:espece-sorties-paiements};}
 function caisseSoldeAvant(date){const led=getLedger("caisse");const last=led.filter(l=>l.date<date).pop();return last?last.solde:(Number(DB.meta.caisseInit)||0);}
+function caisseSolde(){const led=getLedger("caisse");return led.length?led[led.length-1].solde:(Number(DB.meta.caisseInit)||0);}
 function banqueSolde(){const led=getLedger("banque");return led.length?led[led.length-1].solde:(Number(DB.meta.banqueInit)||0);}
-function calcStockCarburant(typeA,dateLimit=null){
+function soldeFourn(fid){
+ let du=0,paye=0;
+ DB.factures.filter(f=>String(f.fournisseurId)===String(fid)).forEach(f=>{du+=Number(f.montant);paye+=Number(f.regle);});
+ return{du,paye,reste:du-paye};}
+function totalDuFournisseurs(){return DB.factures.reduce((s,f)=>s+(Number(f.montant)-Number(f.regle)),0);}
+/* ================= TRÉSORERIE — FONCTIONS ================= */
+function tresoSolde(compte){const led=getLedger(compte);return led.length?led[led.length-1].solde:(Number(compte==="caisse"?DB.meta.caisseInit:DB.meta.banqueInit)||0);}
+function addTresoOp(compte,sens,libelle,montant,obs,date){
+ if(!montant||montant<=0){toast("Montant invalide","err");return false;}
+ if(!libelle.trim()){toast("Libellé obligatoire","err");return false;}
+ DB.tresorerie.push({id:uid(),compte,sens,libelle:libelle.trim(),montant:Number(montant),obs:obs||"Aucune",date:date||todayISO()});
+ save();return true;}
+function virementTreso(de,vers,montant,date,obs){
+ if(!montant||montant<=0){toast("Montant invalide","err");return;}
+ DB.tresorerie.push({id:uid(),compte:de,sens:"S",libelle:"Virement → "+(vers==="banque"?"Banque":"Caisse"),montant:Number(montant),obs:obs||"Virement",date:date||todayISO()});
+ DB.tresorerie.push({id:uid(),compte:vers,sens:"E",libelle:"Virement ← "+(de==="banque"?"Banque":"Caisse"),montant:Number(montant),obs:obs||"Virement",date:date||todayISO()});
+ save();render();toast("Virement de "+fmt(montant)+" DA enregistré","ok");}
+function delTresoOp(id){DB.tresorerie=DB.tresorerie.filter(t=>t.id!==id);save();render();toast("Opération supprimée","ok");}
+function openEditTresoOp(id){
+ const t=DB.tresorerie.find(x=>x.id===id);if(!t)return;
+ openModal(`<h2>Modifier l'opération de trésorerie</h2>
+  <div class="row">
+   <div class="field"><label>Compte</label><select id="etCompte"><option value="caisse" ${t.compte==="caisse"?"selected":""}>💵 Caisse</option><option value="banque" ${t.compte==="banque"?"selected":""}>🏦 Banque</option></select></div>
+   <div class="field"><label>Sens</label><select id="etSens"><option value="S" ${t.sens==="S"?"selected":""}>－ Décaissement</option><option value="E" ${t.sens==="E"?"selected":""}>＋ Encaissement</option></select></div>
+  </div>
+  <div class="row">
+   <div class="field"><label>Date</label><input id="etDate" type="date" value="${t.date}"></div>
+   <div class="field"><label>Montant</label><input id="etMt" type="number" min="1" value="${t.montant}"></div>
+  </div>
+  <div class="row">
+   <div class="field" style="flex:1"><label>Libellé</label><input id="etLib" value="${esc(t.libelle)}"></div>
+   <div class="field" style="flex:1"><label>Obs.</label><input id="etObs" value="${esc(t.obs||"")}"></div>
+  </div>
+  <div style="text-align:right;margin-top:18px;display:flex;justify-content:space-between">
+   <button class="btn red" onclick="delTresoOp('${t.id}');closeModal()">🗑 Supprimer</button>
+   <div style="display:flex;gap:8px">
+    <button class="btn" onclick="closeModal()">Annuler</button>
+    <button class="btn accent" onclick="saveEditTresoOp('${t.id}')">✔ Enregistrer</button>
+   </div>
+  </div>`);
+}
+function saveEditTresoOp(id){
+ const t=DB.tresorerie.find(x=>x.id===id);if(!t)return;
+ const mt=Number($('etMt').value),lib=$('etLib').value.trim();
+ if(!mt||mt<=0){toast("Montant invalide","err");return;}
+ if(!lib){toast("Libellé obligatoire","err");return;}
+ t.compte=$('etCompte').value;t.sens=$('etSens').value;
+ t.date=$('etDate').value||todayISO();t.montant=mt;
+ t.libelle=lib;t.obs=$('etObs').value;
+ save();render();closeModal();toast("Opération modifiée","ok");
+}
+/* ================= STOCK CARBURANT CALCULÉ ================= */
+function calcStockCarburant(typeA, dateLimit = null){
+ // Achats : mouvements sens="E" pour cet article
  const artObj=DB.articles.find(a=>Number(a.type_a)===Number(typeA));
  if(!artObj)return 0;
  const artId=artObj.art_id;
@@ -81,54 +387,662 @@ function calcStockCarburant(typeA,dateLimit=null){
   const op=DB.mouvements.find(m=>String(m.operation_id)===String(md.id_operation));
   return String(md.id_art)===String(artId)&&op&&op.sens==="E"&&(!dateLimit||op.date_m<=dateLimit);
  }).reduce((s,md)=>s+Number(md.quantite),0);
+ // Ventes : index de la dernière date - index de la 1ere date
  const pistType=typeA===1?"G":typeA===2?"E":"L";
  const pists=PIST.filter(p=>p.t===pistType);
  let vendus=0;
  let dates=datesAsc();
- if(dateLimit)dates=dates.filter(dt=>dt<=dateLimit);
+ if(dateLimit) dates = dates.filter(dt => dt <= dateLimit);
  if(dates.length>0){
-  const firstDate=dates[0],lastDate=dates[dates.length-1];
+  const firstDate=dates[0], lastDate=dates[dates.length-1];
   pists.forEach(p=>{
-   const rL=idxRow(lastDate,p.c),rF=idxRow(firstDate,p.c);
+   const rL=idxRow(lastDate,p.c), rF=idxRow(firstDate,p.c);
    const idxL=rL&&rL.index!==null&&rL.index!==""?Number(rL.index):0;
    const idxF=rF&&rF.index!==null&&rF.index!==""?Number(rF.index):0;
-   if(idxL>idxF)vendus+=(idxL-idxF);});}
- const initial=DB.meta.stockInitial?(Number(DB.meta.stockInitial[typeA])||0):0;
- return initial+achats-vendus;}
+   if(idxL>idxF) vendus+=(idxL-idxF);
+  });
+ }
+ const initial = DB.meta.stockInitial ? (Number(DB.meta.stockInitial[typeA]) || 0) : 0;
+ return initial + achats - vendus;}
+/* ================= ÉTAT / NAVIGATION ================= */
+const NAV=[
+ {sec:"Principal",items:[
+  {id:"dashboard",ico:"📊",label:"Tableau de bord"},
+  {id:"journee",ico:"⛽",label:"Journée & Index"},
+  ]},
+ {sec:"Paie",items:[{id:"paie",ico:"💵",label:"Paie"}]},
+ {sec:"Gestion",items:[
+  {id:"achats",ico:"🧾",label:"Achats"},
+  {id:"fournisseurs",ico:"🚛",label:"Fournisseurs & Soldes"},
+  {id:"stock",ico:"📦",label:"Stock & Historique"},
+  {id:"tresorerie",ico:"💰",label:"Trésorerie"}]},
+ {sec:"Références",items:[
+  {id:"tiers",ico:"👷",label:"Tiers / Pompistes"},
+  {id:"articles",ico:"🛢️",label:"Articles"},
+  {id:"categories",ico:"🏷️",label:"Catégories"},
+  {id:"referentiel",ico:"⚙️",label:"Référentiel"}]},
+ {sec:"Données",items:[{id:"donnees",ico:"💾",label:"Import / Export"}]}];
+const TITLES={dashboard:["Tableau de bord",""],journee:["Journée & Index","Relevé des compteurs, ventes par pompiste et comptes de caisse"],achats:["Achats","Factures carburant et achats divers (lubrifiants, gaz butane)"],fournisseurs:["Fournisseurs & Soldes","Suivi des factures à crédit et règlements"],stock:["Stock & Historique","État des stocks et historique complet des mouvements"],tresorerie:["Trésorerie","Gestion de la caisse et de la banque — encaissements, décaissements, virements"],tiers:["Tiers","Pompistes, fournisseurs et clients — rotation via « ord »"],articles:["Articles","Carburants, lubrifiants et gaz butane"],categories:["Catégories",""],referentiel:["Référentiel","Types de règlements et paramètres"],donnees:["Import / Export","Sauvegarde et transfert des données"],paie:["Paie","Salaires, primes, prêts, avances et manques du personnel"]};
+let view="dashboard";
+let sel={date:null,tierId:null,jourTab:"lub",jdate:null,tresoTab:"caisse",paieAnnee:String(new Date().getFullYear()).slice(-2),paieMois:String(new Date().getMonth()+1).padStart(2,"0")};
+let state={artFilter:"",tierFilter:"",tierTab:"P",histFilter:"",histSens:"",factFilter:"",lubArt:"",lubSearch:"",lubListOpen:false};
+let factLines=[],factType="CE";
+let factForm={fourn:"",num:"",date:todayISO(),mode:"credit",cheque:""};
+function setView(v){view=v;render();}
+function metaCD(){const m=DB.meta.clientsDiversId;return DB.tiers.some(t=>String(t.tier_id)===String(m))?m:(DB.tiers.find(t=>t.type==="C")||{}).tier_id;}
+function render(){
+ $("nav").innerHTML=NAV.map(s=>`<div class="nav-sec">${s.sec}</div>`+s.items.map(i=>`<div class="nav-item ${view===i.id?"active":""}" onclick="setView('${i.id}')"><span class="ico">${i.ico}</span>${i.label}</div>`).join("")).join("");
+ $("vTitle").textContent=TITLES[view][0];
+ $("vSub").textContent=TITLES[view][1];
+ $("topRight").innerHTML= view==="dashboard" ? "" : `<span class="chip">📅 ${frDate(todayISO())}</span>
+  <span class="chip gold">Caisse <b>${fmt(caisseSolde())} DA</b></span>
+  <span class="chip blue">Banque <b>${fmt(banqueSolde())} DA</b></span>`;
+ const V={dashboard:vJournal,journee:vJournee,achats:vAchats,fournisseurs:vFournisseurs,stock:vStock,tresorerie:vTresorerie,paie:vPaie,tiers:vTiers,articles:vArticles,categories:vCategories,referentiel:vReferentiel,donnees:vDonnees};
+ $("view").innerHTML=V[view]();}
+/* ================= VUE : TABLEAU DE BORD ================= */
+function vDashboard(){
+ const ds=datesDesc();const last=ds[0]||null;
+ let ca=0,vl=0,vg=0;
+ if(last){const g=calcGroup(last);ca=g.g.m+g.e.m+g.gpl.m;vl=venteTypeMontant(last,0);vg=venteTypeMontant(last,9);}
+ const top={};
+ // Ventes lubrifiants/gaz
+ DB.mouv_detail.forEach(md=>{
+  const op=DB.mouvements.find(m=>String(m.operation_id)===String(md.id_operation));
+  if(op&&op.sens==="S"){
+   const a=article(md.id_art);if(a)top[a.article]=(top[a.article]||0)+Number(md.quantite);
+  }
+ });
+ // Ventes carburants via index (dernière date - 1ere date)
+ const dAsc=datesAsc();
+ if(dAsc.length>0){
+  const dF=dAsc[0], dL=dAsc[dAsc.length-1];
+  PIST.forEach(p=>{
+   const rL=idxRow(dL,p.c), rF=idxRow(dF,p.c);
+   const idxL=rL&&rL.index!==null&&rL.index!==""?Number(rL.index):0;
+   const idxF=rF&&rF.index!==null&&rF.index!==""?Number(rF.index):0;
+   if(idxL>idxF){
+    const aId=fuelArtId(p.t);
+    const a=article(aId);
+    if(a)top[a.article]=(top[a.article]||0)+(idxL-idxF);
+   }
+  });
+ }
+ const top5=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+ // Stocks Carburant
+ const stockG = calcStockCarburant(1, last);
+ const stockE = calcStockCarburant(2, last);
+ const stockL = calcStockCarburant(3, last);
+
+ // Règlements carburant en attente banque selon date
+ const facNonBanque=DB.factures.filter(f=>{
+  if(f.type!=="carburant" || (last && f.date > last))return false;
+  let qteGE=0,qteGPL=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2)qteGE+=Number(l.qte);else if(art===3)qteGPL+=Number(l.qte);});
+      const regleAALaDate = (f.paiements||[]).filter(p=>!last || p.date<=last).reduce((s,p)=>s+Number(p.montant), 0);
+      const reste=Number(f.montant)-regleAALaDate;
+  const hasBons=(f.paiements||[]).filter(p=>!last || p.date<=last).some(p=>p.source==="bons");
+  return reste>0||hasBons;
+ }).sort((a,b)=>b.date.localeCompare(a.date));
+
+ return `
+ <div class="grid-stats">
+  <div class="stat gold"><div class="v">${fmt(ca)}</div><div class="l">CA carburant — ${last?frDate(last):"—"}</div></div>
+  <div class="stat"><div class="v">${fmt(vl+vg)}</div><div class="l">Lubrifiants + Gaz butane — ${last?frDate(last):"—"}</div></div>
+  <div class="stat blue"><div class="v">${fmt(caisseSolde())}</div><div class="l">Solde caisse</div></div>
+  <div class="stat blue"><div class="v">${fmt(banqueSolde())}</div><div class="l">Solde banque</div></div>
+  <div class="stat red"><div class="v">${fmt(totalDuFournisseurs())}</div><div class="l">Total dû fournisseurs</div></div>
+ </div>
+ <div class="grid-stats" style="margin-top:16px">
+  <div class="stat"><div class="v">${fmtQ(stockG)} L</div><div class="l">Stock Gasoil</div></div>
+  <div class="stat"><div class="v">${fmtQ(stockE)} L</div><div class="l">Stock Essence</div></div>
+  <div class="stat"><div class="v">${fmtQ(stockL)} L</div><div class="l">Stock GPL</div></div>
+ </div>
+ <div class="grid2" style="margin-top:16px">
+  <div class="card"><h2>📅 Dernières journées</h2>
+   ${ds.length?`<table><tr><th>Date</th><th>Pompiste G/E</th><th>Pompiste GPL</th><th class="num">Carburant</th></tr>
+   ${ds.slice(0,8).map(d=>{const g=calcGroup(d);return`<tr><td>${frDate(d)}</td><td>${tierNom(g.t1)}</td><td>${tierNom(g.t2)}</td><td class="num">${fmt(g.g.m+g.e.m+g.gpl.m)}</td></tr>`;}).join("")}</table>`
+   :`<div class="empty"><div class="big">⛽</div>Aucune journée. Créez la première depuis « Journée & Index ».</div>`}
+  </div>
+  <div class="card"><h2>🛢️ Articles les plus vendus</h2>
+   ${top5.length?`<table><tr><th>Article</th><th class="num">Qté vendue</th></tr>${top5.map(t=>`<tr><td>${esc(t[0])}</td><td class="num">${fmt(t[1])}</td></tr>`).join("")}</table>`:`<div class="empty">Aucune vente enregistrée.</div>`}
+  </div>
+ </div>
+ <div class="card" style="margin-top:16px">
+  <h2>📋 Suivi règlements carburant — En attente banque selon date</h2>
+  ${facNonBanque.length?`
+  <div style="overflow-x:auto">
+   <table style="width:100%;min-width:620px">
+    <thead><tr style="background:rgba(255,255,255,0.04)">
+     <th style="text-align:left;padding:8px">Facture</th>
+     <th style="text-align:left;padding:8px">Fournisseur</th>
+     <th style="text-align:left;padding:8px">Date</th>
+     <th class="num" style="padding:8px">Qté G/E</th>
+      <th class="num" style="padding:8px">Qté GPL</th>
+      <th class="num" style="padding:8px">Montant</th>
+     <th class="num" style="padding:8px">Réglé</th>
+     <th style="text-align:center;padding:8px">Mode</th>
+     <th style="text-align:left;padding:8px">N° Chèque</th>
+     <th class="num" style="padding:8px;color:var(--red)">Reste dû</th>
+    </tr></thead>
+    <tbody>
+     ${facNonBanque.map(f=>{
+     let qteGE=0,qteGPL=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2)qteGE+=Number(l.qte);else if(art===3)qteGPL+=Number(l.qte);});
+      const regleAALaDate = (f.paiements||[]).filter(p=>!last || p.date<=last).reduce((s,p)=>s+Number(p.montant), 0);
+      const reste=Number(f.montant)-regleAALaDate;
+     const modes=(f.paiements||[]).filter(p=>!last || p.date<=last).map(p=>{
+      if(p.source==="bons")return `<span style="background:rgba(251,191,36,0.15);color:#fbbf24;padding:2px 6px;border-radius:4px;font-size:12px">Bons Naftal</span>`;
+      if(p.source==="banque")return `<span style="background:rgba(99,179,237,0.15);color:#63b3ed;padding:2px 6px;border-radius:4px;font-size:12px">Banque</span>`;
+      return `<span style="background:rgba(72,187,120,0.15);color:#48bb78;padding:2px 6px;border-radius:4px;font-size:12px">Caisse</span>`;
+     }).join(" ");
+     const cheques=(f.paiements||[]).filter(p=>(!last || p.date<=last) && p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
+     return `<tr>
+      <td style="padding:6px 4px">${esc(f.numero||"—")}</td>
+      <td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td>
+      <td style="padding:6px 4px">${frDate(f.date)}</td>
+      <td class="num" style="padding:6px 4px">${fmtQ(qteGE)}</td>
+       <td class="num" style="padding:6px 4px">${fmtQ(qteGPL)}</td>
+       <td class="num" style="padding:6px 4px">${fmt(f.montant)}</td>
+       <td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td>
+      <td style="text-align:center;padding:6px 4px">${modes||"—"}</td>
+      <td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td>
+      <td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td>
+     </tr>`;
+    }).join("")}
+    </tbody>
+   </table>
+  </div>`
+  :`<p class="subtle" style="padding:8px 0">✅ Aucune facture carburant en attente de validation bancaire.</p>`}
+ </div>`;}
+/* ================= VUE : JOURNÉE ================= */
+function agentLbl(id,grp,cd){
+ const selc=String(sel.tierId)===String(id);
+ return `<button class="agent-lbl ${selc?"sel":""} ${cd?"cd":""}" title="Cliquer = sélectionner · Double-clic = changement exceptionnel d'agent"
+  onclick="selectTier(${id})" ondblclick="openChangeAgent('${grp}')">👤 ${tierNom(id)}</button>`;}
+/* ================= RELEVÉS POMPISTES (releve_pending, vérif. croisée sortant/entrant) ================= */
+let releveList=[];
+async function loadReleve(){
+ try{
+  const{data,error}=await sb.from("releve_pending").select("*").eq("rec_date",sel.date);
+  if(error)throw error;
+  releveList=data||[];
+  render();
+ }catch(e){toast("Erreur de chargement des relevés pompistes : "+e.message,"err");}}
+function releveGrouped(){
+ const codes=[...new Set(releveList.map(r=>r.pistolet))];
+ return codes.map(c=>({code:c,sortant:releveList.find(r=>r.pistolet===c&&r.role==="sortant"),entrant:releveList.find(r=>r.pistolet===c&&r.role==="entrant")}));}
+async function validateAllReleve(type="ALL"){
+ const groups=releveGrouped();
+ let n=0;
+ const gplCodes=["P09","P10","P11","P12"];
+ const toValidate = groups.filter(g=>{
+  const isGpl = gplCodes.includes(g.code);
+  if(type==="GE" && isGpl) return false;
+  if(type==="GPL" && !isGpl) return false;
+  return true;
+ });
+ if(toValidate.length===0){toast("Aucun relevé à valider pour ce type","warn");return;}
+ toValidate.forEach(g=>{if(g.sortant){updateIndex(g.code,g.sortant.valeur);n++;}});
+ try{
+  const ids=[];
+  toValidate.forEach(g=>{
+   if(g.sortant) ids.push(g.sortant.id);
+   if(g.entrant) ids.push(g.entrant.id);
+  });
+  if(ids.length){const{error}=await sb.from("releve_pending").delete().in("id",ids);if(error)throw error;}
+  releveList=releveList.filter(r=>!ids.includes(r.id));
+  toast(n+" pistolet(s) validé(s) sur "+frDate(sel.date),"ok");render();
+ }catch(e){toast("Validé localement, mais erreur Supabase (nettoyage) : "+e.message,"err");}}
+function vJournee(){
+ const ds=datesDesc();
+ if(!ds.length)return`<div class="card empty"><div class="big">⛽</div><h2 style="justify-content:center">Aucune journée</h2><p class="subtle" style="margin-bottom:14px">Créez la première journée pour démarrer les relevés d'index.</p><button class="btn accent" onclick="createFirstDay()">Créer la première journée</button></div>`;
+ if(!sel.date||!ds.includes(sel.date))sel.date=ds[0];
+ const g=calcGroup(sel.date);
+ if(!sel.tierId||![g.t1,g.t2,metaCD()].map(String).includes(String(sel.tierId)))sel.tierId=g.t1;
+ const tc=totauxCaisse(sel.tierId,sel.date);
+ const cd=metaCD();
+ return `
+ <div class="card"><div class="row between">
+   <div class="row">
+    <div class="field"><label>Journée</label><select onchange="selDate(this.value)">${ds.map(d=>`<option value="${d}" ${d===sel.date?"selected":""}>${frDate(d)}${d===ds[0]?" (dernière)":""}</option>`).join("")}</select></div>
+    <div class="field"><label>Vue</label><input value="${sel.date===ds[0]?"Saisie du jour":"Consultation / correction"}" disabled style="min-width:180px"></div>
+   </div>
+   <button class="btn accent" onclick="addJournee()">＋ Nouvelle journée</button>
+  </div>
+  <p class="subtle" style="margin-top:8px">Rotation automatique des pompistes selon <b>tiers.ord</b> (1→3→5→1 et 2→4→6→2). Double-clic sur un pompiste : changement exceptionnel du jour. Prix unitaires repris des articles. Pour chaque pistolet, seul le <b>nouvel index</b> est saisi : l'index veille est rappelé, et la quantité vendue est calculée automatiquement (nouvel index − ancien index).</p>
+ </div>
+ <div class="card">
+  <div class="row between">
+   <h2 style="margin:0">📨 Relevés pompistes — ${frDate(sel.date)} ${releveList.length?`<span class="pill warn">${releveList.length}</span>`:""}</h2>
+   <button class="btn" onclick="loadReleve()">🔄 Charger</button>
+  </div>
+  ${releveList.length?`<div style="overflow-x:auto"><table style="margin-top:8px;min-width:480px"><tr><th>Pistolet</th><th class="num">Sortant</th><th class="num">Entrant</th><th>Statut</th></tr>
+   ${releveGrouped().map(g=>{
+    const match=g.sortant&&g.entrant&&Number(g.sortant.valeur)===Number(g.entrant.valeur);
+    const statut=!g.sortant?"Sortant manquant":!g.entrant?"En attente entrant":match?"✓ Concorde":"⚠ Écart";
+    return`<tr ondblclick="showIndexChoices('${g.code}', event)" style="cursor:pointer" title="Double-clic pour choisir l\'index"><td>${g.code}</td><td class="num">${g.sortant?fmtIdx(g.sortant.valeur):"—"}</td><td class="num">${g.entrant?fmtIdx(g.entrant.valeur):"—"}</td><td>${statut}</td></tr>`;}).join("")}
+   </table></div>
+   <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+     <button class="btn accent" onclick="validateAllReleve('GE')">✓ Valider G/E</button>
+     <button class="btn accent" onclick="validateAllReleve('GPL')">✓ Valider GPL</button>
+     <button class="btn" style="opacity:0.8" onclick="validateAllReleve('ALL')">Valider Tout (${frDate(sel.date)})</button>
+    </div>`
+  :`<p class="subtle" style="margin-top:6px">Aucun relevé chargé — clique « Charger » pour vérifier auprès de Supabase.</p>`}
+ </div>
+ <div class="grid2">
+  <div>
+   <div class="card">
+    <div class="grp-head"><span class="grp-title">🟫 Gasoil + Essence — P01 → P08</span>${agentLbl(g.t1,"t1",false)}</div>
+    <div class="pist-grid">${g.rows.filter(r=>r.type!=="L").map(pistCard).join("")}</div>
+    <div class="grp-total">
+     <span><span class="tt">Gasoil</span> <span class="tv">${fmtQ(g.g.q)} L · ${fmt(g.g.m)} DA</span></span>
+     <span><span class="tt">Essence</span> <span class="tv">${fmtQ(g.e.q)} L · ${fmt(g.e.m)} DA</span></span>
+     <span><span class="tt">Total G/E</span> <span class="tv" style="color:var(--accent)">${fmt(g.g.m+g.e.m)} DA</span></span>
+    </div>
+   </div>
+   <div class="card">
+    <div class="grp-head"><span class="grp-title">🟩 GPL — P09 → P12</span>${agentLbl(g.t2,"t2",false)}</div>
+    <div class="pist-grid">${g.rows.filter(r=>r.type==="L").map(pistCard).join("")}</div>
+    <div class="grp-total"><span><span class="tt">GPL</span> <span class="tv" style="color:var(--accent2)">${fmtQ(g.gpl.q)} L · ${fmt(g.gpl.m)} DA</span></span></div>
+   </div>
+   <div class="card" style="text-align:center">${agentLbl(cd,"cd",true)} <span class="subtle">— ventes diverses sans pompiste attribué</span></div>
+  </div>
+  <div>
+   <div class="card">
+    <div class="tabs">
+     <button class="${sel.jourTab==="lub"?"active":""}" onclick="sel.jourTab='lub';render()">🛢️ Lubrifiants</button>
+     <button class="${sel.jourTab==="gaz"?"active":""}" onclick="sel.jourTab='gaz';render()">🔥 Gaz butane</button>
+     <button class="${sel.jourTab==="reg"?"active":""}" onclick="sel.jourTab='reg';render()">💵 Règlements</button>
+    </div>
+    ${sel.jourTab==="lub"?lubTab():sel.jourTab==="gaz"?gazTab():regTab()}
+   </div>
+   <div class="card">
+    <h2>⚖️ Compte de caisse — ${tierNom(sel.tierId)} <span class="subtle">(${frDate(sel.date)})</span></h2>
+    <div class="grid-stats">
+     <div class="stat"><div class="v">${fmt(tc.carb)}</div><div class="l">Carburant (son groupe)</div></div>
+     <div class="stat"><div class="v">${fmt(tc.tLub)}</div><div class="l">Lubrifiants</div></div>
+     <div class="stat"><div class="v">${fmt(tc.tGb)}</div><div class="l">Gaz butane</div></div>
+     <div class="stat"><div class="v">${fmt(tc.tDetail)}</div><div class="l">Règlements (hors espèce)</div></div>
+     <div class="stat green"><div class="v">${fmt(tc.tEspece)}</div><div class="l">Espèce remise</div></div>
+    </div>
+    <div style="margin-top:14px;text-align:center">
+     <div class="subtle">Différence (ventes − règlements)</div>
+     <div class="caisse-big ${tc.diff===null?"":tc.diff>0?"diff-pos":tc.diff<0?"diff-neg":"diff-zero"}">${tc.diff===null?"—":fmt(tc.diff)+" DA"}</div>
+     ${tc.diff!==null?`<div class="subtle">${tc.diff>0?"⛔ Manque à justifier":tc.diff<0?"⚠ Excédent (trop perçu)":"✔ Compte équilibré"}</div>`:""}
+    </div>
+   </div>
+  </div>
+ </div>
+  ${detailVentesJour(sel.date)}`;}
+function detailVentesJour(d){
+ const ops=DB.mouvements.filter(m=>m.date_m===d).map(m=>({id:String(m.operation_id),tier:m.id_tier}));
+ if(!ops.length)return"";
+ const lines=DB.mouv_detail.filter(md=>ops.some(o=>o.id===String(md.id_operation)));
+ if(!lines.length)return"";
+ return`<div class="card"><h2>🧾 Détail des ventes du ${frDate(d)}</h2>
+ <table><tr><th>Agent</th><th>Article</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Montant</th></tr>
+ ${lines.map(md=>{const a=article(md.id_art);const o=ops.find(x=>x.id===String(md.id_operation));return`<tr>
+  <td>${tierNom(o.tier)}</td><td>${a?esc(a.article):"—"}</td><td class="num">${fmtQ(md.quantite)}</td>
+  <td class="num">${fmt(md.prix_u)}</td><td class="num">${fmt(md.quantite*md.prix_u)}</td></tr>`;}).join("")}
+ </table></div>`;}
+function lubTab(){
+ const tid=sel.tierId;
+ const lubs=DB.articles.filter(a=>Number(a.type_a)===0&&Number(a.actif));
+ const search=state.lubSearch||"";
+ const matchByName=lubs.find(a=>a.article.toLowerCase()===search.toLowerCase());
+ if(matchByName)state.lubArt=matchByName.art_id;
+ else if(!state.lubArt||!lubs.some(a=>String(a.art_id)===String(state.lubArt)))state.lubArt=lubs[0]?lubs[0].art_id:"";
+ const cur=article(state.lubArt);
+ const lubVentes=[];
+ DB.mouv_detail.forEach(md=>{
+  const a=article(md.id_art);
+  if(!a||Number(a.type_a)!==0)return;
+  const op=DB.mouvements.find(m=>String(m.operation_id)===String(md.id_operation));
+  if(!op||op.sens!=="S")return;
+  if(String(op.id_tier)!==String(tid))return;
+  if(op.date_m!==sel.date)return;
+  lubVentes.push({md_id:md.mouv_detail_id,op_id:md.id_operation,date:op.date_m,tier:op.id_tier,art:a,qte:Number(md.quantite),pu:Number(md.prix_u)});
+ });
+ lubVentes.sort((a,b)=>b.date.localeCompare(a.date));
+ const stockHtml=cur?'<div class="stat" style="min-width:90px;padding:8px 12px"><div class="v" style="font-size:16px">'+fmtQ(cur.qs)+'</div><div class="l">Stock</div></div><div class="stat gold" style="min-width:90px;padding:8px 12px"><div class="v" style="font-size:16px">'+fmt(cur.pv)+'</div><div class="l">Prix vente</div></div>':"";
+ const ventesHtml=lubVentes.length?lubVentes.map(v=>{const r="openEditLubVente('"+v.md_id+"','"+v.op_id+"')";return '<tr ondblclick="'+r+'" style="cursor:pointer" title="Double-clic pour modifier"><td>'+frDate(v.date)+'</td><td>'+esc(v.art.article)+'</td><td class="num">'+fmtQ(v.qte)+'</td><td class="num">'+fmt(v.pu)+'</td><td class="num">'+fmt(v.qte*v.pu)+'</td></tr>';}).join(""):'<tr><td colspan="5" class="subtle">Aucune vente lubrifiant pour cet agent.</td></tr>';
+ return '<div class="row" style="align-items:flex-end;gap:10px;margin-bottom:8px">'
+  +'<div class="field" style="flex:1;position:relative"><label>Article lubrifiant</label>'
+  +'<input id="lubArtInput" placeholder="Rechercher ou choisir un article…" value="'+esc(search)+'" oninput="lubSearchLive(this.value)" autocomplete="off">'
+  +'</div>'+stockHtml+'</div>'
+  +'<div class="row" style="margin-top:8px">'
+  +'<div class="field"><label>Quantité</label><input id="lubQte" type="number" min="1" style="width:100px" onfocus="this.select()"></div>'
+  +'<div class="field"><label>PU</label><input id="lubPu" type="number" value="'+(cur?cur.pv:0)+'" style="width:100px"></div>'
+  +'<button class="btn accent" onclick="addLubVente()">✔ Valider la vente</button>'
+  +'</div>'
+  +'<div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:10px">'
+  +'<table><tr><th>Date</th><th>Article</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Montant</th></tr>'
+  +ventesHtml+'</table></div>';
+}
+
+// lubSearchOpen removed
+function selectLubArt(id, name) {
+ state.lubArt = id;
+ state.lubSearch = name;
+ state.lubListOpen = false;
+ const dd=document.getElementById('lub-dropdown');if(dd)dd.remove();
+ const inp=document.getElementById('lubArtInput');if(inp)inp.value=name;
+ render();
+ setTimeout(()=>{const q=document.getElementById('lubQte');if(q){q.focus();q.select();}},50);
+}
+function lubSearchLive(val){
+ state.lubSearch=val;
+ state.lubListOpen = val.length > 0;
+ const lubs=DB.articles.filter(a=>Number(a.type_a)===0&&Number(a.actif));
+ const filtered=lubs.filter(a=>a.article.toLowerCase().includes(val.toLowerCase()));
+ const m=filtered.find(a=>a.article.toLowerCase()===val.toLowerCase());
+ if(m){state.lubArt=m.art_id;}
+ // Direct DOM update: create/update dropdown without full re-render
+ let dd=document.getElementById('lub-dropdown');
+ if(filtered.length>0&&val.length>0){
+  if(!dd){
+   const inp=document.getElementById('lubArtInput');
+   if(inp&&inp.parentNode){dd=document.createElement('div');dd.id='lub-dropdown';dd.style.cssText='position:absolute;top:100%;left:0;width:100%;max-height:200px;overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:6px;z-index:50;box-shadow:0 10px 15px rgba(0,0,0,0.5)';inp.parentNode.appendChild(dd);}
+  }
+  if(dd){dd.innerHTML='<table style="width:100%;font-size:12px;margin:0">'+filtered.map(a=>'<tr style="cursor:pointer" onmousedown="event.preventDefault();selectLubArt('+a.art_id+',\''+esc(a.article).replace(/'/g,"\\'")+'\')"><td style="padding:6px 10px;border-bottom:1px solid var(--line)">'+esc(a.article)+'</td><td class="num" style="padding:6px 10px;border-bottom:1px solid var(--line)">'+fmtQ(a.qs)+' '+esc(a.unite)+'</td><td class="num" style="padding:6px 10px;color:var(--accent);border-bottom:1px solid var(--line)">'+fmt(a.pv)+' DA</td></tr>').join('')+'</table>';}
+ } else {
+  if(dd)dd.remove();
+ }
+ if(m)render();
+}
+function gazTab(){
+ const tid=sel.tierId;
+ const g=DB.articles.find(a=>Number(a.type_a)===9);
+ if(!g)return`<p class="subtle">Aucun article gaz butane (type_a=9).</p>`;
+ const pu=Number(g.pv)||0;
+ // Ventes gaz butane de l'agent sélectionné
+ const gazVentes=[];
+ DB.mouv_detail.forEach(md=>{
+  if(String(md.id_art)!==String(g.art_id))return;
+  const op=DB.mouvements.find(m=>String(m.operation_id)===String(md.id_operation));
+  if(!op||op.sens!=="S")return;
+  if(String(op.id_tier)!==String(tid))return;
+  if(op.date_m!==sel.date)return;
+  gazVentes.push({md_id:md.mouv_detail_id,op_id:md.id_operation,date:op.date_m,tier:op.id_tier,qte:Number(md.quantite),pu:Number(md.prix_u)});
+ });
+ gazVentes.sort((a,b)=>b.date.localeCompare(a.date));
+ return `
+  <div class="row" style="align-items:flex-end;gap:10px;margin-bottom:8px">
+   <div class="stat" style="min-width:90px;padding:8px 12px"><div class="v" style="font-size:16px">${fmt(g.qs)}</div><div class="l">Stock</div></div>
+   <div class="stat gold" style="min-width:90px;padding:8px 12px"><div class="v" style="font-size:16px">${fmt(pu)}</div><div class="l">Prix vente</div></div>
+  </div>
+  <div class="row" style="margin-top:8px">
+   <div class="field"><label>Quantité</label><input id="gazQte" type="number" min="1" style="width:100px"
+    oninput="const el=document.getElementById('gazMtV');if(el)el.value=fmt((Number(this.value)||0)*${pu})+' DA'"
+    onfocus="this.select()"></div>
+   <div class="field"><label>Montant calculé</label><input id="gazMtV" disabled value="0 DA" style="width:130px;color:var(--accent);font-weight:700"></div>
+   <button class="btn accent" onclick="addGazVente()">✔ Valider la vente</button>
+  </div>
+  <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:10px">
+   <table><tr><th>Date</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Montant</th></tr>
+   ${gazVentes.length?gazVentes.map(v=>`<tr ondblclick="openEditGazVente('${v.md_id}','${v.op_id}')" style="cursor:pointer" title="Double-clic pour modifier">
+    <td>${frDate(v.date)}</td>
+    <td class="num">${fmtQ(v.qte)}</td><td class="num">${fmt(v.pu)}</td><td class="num">${fmt(v.qte*v.pu)}</td></tr>`).join("")
+   :`<tr><td colspan="4" class="subtle">Aucune vente gaz butane pour cet agent.</td></tr>`}
+   </table>
+  </div>`;
+}
+function openEditGazVente(mdId,opId){
+ const md=DB.mouv_detail.find(x=>x.mouv_detail_id===mdId);if(!md)return;
+ const g=DB.articles.find(a=>Number(a.type_a)===9);
+ const grp=calcGroup(sel.date);
+ const cdId=metaCD();
+ const agentsJour=[grp.t1,grp.t2].filter(Boolean);
+ const op=DB.mouvements.find(m=>String(m.operation_id)===String(opId));
+ const agentOptions=agentsJour.map(tid=>{const t=tier(tid);return t?`<option value="${t.tier_id}" ${op&&String(op.id_tier)===String(t.tier_id)?"selected":""}>${esc((t.nom+' '+(t.prenom||'')).trim())}</option>`:''}).join("");
+ const cdTier=tier(cdId);
+ const cdOpt=cdTier?`<option value="${cdTier.tier_id}" ${op&&String(op.id_tier)===String(cdTier.tier_id)?"selected":""}>${esc(cdTier.nom)}</option>`:'';
+ openModal(`<h2>Modifier la vente gaz butane</h2>
+  <div class="row">
+   <div class="field"><label>Agent</label><select id="gzAgent">
+    ${agentOptions}${cdOpt}
+   </select></div>
+   <div class="field"><label>Qté</label><input id="gzQte" type="number" value="${md.quantite}" style="width:90px" onfocus="this.select()"></div>
+   <div class="field"><label>PU</label><input id="gzPu" type="number" value="${md.prix_u}" style="width:90px" onfocus="this.select()"></div>
+  </div>
+  <div style="text-align:right;margin-top:18px;display:flex;justify-content:space-between">
+   <button class="btn red" onclick="confirmDelGazVente('${mdId}','${opId}')">🗑 Supprimer</button>
+   <div style="display:flex;gap:8px">
+    <button class="btn" onclick="closeModal()">Annuler</button>
+    <button class="btn accent" onclick="saveEditGazVente('${mdId}','${opId}')">✔ Enregistrer</button>
+   </div>
+  </div>`);
+}
+function saveEditGazVente(mdId,opId){
+ const md=DB.mouv_detail.find(x=>x.mouv_detail_id===mdId);if(!md)return;
+ const qte=Number($("gzQte").value),pu=Number($("gzPu").value);
+ if(qte<=0){toast("Quantité invalide","err");return;}
+ const g=DB.articles.find(a=>Number(a.type_a)===9);
+ if(g){g.qs=(Number(g.qs)||0)+Number(md.quantite)-qte;}
+ md.quantite=qte;md.prix_u=pu;
+ const newTier=Number($("gzAgent").value);
+ const op=DB.mouvements.find(m=>String(m.operation_id)===String(opId));
+ if(op&&newTier)op.id_tier=newTier;
+ refreshOpMontant(opId);
+ save();closeModal();render();toast("Vente gaz modifiée","ok");}
+function delGazVente(mdId,opId){
+ const md=DB.mouv_detail.find(x=>x.mouv_detail_id===mdId);if(!md)return;
+ const g=DB.articles.find(a=>Number(a.type_a)===9);
+ if(g)g.qs=(Number(g.qs)||0)+Number(md.quantite);
+ DB.mouv_detail=DB.mouv_detail.filter(x=>x.mouv_detail_id!==mdId);
+ refreshOpMontant(opId);
+ save();closeModal();render();toast("Vente gaz butane supprimée","ok");}
+function confirmDelGazVente(mdId,opId){
+ const md=DB.mouv_detail.find(x=>x.mouv_detail_id===mdId);if(!md)return;
+ const g=DB.articles.find(a=>Number(a.type_a)===9);
+ openModal(`<h2>⚠️ Confirmer la suppression</h2>
+  <p style="margin:14px 0 6px">Êtes-vous sûr de vouloir supprimer cette vente ?</p>
+  <div style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-bottom:18px">
+   <div><span class="subtle">Article :</span> <b>${g?esc(g.article):"Gaz butane"}</b></div>
+   <div><span class="subtle">Quantité :</span> <b>${fmtQ(md.quantite)}</b> · <span class="subtle">PU :</span> <b>${fmt(md.prix_u)} DA</b></div>
+   <div><span class="subtle">Montant :</span> <b>${fmt(md.quantite*md.prix_u)} DA</b></div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:10px">
+   <button class="btn" onclick="closeModal()">Annuler</button>
+   <button class="btn red" onclick="delGazVente('${mdId}','${opId}')">🗑 Supprimer définitivement</button>
+  </div>`);}
+function regTab(){
+ const tid=sel.tierId;
+ const ads=DB.agent_detail.filter(x=>String(x.id_agent)===String(tid)&&x.date_agent===sel.date);
+ const types=DB.agent.filter(a=>a.actif==="Oui"||a.actif===1||a.actif===true);
+ const pompiste=tier(tid);
+ const pompisteNom=pompiste?esc((pompiste.nom+" "+(pompiste.prenom||"")).trim()):"";
+ return `
+  <table><tr><th>Type</th><th>Agent / Obs.</th><th class="num">Montant</th></tr>
+  ${ads.map(a=>`<tr ondblclick="openEditReglement('${a.cle_id}')" style="cursor:pointer" title="Double-clic pour modifier"><td><span class="pill ${Number(a.type_agent)===1?"ok":Number(a.type_agent)===4||Number(a.type_agent)===7||Number(a.type_agent)===9?"warn":"neutral"}">${agentLib(a.type_agent)}</span></td>
+   <td>${esc(a.obs_agent||"")}</td><td class="num">${fmt(a.mt_agent)}</td>
+   </tr>`).join("")||`<tr><td colspan="3" class="subtle">Aucun règlement pour cet agent ce jour.</td></tr>`}
+  </table>
+  <h3>Ajouter un règlement (encaissement / remise / avance)</h3>
+  <div class="row">
+   <div class="field"><label>Type</label><select id="regType">
+    ${types.map(t=>`<option value="${t.agent_type}">${esc(t.agent_libelle)}</option>`).join("")}
+    <option value="99">Avance sur salaire (${pompisteNom})</option>
+   </select></div>
+   <div class="field"><label>Obs.</label><input id="regObs" style="width:140px" placeholder="Optionnel"></div>
+   <div class="field"><label>Montant</label><input id="regMt" type="number" min="0" style="width:110px" value="${totauxCaisse(sel.tierId,sel.date).diff>0?totauxCaisse(sel.tierId,sel.date).diff:''}"></div>
+   <button class="btn green" onclick="addReglement()">＋ Ajouter</button>
+  </div>
+  <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
+   <button class="btn" onclick="regrouperVentes()">⇄ Regrouper Butane + Lubrifiants</button>
+   <p class="subtle" style="margin-top:6px">Crée les lignes regroupées dans agent_detail pour arrêter le compte de caisse.</p>
+  </div>`;}
+/* ---- actions journée ---- */
+function selDate(d){sel.date=d;const g=calcGroup(d);sel.tierId=g.t1;render();}
+function selectTier(id){sel.tierId=id;render();}
+function addLubVente(){
+ const qte=Number($("lubQte").value),pu=Number($("lubPu").value);
+ if(!state.lubArt||qte<=0||pu<0){toast("Article ou quantité invalide","err");return;}
+ if(!sel.tierId){toast("Sélectionnez un pompiste","err");return;}
+ const a=article(state.lubArt);
+ if(Number(a.qs)<qte&&!confirm("Stock insuffisant ("+fmt(a.qs)+"). Enregistrer quand même ?"))return;
+ const op=getOrCreateOp(sel.date,sel.tierId);
+ addMouvLine(op.operation_id,state.lubArt,qte,pu);
+ save();
+ state.lubSearch = "";
+ state.lubArt = "";
+ render();
+ toast("Vente lubrifiant enregistrée : "+fmt(qte*pu)+" DA","ok");}
+function addGazVente(){
+ const g=DB.articles.find(a=>Number(a.type_a)===9);
+ const qte=Number($("gazQte").value);
+ if(!g||qte<=0){toast("Quantité invalide","err");return;}
+ if(!sel.tierId){toast("Sélectionnez un pompiste","err");return;}
+ if(Number(g.qs)<qte&&!confirm("Stock insuffisant ("+fmt(g.qs)+"). Enregistrer quand même ?"))return;
+ const op=getOrCreateOp(sel.date,sel.tierId);
+ addMouvLine(op.operation_id,g.art_id,qte,Number(g.pv));
+ save();render();toast("Vente gaz butane enregistrée : "+fmt(qte*g.pv)+" DA","ok");}
+function addReglement(){
+ const ty=Number($("regType").value),mt=Number($("regMt").value),obs=$("regObs").value;
+ if(!sel.tierId||mt<=0){toast("Sélectionnez un agent et saisissez un montant","err");return;}
+ let finalObs = obs;
+ if (ty === 99) {
+   const p = tier(sel.tierId);
+   const pNom = p ? (p.nom + " " + (p.prenom || "")).trim() : "";
+   if (!finalObs) finalObs = "Avance sur salaire " + pNom;
+ }
+ DB.agent_detail.push({cle_id:uid(),id_agent:sel.tierId,date_agent:sel.date,type_agent:ty,id_art_agent:null,mt_agent:mt,obs_agent:finalObs});
+ save();render();toast("Règlement ajouté","ok");}
+function delReglement(id){DB.agent_detail=DB.agent_detail.filter(x=>x.cle_id!==id);save();render();}
+function openEditReglement(id){
+ const a=DB.agent_detail.find(x=>x.cle_id===id);if(!a)return;
+ const types=DB.agent.filter(x=>x.actif==="Oui"||x.actif===1||x.actif===true);
+ const pompiste=tier(a.id_agent);
+ const pompisteNom=pompiste?esc((pompiste.nom+" "+(pompiste.prenom||"")).trim()):""; 
+ openModal(`<h2>Modifier le règlement</h2>
+ <div class="row">
+  <div class="field"><label>Type</label><select id="erType">
+   ${types.map(t=>`<option value="${t.agent_type}" ${Number(a.type_agent)===Number(t.agent_type)?"selected":""}>${esc(t.agent_libelle)}</option>`).join("")}
+   <option value="99" ${Number(a.type_agent)===99?"selected":""}>Avance sur salaire (${pompisteNom})</option>
+  </select></div>
+  <div class="field"><label>Obs.</label><input id="erObs" value="${esc(a.obs_agent||"")}" style="width:160px"></div>
+  <div class="field"><label>Montant</label><input id="erMt" type="number" value="${a.mt_agent}" style="width:120px"></div>
+ </div>
+ <div style="text-align:right;margin-top:18px;display:flex;justify-content:space-between">
+  <button class="btn red" onclick="confirmModal('Supprimer ce règlement ?','Voulez-vous supprimer ce règlement ?',\"delReglement('${id}');closeModal()\")">🗑 Supprimer</button>
+  <div style="display:flex;gap:8px">
+   <button class="btn" onclick="closeModal()">Annuler</button>
+   <button class="btn accent" onclick="saveEditReglement('${id}')">✔ Enregistrer</button>
+  </div>
+ </div>`);}
+function saveEditReglement(id){
+ const a=DB.agent_detail.find(x=>x.cle_id===id);if(!a)return;
+ const mt=Number($("erMt").value);
+ if(mt<0){toast("Montant invalide","err");return;}
+ a.type_agent=Number($("erType").value);
+ a.obs_agent=$("erObs").value;
+ a.mt_agent=mt;
+ save();closeModal();render();toast("Règlement modifié","ok");}
+function delLubVente(mdId,opId){
+ const md=DB.mouv_detail.find(x=>x.mouv_detail_id===mdId);if(!md)return;
+ const a=article(md.id_art);
+ if(a)a.qs=(Number(a.qs)||0)+Number(md.quantite);
+ DB.mouv_detail=DB.mouv_detail.filter(x=>x.mouv_detail_id!==mdId);
+ refreshOpMontant(opId);
+ save();closeModal();render();toast("Vente lubrifiant supprimée","ok");}
+function confirmDelLubVente(mdId,opId){
+ const md=DB.mouv_detail.find(x=>x.mouv_detail_id===mdId);if(!md)return;
+ const a=article(md.id_art);
+ openModal(`<h2>⚠️ Confirmer la suppression</h2>
+ <p style="margin:14px 0 6px">Êtes-vous sûr de vouloir supprimer cette vente ?</p>
+ <div style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-bottom:18px">
+  <div><span class="subtle">Article :</span> <b>${a?esc(a.article):"—"}</b></div>
+  <div><span class="subtle">Quantité :</span> <b>${fmtQ(md.quantite)}</b> · <span class="subtle">PU :</span> <b>${fmt(md.prix_u)} DA</b></div>
+  <div><span class="subtle">Montant :</span> <b>${fmt(md.quantite*md.prix_u)} DA</b></div>
+ </div>
+ <div style="display:flex;justify-content:flex-end;gap:10px">
+  <button class="btn" onclick="closeModal()">Annuler</button>
+  <button class="btn red" onclick="delLubVente('${mdId}','${opId}')">🗑 Supprimer définitivement</button>
+ </div>`);}
+function openEditLubVente(mdId,opId){
+ const md=DB.mouv_detail.find(x=>x.mouv_detail_id===mdId);if(!md)return;
+ const a=article(md.id_art);
+ const lubs=DB.articles.filter(x=>Number(x.type_a)===0&&Number(x.actif));
+ const grp=calcGroup(sel.date);
+ const cdId=metaCD();
+ const agentsJour=[grp.t1,grp.t2].filter(Boolean);
+ const op=DB.mouvements.find(m=>String(m.operation_id)===String(opId));
+ const agentOptions=agentsJour.map(tid=>{const t=tier(tid);return t?`<option value="${t.tier_id}" ${op&&String(op.id_tier)===String(t.tier_id)?"selected":""}>${esc((t.nom+' '+(t.prenom||'')).trim())}</option>`:''}).join("");
+ const cdTier=tier(cdId);
+ const cdOpt=cdTier?`<option value="${cdTier.tier_id}" ${op&&String(op.id_tier)===String(cdTier.tier_id)?"selected":""}>${esc(cdTier.nom)}</option>`:'';
+ openModal(`<h2>Modifier la vente lubrifiant</h2>
+ <div class="row">
+  <div class="field"><label>Article</label><select id="elArt">
+   ${lubs.map(l=>`<option value="${l.art_id}" ${String(l.art_id)===String(md.id_art)?"selected":""}>${esc(l.article)}</option>`).join("")}
+  </select></div>
+  <div class="field"><label>Agent</label><select id="elAgent">
+   ${agentOptions}${cdOpt}
+  </select></div>
+  <div class="field"><label>Qté</label><input id="elQte" type="number" value="${md.quantite}" style="width:90px"></div>
+  <div class="field"><label>PU</label><input id="elPu" type="number" value="${md.prix_u}" style="width:90px"></div>
+ </div>
+ <div style="text-align:right;margin-top:18px;display:flex;justify-content:space-between">
+  <button class="btn red" onclick="confirmDelLubVente('${mdId}','${opId}')">🗑 Supprimer</button>
+  <div style="display:flex;gap:8px">
+   <button class="btn" onclick="closeModal()">Annuler</button>
+   <button class="btn accent" onclick="saveEditLubVente('${mdId}','${opId}')">✔ Enregistrer</button>
+  </div>
+ </div>`);}
+function saveEditLubVente(mdId,opId){
+ const md=DB.mouv_detail.find(x=>x.mouv_detail_id===mdId);if(!md)return;
+ const qte=Number($("elQte").value),pu=Number($("elPu").value);
+ if(qte<=0){toast("Quantité invalide","err");return;}
+ const oldArt=article(md.id_art);
+ if(oldArt)oldArt.qs=(Number(oldArt.qs)||0)+Number(md.quantite);
+ md.id_art=Number($("elArt").value);
+ md.quantite=qte;md.prix_u=pu;
+ const newArt=article(md.id_art);
+ if(newArt)newArt.qs=(Number(newArt.qs)||0)-qte;
+ const newTier=Number($("elAgent").value);
+ const op=DB.mouvements.find(m=>String(m.operation_id)===String(opId));
+ if(op&&newTier)op.id_tier=newTier;
+ refreshOpMontant(opId);
+ save();closeModal();render();toast("Vente modifiée","ok");}
+function regrouperVentes(){
+ if(!sel.tierId){toast("Sélectionnez un pompiste","err");return;}
+ const t=totauxCaisse(sel.tierId,sel.date);
+ const butaneType=DB.agent.find(a=>a.agent_libelle==="Butane")?.agent_type||10;
+ const lubType=DB.agent.find(a=>a.agent_libelle==="Lubrifiants")?.agent_type||11;
+ upsertAgentDetail(sel.tierId,butaneType,t.tGb);
+ upsertAgentDetail(sel.tierId,lubType,t.tLub);
+ save();render();
+ toast("Regroupé → Butane : "+fmt(t.tGb)+" | Lubrifiants : "+fmt(t.tLub),"ok");}
+function openChangeAgent(grp){
+ const g=calcGroup(sel.date);
+ const cur=grp==="t1"?g.t1:g.t2;
+ const ps=DB.tiers.filter(t=>t.type==="P"&&Number(t.stat)===1);
+ openModal(`<h2>Changement exceptionnel d'agent — ${grp==="t1"?"Gasoil/Essence (P01–P08)":"GPL (P09–P12)"}</h2>
+ <p class="subtle" style="margin-bottom:12px">Journée du ${frDate(sel.date)} — actuel : <b>${tierNom(cur)}</b>. Ne modifie pas la table tiers (changement du jour uniquement).</p>
+ ${ps.map(p=>`<div class="row" style="justify-content:space-between;align-items:center;padding:8px 4px;border-bottom:1px solid var(--line)">
+  <span>👤 ${tierNom(p.tier_id)} <span class="subtle">(ord ${p.ord}${p.pu?" · PU "+fmt(p.pu):""})</span></span>
+  <button class="btn sm ${String(p.tier_id)===String(cur)?"":"accent"}" ${String(p.tier_id)===String(cur)?"disabled":""} onclick="applyChangeAgent('${grp}',${p.tier_id})">Attribuer</button>
+ </div>`).join("")}
+ <div style="text-align:right;margin-top:14px"><button class="btn" onclick="closeModal()">Fermer</button></div>`);}
+function applyChangeAgent(grp,newId){
+ const codes=grp==="t1"?["P01","P02","P03","P04","P05","P06","P07","P08"]:["P09","P10","P11","P12"];
+ codes.forEach(c=>{const r=idxRow(sel.date,c);if(r)r.index_agent=newId;});
+ if(String(sel.tierId)===String(calcGroup(sel.date)[grp==="t1"?"t1":"t2"]))sel.tierId=newId;
+ save();closeModal();render();
+ toast("Agent remplacé pour cette journée (changement exceptionnel)","ok");}
+/* ================= VUE : JOURNAL ================= */
 function allDates(){const s=new Set();
  DB.indexs.forEach(r=>s.add(r.index_date));DB.mouvements.forEach(m=>s.add(m.date_m));DB.agent_detail.forEach(a=>s.add(a.date_agent));
  return[...s].sort();}
-
-/* ====== Chargement ====== */
-async function loadAndRender(){
- $("status").textContent="Connexion…";
- $("errBox").innerHTML="";
- if(!(await checkAuth()))return;
- try{
-  for(const t of TABLES){
-   const{data,error}=await sb.from(t).select("data");
-   if(error)throw error;
-   DB[t]=(data||[]).map(r=>r.data);}
-  const{data:metaRow,error:metaErr}=await sb.from("meta").select("data").eq("id","singleton").maybeSingle();
-  if(metaErr)throw metaErr;
-  DB.meta=metaRow?metaRow.data:{};
-  $("status").textContent="À jour — "+new Date().toLocaleTimeString("fr-FR");
-  render();
- }catch(e){
-  console.error(e);
-  $("status").textContent="Erreur de connexion";
-  $("errBox").innerHTML='<div class="err">Impossible de charger les données (réseau ou Supabase indisponible) : '+esc(e.message)+"</div>";
- }}
-
-/* ====== Rendu — reproduction fidèle de vJournal (tableau de bord admin) ====== */
-function render(){
- const ds=allDates().slice().reverse();
+function vJournal(){
+ const ds=allDates().slice().reverse(); // décroissant
  const today=todayISO();
- if(!selDate||!ds.includes(selDate))selDate=ds.includes(today)?today:(ds.length?ds[0]:"");
- if(!ds.length){$("out").innerHTML=`<div class="card empty">📒 Aucune donnée enregistrée.</div>`;return;}
- const d=selDate;
+ if(!sel.jdate||!ds.includes(sel.jdate)){
+  sel.jdate=ds.includes(today)?today:(ds.length?ds[0]:"");
+ }
+ if(!ds.length)return`<div class="card empty"><div class="big">📒</div>Aucune donnée enregistrée.</div>`;
+ const d=sel.jdate;
  const g=calcGroup(d);
 
+ /* ---- Carburant : Vente, Marge, Stock ---- */
  function carbRow(typeA,label){
   const a=DB.articles.find(x=>Number(x.type_a)===typeA);
   if(!a)return`<tr><td>${label}</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>`;
@@ -136,13 +1050,15 @@ function render(){
   const qVendu=g[pistType==="G"?"g":pistType==="E"?"e":"gpl"].q;
   const vente=qVendu*Number(a.pv||0);
   const marge=qVendu*(Number(a.pv||0)-Number(a.pa||0));
-  const stock=calcStockCarburant(typeA,d);
-  return`<tr><td>${esc(a.article)}</td><td class="num">${fmt(vente)}</td><td class="num ${marge>=0?"diff-pos":"diff-neg"}">${fmt(marge)}</td><td class="num">${fmtQ(stock)} L</td></tr>`;}
- const carbG=g.g,carbE=g.e,carbGPL=g.gpl;
+  const stock=calcStockCarburant(typeA, d);
+  return`<tr><td>${esc(a.article)}</td><td class="num">${fmt(vente)}</td><td class="num ${marge>=0?"diff-pos":"diff-neg"}">${fmt(marge)}</td><td class="num">${fmtQ(stock)} L</td></tr>`;
+ }
+ const carbG=calcGroup(d).g, carbE=calcGroup(d).e, carbGPL=calcGroup(d).gpl;
  const aG=DB.articles.find(x=>x.type_a===1),aE=DB.articles.find(x=>x.type_a===2),aL=DB.articles.find(x=>x.type_a===3);
  const tvCarb=(carbG.q*(aG?Number(aG.pv||0):0))+(carbE.q*(aE?Number(aE.pv||0):0))+(carbGPL.q*(aL?Number(aL.pv||0):0));
  const tmCarb=(carbG.q*(aG?Number(aG.pv||0)-Number(aG.pa||0):0))+(carbE.q*(aE?Number(aE.pv||0)-Number(aE.pa||0):0))+(carbGPL.q*(aL?Number(aL.pv||0)-Number(aL.pa||0):0));
 
+ /* ---- Gaz Butane & Lubrifiants ---- */
  function diversRow(typeA,label){
   const arts=typeA===0?DB.articles.filter(a=>Number(a.type_a)===0&&Number(a.actif)):[DB.articles.find(a=>Number(a.type_a)===9)].filter(Boolean);
   let qte=0,vente=0,marge=0,stock=0;
@@ -151,122 +1067,1123 @@ function render(){
    const mds=DB.mouv_detail.filter(md=>ops.includes(String(md.id_operation))&&String(md.id_art)===String(a.art_id)&&DB.mouvements.find(m=>String(m.operation_id)===String(md.id_operation)&&m.sens==="S"));
    const q=mds.reduce((s,md)=>s+Number(md.quantite),0);
    const v=mds.reduce((s,md)=>s+(Number(md.quantite)*Number(md.prix_u)),0);
-   qte+=q;vente+=v;marge+=(v-(q*Number(a.pa||0)));stock+=Number(a.qs||0);});
-  return{label,vente,marge,stock,row:`<tr><td>${label}</td><td class="num">${fmt(vente)}</td><td class="num ${marge>=0?"diff-pos":"diff-neg"}">${fmt(marge)}</td></tr>`};}
- const rowGaz=diversRow(9,"Gaz Butane"),rowLub=diversRow(0,"Lubrifiants");
- const tvDiv=rowGaz.vente+rowLub.vente,tmDiv=rowGaz.marge+rowLub.marge;
+   qte+=q;
+   vente+=v;
+   marge+=(v-(q*Number(a.pa||0)));
+   stock+=Number(a.qs||0);
+  });
+  return{label,vente,marge,stock,row:`<tr><td>${label}</td><td class="num">${fmt(vente)}</td><td class="num ${marge>=0?"diff-pos":"diff-neg"}">${fmt(marge)}</td></tr>`};
+ }
+ const rowGaz=diversRow(9,"Gaz Butane");
+ const rowLub=diversRow(0,"Lubrifiants");
+ const tvDiv=rowGaz.vente+rowLub.vente;
+ const tmDiv=rowGaz.marge+rowLub.marge;
 
+ /* ---- Règlements carburant non validés banque ---- */
  const facNonBanque=DB.factures.filter(f=>{
-  if(f.type!=="carburant"||f.date>d)return false;
-  const regleAALaDate=(f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant),0);
-  const reste=Number(f.montant)-regleAALaDate;
+  if(f.type!=="carburant" || f.date > d)return false;
+  let qteGE=0,qteGPL=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2)qteGE+=Number(l.qte);else if(art===3)qteGPL+=Number(l.qte);});
+      const regleAALaDate = (f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant), 0);
+      const reste=Number(f.montant)-regleAALaDate;
   const hasBons=(f.paiements||[]).filter(p=>p.date<=d).some(p=>p.source==="bons");
   return reste>0||hasBons;
  }).sort((a,b)=>b.date.localeCompare(a.date));
  let resteQteGE=0,resteQteGPL=0;
  const resteCarburant=facNonBanque.reduce((s,f)=>{
-  const regleAALaDate=(f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant),0);
-  const reste=Number(f.montant)-regleAALaDate;
-  if(reste>0&&Number(f.montant)>0){
-   const ratio=reste/Number(f.montant);
+  const regleAALaDate = (f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant), 0);
+  const reste = Number(f.montant)-regleAALaDate;
+  if(reste>0 && Number(f.montant)>0){
+   const ratio = reste/Number(f.montant);
    (f.lignes||[]).forEach(l=>{
     const art=Number(l.artId);
     if(art===1||art===2)resteQteGE+=Number(l.qte)*ratio;
     else if(art===3)resteQteGPL+=Number(l.qte)*ratio;
    });
   }
-  return s+reste;},0);
+  return s+reste;
+ },0);
 
+ /* ---- Suivi caisse ---- */
  const cj=caisseDuJour(d);
  const soldePrec=caisseSoldeAvant(d);
  const soldeFin=soldePrec+cj.net;
+ // détail décaissements
  const parType={};DB.agent_detail.filter(x=>x.date_agent===d&&Number(x.type_agent)!==1).forEach(x=>{parType[x.type_agent]=(parType[x.type_agent]||0)+Number(x.mt_agent);});
- const paiementsDetails=getLedger("caisse").filter(l=>l.date===d&&(l.source==="facture"||l.source==="treso")&&l.sens==="S");
+ const paiementsDetails = getLedger("caisse").filter(l=>l.date===d && (l.source==="facture"||l.source==="treso") && l.sens==="S");
 
+ /* ---- Suivi banque du jour ---- */
  const ledBanque=getLedger("banque").filter(l=>l.date===d);
  const bEncaisse=ledBanque.filter(l=>l.sens==="E").reduce((s,l)=>s+l.montant,0);
  const bDecaisse=ledBanque.filter(l=>l.sens==="S").reduce((s,l)=>s+l.montant,0);
  const soldeBanque=banqueSolde();
 
- $("out").innerHTML=`
- <div class="row between" style="margin-bottom:16px;align-items:center;background:var(--card);padding:14px 18px;border-radius:12px;border:1px solid var(--line)">
+ return `
+ <div class="row between" style="margin-bottom:16px;align-items:center;background:var(--card);padding:14px 18px;border-radius:var(--radius);border:1px solid var(--line)">
   <div style="display:flex;align-items:center;gap:12px">
    <span style="font-size:24px">📊</span>
-   <h1>Tableau de bord</h1>
+   <h1 style="font-size:18px;font-weight:700;margin:0;color:var(--ink)">Tableau de bord</h1>
   </div>
   <div class="row" style="gap:10px;flex-wrap:wrap">
-   <select style="padding:8px 12px;border-radius:9px;background:#fff;border:1px solid var(--accent);color:#000;font-size:14px;font-weight:600;min-width:140px;cursor:pointer" onchange="selDate=this.value;render()">
+   <select style="padding:8px 12px;border-radius:9px;background:#fff;border:1px solid var(--accent);color:#000;font-size:14px;font-weight:600;min-width:140px;cursor:pointer" onchange="sel.jdate=this.value;render()">
     ${ds.map(x=>`<option value="${x}" ${x===d?"selected":""}>${frDate(x)}</option>`).join("")}
    </select>
-   <button class="btn" onclick="loadAndRender()">🔄</button>
-   <button class="btn accent" onclick="window.print()">🖨️ Imprimer</button>
+   <button class="btn" style="background:var(--red);color:#fff;border:none;display:flex;align-items:center;gap:6px" onclick="window.print()">📄 PDF</button>
+   <button class="btn accent" style="display:flex;align-items:center;gap:6px" onclick="window.print()">🖨️ Imprimer</button>
   </div>
  </div>
+
  <div class="grid-stats" style="margin-bottom:16px">
   <div class="stat gold"><div class="v">${fmt(soldeFin)}</div><div class="l">Caisse (Fin de journée)</div></div>
   <div class="stat blue"><div class="v">${fmt(soldeBanque)}</div><div class="l">Banque (Cumulé)</div></div>
   <div class="stat green"><div class="v">${fmt(tmCarb)}</div><div class="l">Marge Carburant</div></div>
-  <div class="stat"><div class="v">${fmt(tmDiv)}</div><div class="l">Marge Gaz &amp; Lubrifiants</div></div>
+  <div class="stat"><div class="v">${fmt(tmDiv)}</div><div class="l">Marge Gaz & Lubrifiants</div></div>
   <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)</div></div>
-  <div class="stat green"><div class="v">${fmt(tmCarb+tmDiv)}</div><div class="l">Marge Globale</div></div>
+  <div class="stat green"><div class="v">${fmt(tmCarb + tmDiv)}</div><div class="l">Marge Globale</div></div>
  </div>
+
+ <!-- SUIVI CAISSE -->
  <div class="card" style="margin-bottom:12px">
-  <h2 style="margin-bottom:10px">💵 Suivi de Caisse</h2>
-  <table style="max-width:480px">
-   <tr><td style="padding:7px 4px">Solde initial (report)</td><td class="num" style="padding:7px 4px;font-weight:700">${fmt(soldePrec)} DA</td></tr>
-   <tr><td style="padding:7px 4px;color:var(--green)">＋ Encaissements</td><td class="num" style="padding:7px 4px;color:var(--green)">+ ${fmt(cj.espece)} DA</td></tr>
+  <h2 style="margin-top:0;margin-bottom:10px">💵 Suivi de Caisse</h2>
+  <table style="width:100%;max-width:480px">
+   <tr>
+    <td style="padding:7px 4px">Solde initial (report)</td>
+    <td class="num" style="padding:7px 4px;font-weight:700">${fmt(soldePrec)} DA</td>
+   </tr>
+   <tr>
+    <td style="padding:7px 4px;color:var(--green)">＋ Encaissements</td>
+    <td class="num" style="padding:7px 4px;color:var(--green)">+ ${fmt(cj.espece)} DA</td>
+   </tr>
    <tr><td colspan="2" style="padding:4px 4px 2px;font-size:12px;color:var(--muted);font-weight:600">Détail décaissements :</td></tr>
-   ${Object.keys(parType).length?Object.keys(parType).sort().map(t=>`<tr><td style="padding:4px 4px 4px 16px;font-size:13px;color:var(--muted)">− ${agentLib(t)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(parType[t])} DA</td></tr>`).join(""):`<tr><td colspan="2" style="padding:4px 16px;font-size:12px;color:var(--muted)">Aucun décaissement saisi</td></tr>`}
-   ${paiementsDetails.length>0?`<tr><td colspan="2" style="padding:6px 4px 2px;font-size:12px;color:var(--muted);font-weight:600">Détail paiements fournisseurs &amp; divers :</td></tr>${paiementsDetails.map(l=>`<tr><td style="padding:4px 4px 4px 16px;font-size:13px;color:var(--muted)">− ${esc(l.libelle)}${l.obs?` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>`:""}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td></tr>`).join("")}`:""}
-   <tr style="border-top:2px solid var(--border)"><td style="padding:10px 4px;font-weight:700;font-size:15px">Solde final caisse</td><td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:${soldeFin>=0?"var(--accent)":"var(--red)"}">${fmt(soldeFin)} DA</td></tr>
+   ${Object.keys(parType).length?Object.keys(parType).sort().map(t=>`
+   <tr>
+    <td style="padding:4px 4px 4px 16px;font-size:13px;color:var(--muted)">− ${agentLib(t)}</td>
+    <td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(parType[t])} DA</td>
+   </tr>`).join(""):
+   `<tr><td colspan="2" style="padding:4px 16px;font-size:12px;color:var(--muted)">Aucun décaissement saisi</td></tr>`}
+   ${paiementsDetails.length>0?`<tr>
+    <td colspan="2" style="padding:6px 4px 2px;font-size:12px;color:var(--muted);font-weight:600">Détail paiements fournisseurs & divers :</td>
+   </tr>
+   ${paiementsDetails.map(l=>`<tr>
+    <td style="padding:4px 4px 4px 16px;font-size:13px;color:var(--muted)">− ${esc(l.libelle)}${l.obs?` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>`:""}</td>
+    <td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td>
+   </tr>`).join("")}`:""}
+   <tr style="border-top:2px solid var(--border)">
+    <td style="padding:10px 4px;font-weight:700;font-size:15px">Solde final caisse</td>
+    <td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:${soldeFin>=0?"var(--accent)":"var(--red)"}">${fmt(soldeFin)} DA</td>
+   </tr>
   </table>
  </div>
+
+ <!-- SUIVI BANQUE -->
  <div class="card" style="margin-bottom:12px">
-  <h2 style="margin-bottom:10px">🏦 Suivi de Banque</h2>
-  ${ledBanque.length?`<table style="max-width:480px">
-   <tr><td colspan="2" style="padding:4px;font-size:12px;color:var(--muted);font-weight:600">Mouvements du ${frDate(d)} :</td></tr>
-   ${ledBanque.map(l=>`<tr><td style="padding:5px 4px;font-size:13px">${l.sens==="E"?"＋":"−"} ${esc(l.libelle)}</td><td class="num" style="padding:5px 4px;color:${l.sens==="E"?"var(--green)":"var(--red)"}">${l.sens==="E"?"+":"−"} ${fmt(l.montant)} DA</td></tr>`).join("")}
-   <tr style="border-top:2px solid var(--border)"><td style="padding:8px 4px;color:var(--green);font-size:13px">Total crédits</td><td class="num" style="padding:8px 4px;color:var(--green)">+ ${fmt(bEncaisse)} DA</td></tr>
-   <tr><td style="padding:4px 4px;color:var(--red);font-size:13px">Total débits</td><td class="num" style="padding:4px 4px;color:var(--red)">− ${fmt(bDecaisse)} DA</td></tr>
-   <tr style="border-top:2px solid var(--border)"><td style="padding:10px 4px;font-weight:700;font-size:15px">Solde banque (cumulé)</td><td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:var(--accent2)">${fmt(soldeBanque)} DA</td></tr>
-  </table>`:`<p class="subtle" style="padding:6px 0">Aucun mouvement bancaire enregistré pour cette journée.</p><div style="display:flex;align-items:center;gap:10px;margin-top:6px"><span style="color:var(--muted);font-size:13px">Solde banque cumulé :</span><b style="color:var(--accent2);font-size:15px">${fmt(soldeBanque)} DA</b></div>`}
- </div>
+  <h2 style="margin-top:0;margin-bottom:10px">🏦 Suivi de Banque</h2>
+  ${ledBanque.length?`
+  <table style="width:100%;max-width:480px">
+   <tr>
+    <td colspan="2" style="padding:4px;font-size:12px;color:var(--muted);font-weight:600">Mouvements du ${frDate(d)} :</td>
+   </tr>
+   ${ledBanque.map(l=>`<tr>
+    <td style="padding:5px 4px;font-size:13px">${l.sens==="E"?"＋":"−"} ${esc(l.libelle)}</td>
+    <td class="num" style="padding:5px 4px;color:${l.sens==="E"?"var(--green)":"var(--red)"}">${l.sens==="E"?"+":"−"} ${fmt(l.montant)} DA</td>
+   </tr>`).join("")}
+   <tr style="border-top:2px solid var(--border)">
+    <td style="padding:8px 4px;color:var(--green);font-size:13px">Total crédits</td>
+    <td class="num" style="padding:8px 4px;color:var(--green)">+ ${fmt(bEncaisse)} DA</td>
+   </tr>
+   <tr>
+    <td style="padding:4px 4px;color:var(--red);font-size:13px">Total débits</td>
+    <td class="num" style="padding:4px 4px;color:var(--red)">− ${fmt(bDecaisse)} DA</td>
+   </tr>
+   <tr style="border-top:2px solid var(--border)">
+    <td style="padding:10px 4px;font-weight:700;font-size:15px">Solde banque (cumulé)</td>
+    <td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:var(--accent2)">${fmt(soldeBanque)} DA</td>
+   </tr>
+  </table>`:`
+  <p class="subtle" style="padding:6px 0">Aucun mouvement bancaire enregistré pour cette journée.</p>
+  <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+   <span style="color:var(--muted);font-size:13px">Solde banque cumulé :</span>
+   <b style="color:var(--accent2);font-size:15px">${fmt(soldeBanque)} DA</b>
+  </div>`}
+ <!-- CARBURANT -->
  <div class="card" style="margin-bottom:12px">
-  <h2 style="margin-bottom:10px">⛽ Carburant</h2>
-  <table>
-   <thead><tr style="background:rgba(255,255,255,0.04)"><th style="text-align:left;padding:8px">Article</th><th class="num" style="padding:8px">Vente (DA)</th><th class="num" style="padding:8px">Marge (DA)</th><th class="num" style="padding:8px">Stock</th></tr></thead>
+  <h2 style="margin-top:0;margin-bottom:10px">⛽ Carburant</h2>
+  <table style="width:100%">
+   <thead><tr style="background:rgba(255,255,255,0.04)">
+    <th style="text-align:left;padding:8px">Article</th>
+    <th class="num" style="padding:8px">Vente (DA)</th>
+    <th class="num" style="padding:8px">Marge (DA)</th>
+    <th class="num" style="padding:8px">Stock</th>
+   </tr></thead>
    <tbody>
-    ${carbRow(1,"Gasoil")}${carbRow(2,"Essence")}${carbRow(3,"GPL")}
-    <tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:8px 4px">Total</td><td class="num" style="padding:8px 4px;color:var(--gold)">${fmt(tvCarb)}</td><td class="num" style="padding:8px 4px;color:${tmCarb>=0?"var(--green)":"var(--red)"}">${fmt(tmCarb)}</td><td class="num" style="padding:8px 4px">—</td></tr>
+    ${carbRow(1,"Gasoil")}
+    ${carbRow(2,"Essence")}
+    ${carbRow(3,"GPL")}
+    <tr style="border-top:2px solid var(--border);font-weight:700">
+     <td style="padding:8px 4px">Total</td>
+     <td class="num" style="padding:8px 4px;color:var(--gold)">${fmt(tvCarb)}</td>
+     <td class="num" style="padding:8px 4px;color:${tmCarb>=0?"var(--green)":"var(--red)"}">${fmt(tmCarb)}</td>
+     <td class="num" style="padding:8px 4px">—</td>
+    </tr>
    </tbody>
   </table>
  </div>
+
+ <!-- GAZ & LUBRIFIANTS -->
  <div class="card" style="margin-bottom:12px">
-  <h2 style="margin-bottom:10px">🛢️ Gaz Butane &amp; Lubrifiants</h2>
-  <table>
-   <thead><tr style="background:rgba(255,255,255,0.04)"><th style="text-align:left;padding:8px">Article</th><th class="num" style="padding:8px">Vente (DA)</th><th class="num" style="padding:8px">Marge (DA)</th></tr></thead>
-   <tbody>${rowGaz.row}${rowLub.row}<tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:8px 4px">Total</td><td class="num" style="padding:8px 4px;color:var(--gold)">${fmt(tvDiv)}</td><td class="num" style="padding:8px 4px;color:${tmDiv>=0?"var(--green)":"var(--red)"}">${fmt(tmDiv)}</td></tr></tbody>
+  <h2 style="margin-top:0;margin-bottom:10px">🛢️ Gaz Butane &amp; Lubrifiants</h2>
+  <table style="width:100%">
+   <thead><tr style="background:rgba(255,255,255,0.04)">
+    <th style="text-align:left;padding:8px">Article</th>
+    <th class="num" style="padding:8px">Vente (DA)</th>
+    <th class="num" style="padding:8px">Marge (DA)</th>
+   </tr></thead>
+   <tbody>
+    ${rowGaz.row}
+    ${rowLub.row}
+    <tr style="border-top:2px solid var(--border);font-weight:700">
+     <td style="padding:8px 4px">Total</td>
+     <td class="num" style="padding:8px 4px;color:var(--gold)">${fmt(tvDiv)}</td>
+     <td class="num" style="padding:8px 4px;color:${tmDiv>=0?"var(--green)":"var(--red)"}">${fmt(tmDiv)}</td>
+    </tr>
+   </tbody>
   </table>
  </div>
+
+ <!-- RÈGLEMENTS CARBURANT NON VALIDÉS BANQUE -->
+ <div class="card" style="margin-bottom:12px">
+  <h2 style="margin-top:0;margin-bottom:10px">📋 Suivi règlements carburant — En attente banque</h2>
+  ${facNonBanque.length?`
+  <div style="overflow-x:auto">
+   <table style="width:100%;min-width:620px">
+    <thead><tr style="background:rgba(255,255,255,0.04)">
+     <th style="text-align:left;padding:8px">Facture</th>
+     <th style="text-align:left;padding:8px">Fournisseur</th>
+     <th style="text-align:left;padding:8px">Date</th>
+     <th class="num" style="padding:8px">Qté G/E</th>
+      <th class="num" style="padding:8px">Qté GPL</th>
+      <th class="num" style="padding:8px">Montant</th>
+     <th class="num" style="padding:8px">Réglé</th>
+     <th style="text-align:center;padding:8px">Mode</th>
+     <th style="text-align:left;padding:8px">N° Chèque</th>
+     <th class="num" style="padding:8px;color:var(--red)">Reste dû</th>
+    </tr></thead>
+    <tbody>
+     ${facNonBanque.map(f=>{
+     let qteGE=0,qteGPL=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2)qteGE+=Number(l.qte);else if(art===3)qteGPL+=Number(l.qte);});
+      const regleAALaDate = (f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant), 0);
+      const reste=Number(f.montant)-regleAALaDate;
+     const modes=(f.paiements||[]).filter(p=>p.date<=d).map(p=>{
+      if(p.source==="bons")return`<span style="background:rgba(251,191,36,0.15);color:#fbbf24;padding:2px 6px;border-radius:4px;font-size:12px">Bons Naftal</span>`;
+      if(p.source==="banque")return`<span style="background:rgba(99,179,237,0.15);color:#63b3ed;padding:2px 6px;border-radius:4px;font-size:12px">Banque</span>`;
+      return`<span style="background:rgba(72,187,120,0.15);color:#48bb78;padding:2px 6px;border-radius:4px;font-size:12px">Caisse</span>`;
+     }).join(" ");
+     const cheques=(f.paiements||[]).filter(p=>p.date<=d && p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
+     return`<tr>
+      <td style="padding:6px 4px">${esc(f.numero||"—")}</td>
+      <td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td>
+      <td style="padding:6px 4px">${frDate(f.date)}</td>
+      <td class="num" style="padding:6px 4px">${fmtQ(qteGE)}</td>
+       <td class="num" style="padding:6px 4px">${fmtQ(qteGPL)}</td>
+       <td class="num" style="padding:6px 4px">${fmt(f.montant)}</td>
+       <td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td>
+      <td style="text-align:center;padding:6px 4px">${modes||"—"}</td>
+      <td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td>
+      <td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td>
+     </tr>`;
+    }).join("")}
+    </tbody>
+   </table></div>`
+  :`<p class="subtle" style="padding:8px 0">✅ Aucune facture carburant en attente de validation bancaire.</p>`}
+ </div>
+
+ </div>`;}/* ================= VUE : ACHATS ================= */
+function setFactType(t){factType=t;factLines=[];render();}
+function updateFactQteMemo(){
+ const selEl=$("factProduit");if(!selEl)return;
+ const a=article(selEl.value);if(!a)return;
+ const m=DB.meta.qteMemoire[a.article];
+ const q=$("factQte");if(q)q.value=(m!==undefined&&m!==null)?m:"";}
+function addFactLigne(){
+ const selEl=$("factProduit");if(!selEl)return;
+ const artId=Number(selEl.value),qte=Number($("factQte").value);
+ if(qte<=0){toast("Quantité invalide","err");return;}
+ const a=article(artId);
+ factLines.push({artId:artId,qte:qte,pu:Number(a.pa)||0});
+ DB.meta.qteMemoire=DB.meta.qteMemoire||{};
+ DB.meta.qteMemoire[a.article]=qte;
+ factForm.fourn=$("factFourn")?$("factFourn").value:factForm.fourn;
+ factForm.num=$("factNum")?$("factNum").value:factForm.num;
+ factForm.date=$("factDate")?$("factDate").value:factForm.date;
+ factForm.mode=$("factMode")?$("factMode").value:factForm.mode;
+ factForm.cheque=$("factCheque")?$("factCheque").value:factForm.cheque;
+ save();render();}
+function rmFactLigne(i){factLines.splice(i,1);render();}
+function validerFacture(){
+ if(!factLines.length){toast("Ajoutez au moins une ligne","err");return;}
+ const fid=factForm.fourn||$("factFourn").value;
+ if(!fid){toast("Sélectionnez un fournisseur","err");return;}
+ const montant=factLines.reduce((s,l)=>s+l.qte*l.pu,0);
+ const mode=factForm.mode||$("factMode").value;
+ const fdate=factForm.date||$("factDate").value||todayISO();
+ const fnum=factForm.num||$("factNum").value;
+ const fcheque=$("factCheque")?$("factCheque").value.trim():"";
+ const opsens=DB.mouvements.reduce((s,m)=>Math.max(s,Number(m.operation_id)||0),0)+1;
+ const nm=normMode(mode);
+ const f={id:uid(),type:"carburant",fournisseurId:fid,numero:fnum,date:fdate,
+  mode:nm,lignes:factLines,montant:montant,regle:nm==="T"?0:montant,operation_id:opsens,cheque:fcheque,
+  paiements:nm==="T"?[]:[{date:fdate,montant:montant,source:nm==="C"?"banque":(nm==="B"?"bons":"caisse"),cheque:fcheque}]};
+ DB.factures.push(f);
+ DB.mouvements.push({mouvement_id:opsens,operation_id:opsens,date_m:f.date,sens:"E",mode_paiement:nm,id_tier:fid,remise:0,montant_paye:montant,obs:"Facture carburant "+(f.numero||""),type_m:"AC"});
+ factLines.forEach(l=>{DB.mouv_detail.push({mouv_detail_id:uid(),id_operation:opsens,id_art:l.artId,quantite:l.qte,prix_u:l.pu,prix_v:0,qte_r:0});
+  const a=article(l.artId);if(a)a.qs=(Number(a.qs)||0)+l.qte;});
+ factLines=[];
+ factForm={fourn:DB.meta.fournisseurCarburantId,num:"",date:todayISO(),mode:"T",cheque:""};
+ save();render();
+ toast("Facture enregistrée : "+fmt(montant)+" DA"+(nm==="T"?" (crédit)":" (payée)"),"ok");}
+function addAchatDivers(){
+ const artId=Number($("divArticle").value),fourn=$("divFourn").value,qte=Number($("divQte").value),pu=Number($("divPu").value)||0;
+ if(!artId||!fourn||qte<=0){toast("Complétez tous les champs","err");return;}
+ const mode=$("divMode").value,date=$("divDate").value||todayISO();
+ const a=article(artId);a.qs=(Number(a.qs)||0)+qte;
+ const montant=qte*pu;
+ const opsens=DB.mouvements.reduce((s,m)=>Math.max(s,Number(m.operation_id)||0),0)+1;
+ const nm=normMode(mode);
+ DB.factures.push({id:uid(),type:"divers",fournisseurId:fourn,numero:"",date:date,mode:nm,
+  lignes:[{artId:artId,qte:qte,pu:pu}],montant:montant,regle:nm==="T"?0:montant,operation_id:opsens,
+  paiements:nm==="T"?[]:[{date:date,montant:montant,source:nm==="C"?"banque":(nm==="B"?"bons":"caisse")}]});
+ DB.mouvements.push({mouvement_id:opsens,operation_id:opsens,date_m:date,sens:"E",mode_paiement:nm,id_tier:fourn,remise:0,montant_paye:montant,obs:"Achat "+a.article,type_m:"AD"});
+ DB.mouv_detail.push({mouv_detail_id:uid(),id_operation:opsens,id_art:artId,quantite:qte,prix_u:pu,prix_v:0,qte_r:0});
+ save();render();toast("Achat enregistré : "+fmt(montant)+" DA","ok");}
+function fournOptions(selId){return DB.tiers.filter(t=>t.type==="F").map(f=>`<option value="${f.tier_id}" ${String(f.tier_id)===String(selId)?"selected":""}>${tierNom(f.tier_id)}</option>`).join("");}
+function factQtesStr(f){
+ return(f.lignes||[]).map(l=>{const a=article(l.artId);return a?esc(a.article)+" : "+fmt(l.qte)+(a.unite?" "+esc(a.unite):""):"";}).filter(Boolean).join("<br>");}
+function factHistTable(){
+ const q=state.factFilter.toLowerCase();
+ const fs=DB.factures.filter(f=>{const s=(tierNom(f.fournisseurId)+" "+(f.numero||"")+" "+f.type).toLowerCase();return s.includes(q);}).slice().reverse();
+ return`<table><tr><th>Date</th><th>Type</th><th>Fournisseur</th><th>N°</th><th>N° Chèque</th><th>Qté</th><th class="num">Montant</th><th class="num">Réglé</th><th class="num">Reste</th><th>Mode</th></tr>
+ ${fs.map(f=>{
+  const cheques=(f.paiements||[]).filter(p=>p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
+  return `<tr ondblclick="openFactureEdit('${f.id}')" style="cursor:pointer" title="Double-clic pour modifier"><td>${frDate(f.date)}</td><td>${f.type==="carburant"?"⛽ Carburant":"📦 Divers"}</td><td>${tierNom(f.fournisseurId)}</td>
+  <td>${esc(f.numero||"—")}</td><td style="color:var(--accent2);font-size:12px">${cheques}</td><td style="font-size:12px">${factQtesStr(f)}</td><td class="num">${fmt(f.montant)}</td><td class="num">${fmt(f.regle)}</td>
+  <td class="num" style="color:${f.montant-f.regle>0?"var(--red)":"var(--green)"}">${fmt(f.montant-f.regle)}</td>
+  <td>${f.mode==="credit"?'<span class="pill warn">Crédit</span>':'<span class="pill ok">Cash</span>'}</td></tr>`;
+ }).join("")||`<tr><td colspan="10" class="subtle">Aucune facture.</td></tr>`}</table>`;}
+/* ---- édition d'une facture (double-clic) ---- */
+let editFactLines=[];
+function factEditProds(f){return f.type==="carburant"?DB.articles.filter(a=>[1,2,3].includes(Number(a.type_a))):DB.articles.filter(a=>[0,9].includes(Number(a.type_a)));}
+function editLinesTable(){
+ const tot=editFactLines.reduce((s,l)=>s+Number(l.qte)*Number(l.pu),0);
+ return`<table><tr><th>Article</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Montant</th></tr>
+ ${editFactLines.map((l,i)=>{const a=article(l.artId);return`<tr>
+  <td>${a?esc(a.article):"—"}</td>
+  <td class="num"><input type="number" value="${l.qte}" style="width:90px" onchange="editFactLines[${i}].qte=Number(this.value)||0;$('editLinesWrap').innerHTML=editLinesTable()"></td>
+  <td class="num"><input type="number" value="${l.pu}" style="width:90px" onchange="editFactLines[${i}].pu=Number(this.value)||0;$('editLinesWrap').innerHTML=editLinesTable()"></td>
+  <td class="num">${fmt(l.qte*l.pu)}</td>
+  <td><button class="tag-del" onclick="editFactLines.splice(${i},1);$('editLinesWrap').innerHTML=editLinesTable()">✕</button></td></tr>`;}).join("")||`<tr><td colspan="5" class="subtle">Aucune ligne.</td></tr>`}
+ <tr><td colspan="3"><b>Total</b></td><td class="num"><b>${fmt(tot)} DA</b></td><td></td></tr></table>`;}
+function addEditLine(fid){
+ const f=DB.factures.find(x=>x.id===fid);if(!f)return;
+ const artId=Number($("editProduit").value),qte=Number($("editQte").value);
+ if(qte<=0){toast("Quantité invalide","err");return;}
+ const a=article(artId);
+ editFactLines.push({artId:artId,qte:qte,pu:Number(a.pv)||Number(a.pa)||0});
+ $("editLinesWrap").innerHTML=editLinesTable();}
+function openFactureEdit(fid){
+ const f=DB.factures.find(x=>x.id===fid);if(!f)return;
+ editFactLines=JSON.parse(JSON.stringify(f.lignes||[]));
+ const prods=factEditProds(f);
+ openModal(`<h2>Modifier la facture — ${f.type==="carburant"?"⛽ Carburant":"📦 Divers"}</h2>
+ <input type="hidden" id="editFid" value="${f.id}">
+ <div class="row">
+  <div class="field"><label>Fournisseur</label><select id="editFourn">${fournOptions(f.fournisseurId)}</select></div>
+  <div class="field"><label>N° facture / bon</label><input id="editNum" value="${esc(f.numero||"")}" style="width:110px"></div>
+  <div class="field"><label>Date</label><input id="editDate" type="date" value="${f.date}"></div>
+  <div class="field"><label>Mode</label><select id="editMode" onchange="$('editChequeWrap').style.display=(this.value==='C'||this.value==='T')?'flex':'none'">
+   <option value="E" ${normMode(f.mode)==="E"?"selected":""}>Espèce (Caisse)</option>
+   <option value="C" ${normMode(f.mode)==="C"?"selected":""}>Chèque (Banque)</option>
+   <option value="B" ${normMode(f.mode)==="B"?"selected":""}>Bons Naftal</option>
+   <option value="T" ${normMode(f.mode)==="T"?"selected":""}>À terme (Crédit)</option></select></div>
+  <div class="field" id="editChequeWrap" style="display:${(normMode(f.mode)==='C'||normMode(f.mode)==='T')?'flex':'none'}"><label>N° Chèque</label><input id="editCheque" value="${esc(f.cheque||(f.paiements&&f.paiements[0]&&f.paiements[0].cheque)||'')}" style="width:110px"></div>
+ </div>
+ <h3>Lignes</h3>
+ <div class="row">
+  <div class="field"><label>Produit</label><select id="editProduit">${prods.map(a=>`<option value="${a.art_id}">${esc(a.article)}</option>`).join("")}</select></div>
+  <div class="field"><label>Quantité</label><input id="editQte" type="number" min="1" style="width:100px"></div>
+  <button class="btn" onclick="addEditLine('${f.id}')">＋ Ligne</button>
+ </div>
+ <div id="editLinesWrap" style="margin-top:10px">${editLinesTable()}</div>
+ <p class="subtle" style="margin-top:8px">Réglé actuellement : <b>${fmt(f.regle)} DA</b>. En mode Cash le règlement est réajusté sur le nouveau total ; en mode Crédit, le réglé déjà versé est conservé (plafonné au nouveau total).</p>
+ <div style="text-align:right;margin-top:16px">
+  <button class="btn" onclick="closeModal()">Annuler</button>
+  <button class="btn red" onclick="confirmModal('Supprimer cette facture ?','Supprimer définitivement cette facture ? Cette action est irréversible.',\"deleteFacture('${f.id}')\")" >🗑 Supprimer</button>
+  <button class="btn accent" onclick="saveFactureEdit('${f.id}')">✔ Enregistrer</button>
+ </div>`);}
+function saveFactureEdit(fid){
+ const f=DB.factures.find(x=>x.id===fid);if(!f)return;
+ if(!editFactLines.length){toast("Ajoutez au moins une ligne","err");return;}
+ const newFourn=$("editFourn").value,newNum=$("editNum").value,newDate=$("editDate").value||f.date,newMode=$("editMode").value;
+ const newCheque=$("editCheque")?$("editCheque").value.trim():"";
+ const oldMode=f.mode;
+ (f.lignes||[]).forEach(l=>{const a=article(l.artId);if(a)a.qs=(Number(a.qs)||0)-Number(l.qte);});
+ editFactLines.forEach(l=>{const a=article(l.artId);if(a)a.qs=(Number(a.qs)||0)+Number(l.qte);});
+ if(f.operation_id){
+  DB.mouv_detail=DB.mouv_detail.filter(md=>String(md.id_operation)!==String(f.operation_id));
+  editFactLines.forEach(l=>DB.mouv_detail.push({mouv_detail_id:uid(),id_operation:f.operation_id,id_art:l.artId,quantite:l.qte,prix_u:l.pu,prix_v:0,qte_r:0}));
+  const mv=DB.mouvements.find(m=>String(m.operation_id)===String(f.operation_id));
+  if(mv){mv.date_m=newDate;mv.id_tier=newFourn;mv.mode_paiement=newMode;}
+  refreshOpMontant(f.operation_id);}
+ const newMontant=editFactLines.reduce((s,l)=>s+Number(l.qte)*Number(l.pu),0);
+ f.fournisseurId=newFourn;f.numero=newNum;f.date=newDate;f.mode=newMode;f.lignes=editFactLines;f.montant=newMontant;f.cheque=newCheque;
+ const nm=newMode;
+ if(nm!==normMode(oldMode)){
+  if(nm==="T"){f.regle=0;f.paiements=[];}
+  else{f.regle=newMontant;f.paiements=[{date:newDate,montant:newMontant,source:nm==="C"?"banque":(nm==="B"?"bons":"caisse"),cheque:newCheque}];}
+ }else if(nm!=="T"){
+  f.regle=newMontant;f.paiements=[{date:newDate,montant:newMontant,source:nm==="C"?"banque":(nm==="B"?"bons":"caisse"),cheque:newCheque}];
+ }else{
+  f.regle=Math.min(Number(f.regle)||0,newMontant);
+ }
+ save();closeModal();render();toast("Facture modifiée","ok");}
+function deleteFacture(fid){
+ const f=DB.factures.find(x=>x.id===fid);if(!f)return;
+ (f.lignes||[]).forEach(l=>{const a=article(l.artId);if(a)a.qs=(Number(a.qs)||0)-Number(l.qte);});
+ if(f.operation_id){
+  DB.mouv_detail=DB.mouv_detail.filter(md=>String(md.id_operation)!==String(f.operation_id));
+  DB.mouvements=DB.mouvements.filter(m=>String(m.operation_id)!==String(f.operation_id));}
+ DB.factures=DB.factures.filter(x=>x.id!==fid);
+ save();closeModal();render();toast("Facture supprimée","ok");}
+function vAchats(){
+ const prods=factType==="GPL"?DB.articles.filter(a=>a.type_a===3):DB.articles.filter(a=>a.type_a===1||a.type_a===2);
+ const divers=DB.articles.filter(a=>a.type_a===0||a.type_a===9);
+ const tot=factLines.reduce((s,l)=>s+l.qte*l.pu,0);
+ if(!factForm.fourn)factForm.fourn=DB.meta.fournisseurCarburantId;
+ const firstProd=prods[0];
+ const memQte=firstProd?(DB.meta.qteMemoire[firstProd.article]!==undefined?DB.meta.qteMemoire[firstProd.article]:""):"";
+ return `
+ <div class="card"><h2>⛽ Facture / bon de livraison — Carburant</h2>
+  <div class="row">
+   <div class="field"><label>Type de facture</label><select onchange="setFactType(this.value)">
+    <option value="CE" ${factType==="CE"?"selected":""}>Gasoil / Essence</option>
+    <option value="GPL" ${factType==="GPL"?"selected":""}>GPL</option></select></div>
+   <div class="field"><label>Fournisseur</label><select id="factFourn" onchange="factForm.fourn=this.value">${fournOptions(factForm.fourn)}</select></div>
+   <div class="field"><label>N° facture / bon</label><input id="factNum" value="${esc(factForm.num)}" oninput="factForm.num=this.value" style="width:110px"></div>
+   <div class="field"><label>Date</label><input id="factDate" type="date" value="${factForm.date||todayISO()}" onchange="factForm.date=this.value"></div>
+   <div class="field"><label>Mode</label><select id="factMode" onchange="factForm.mode=this.value;$('factChequeWrap').style.display=(this.value==='C'||this.value==='T')?'flex':'none';$('factBonsInfo').style.display=this.value==='B'?'block':'none'">
+    <option value="E" ${factForm.mode==="E"||factForm.mode==="cash"?"selected":""}>Espèce (Caisse)</option>
+    <option value="C" ${factForm.mode==="C"?"selected":""}>Chèque (Banque)</option>
+    <option value="B" ${factForm.mode==="B"?"selected":""}>Bons Naftal</option>
+    <option value="T" ${factForm.mode==="T"||factForm.mode==="credit"?"selected":""}>À terme (Crédit)</option></select></div>
+   <div class="field" id="factChequeWrap" style="display:${(factForm.mode==='C'||factForm.mode==='T')?'flex':'none'}"><label>N° Chèque</label><input id="factCheque" value="${esc(factForm.cheque||'')}" oninput="factForm.cheque=this.value" style="width:110px"></div>
+  </div>
+  <div id="factBonsInfo" style="display:${factForm.mode==='B'?'block':'none'};margin-top:10px;padding:8px;background:rgba(245,158,11,0.1);border-radius:6px;color:var(--accent);font-size:13px">Solde Bons Naftal disponibles : <b>${fmt(bonsSolde())} DA</b></div>
+  <h3>Lignes de la facture</h3>
+  <div class="row">
+   <div class="field"><label>Produit</label><select id="factProduit" onchange="updateFactQteMemo()">${prods.map(a=>`<option value="${a.art_id}">${esc(a.article)}</option>`).join("")}</select></div>
+   <div class="field"><label>Quantité</label><input id="factQte" type="number" min="1" style="width:100px" value="${memQte}"></div>
+   <button class="btn" onclick="addFactLigne()">＋ Ligne</button>
+  </div>
+  <div class="qmem">${prods.map(a=>{const m=DB.meta.qteMemoire[a.article];return m?`<button type="button" onclick="$('factProduit').value='${a.art_id}';$('factQte').value=${m}">${esc(a.article)} : ${fmt(m)}</button>`:"";}).join("")}</div>
+  ${factLines.length?`<table style="margin-top:10px"><tr><th>Produit</th><th class="num">Qté</th><th class="num">PA</th><th class="num">Montant</th></tr>
+   ${factLines.map((l,i)=>{const a=article(l.artId);return`<tr><td>${a?esc(a.article):"—"}</td><td class="num">${fmt(l.qte)}</td><td class="num">${fmt(l.pu)}</td><td class="num">${fmt(l.qte*l.pu)}</td><td><button class="tag-del" onclick="rmFactLigne(${i})">✕</button></td></tr>`;}).join("")}
+   <tr><td colspan="3"><b>Total</b></td><td class="num"><b>${fmt(tot)} DA</b></td><td></td></tr></table>`:""}
+  <div style="text-align:right;margin-top:10px"><button class="btn accent" onclick="validerFacture()">✔ Enregistrer la facture</button></div>
+ </div>
+ <div class="card"><h2>📦 Achat lubrifiant / gaz butane</h2>
+  <div class="row">
+   <div class="field"><label>Article</label><select id="divArticle">${divers.map(a=>`<option value="${a.art_id}">${esc(a.article)}</option>`).join("")}</select></div>
+   <div class="field"><label>Fournisseur</label><select id="divFourn">${fournOptions()}</select></div>
+   <div class="field"><label>Date</label><input id="divDate" type="date" value="${todayISO()}"></div>
+   <div class="field"><label>Quantité</label><input id="divQte" type="number" min="1" style="width:90px"></div>
+   <div class="field"><label>PA unitaire</label><input id="divPu" type="number" style="width:90px"></div>
+   <div class="field"><label>Mode</label><select id="divMode"><option value="E">Espèce (Caisse)</option><option value="C">Chèque (Banque)</option><option value="B">Bons Naftal</option><option value="T">À terme (Crédit)</option></select></div>
+   <button class="btn accent" onclick="addAchatDivers()">✔ Enregistrer</button>
+  </div>
+ </div>
+ <div class="card"><h2>🧾 Historique des factures & achats</h2>
+  <div class="field" style="margin-bottom:10px;max-width:280px"><label>Recherche (fournisseur, n°, type)</label><input value="${esc(state.factFilter)}" oninput="state.factFilter=this.value;$('factHistWrap').innerHTML=factHistTable()"></div>
+  <div id="factHistWrap">${factHistTable()}</div>
+ </div>`;}
+/* ================= VUE : FOURNISSEURS & BONS ================= */
+function bonsRecus(){return DB.agent_detail.filter(a=>Number(a.type_agent)===3).reduce((s,a)=>s+Number(a.mt_agent||0),0);}
+function bonsUtilises(){return DB.factures.reduce((s,f)=>s+(f.paiements||[]).filter(p=>p.source==="bons").reduce((acc,p)=>acc+Number(p.montant||0),0),0);}
+function bonsSolde(){return bonsRecus()-bonsUtilises();}
+function bonsUtilisesTable(){
+ const list=[];
+ DB.factures.forEach(f=>{(f.paiements||[]).filter(p=>p.source==="bons").forEach(p=>{
+  list.push({date:p.date,montant:Number(p.montant),facture:f.type==="carburant"?"Carburant "+(f.numero||"")+" ("+tierNom(f.fournisseurId)+")":"Divers "+(f.numero||"")+" ("+tierNom(f.fournisseurId)+")"});
+ });});
+ list.sort((a,b)=>b.date.localeCompare(a.date));
+ return `<table><tr><th>Date</th><th class="num">Montant Utilisé (DA)</th><th>Facture Associée</th></tr>
+ ${list.map(l=>`<tr><td>${frDate(l.date)}</td><td class="num">${fmt(l.montant)}</td><td>${esc(l.facture)}</td></tr>`).join("")||`<tr><td colspan="3" class="subtle">Aucun bon utilisé pour le moment.</td></tr>`}</table>`;
+}
+function openRegler(fid){
+ const f=DB.factures.find(x=>x.id===fid);
+ const reste=Number(f.montant)-Number(f.regle);
+ openModal(`<h2>Régler la facture — ${tierNom(f.fournisseurId)}</h2>
+ <p class="subtle" style="margin-bottom:12px">Reste dû : <b style="color:var(--red)">${fmt(reste)} DA</b></p>
+ <div class="row">
+  <div class="field"><label>Montant</label><input id="payMt" type="number" value="${reste}" style="width:130px"></div>
+  <div class="field"><label>Mode</label><select id="paySrc" onchange="document.getElementById('wrapCheque').style.display=this.value==='C'?'flex':'none'; document.getElementById('bonsInfo').style.display=this.value==='B'?'block':'none'"><option value="C">Chèque / Virement (Banque)</option><option value="E">Espèce (Caisse)</option><option value="B">Bons Naftal</option></select></div>
+  <div class="field" id="wrapCheque"><label>N° Chèque</label><input id="payCheque" placeholder="ex: 123456" style="width:130px"></div>
+  <div class="field"><label>Date</label><input id="payDate" type="date" value="${todayISO()}"></div>
+ </div>
+ <div id="bonsInfo" style="display:none;margin-top:10px;padding:8px;background:rgba(245,158,11,0.1);border-radius:6px;color:var(--accent);font-size:13px">Solde Bons Naftal disponibles : <b>${fmt(bonsSolde())} DA</b></div>
+  <div style="text-align:right;margin-top:16px">
+   <button class="btn" onclick="closeModal()">Annuler</button>
+   <button class="btn green" onclick="doRegler('${fid}')">✔ Valider le règlement</button></div>`);}
+function doRegler(fid){
+ const f=DB.factures.find(x=>x.id===fid);
+ const mt=Number($("payMt").value);
+ if(mt<=0){toast("Montant invalide","err");return;}
+ const reste=Number(f.montant)-Number(f.regle);
+ if(mt>reste&&!window._reglForce){confirmModal("Montant supérieur","Montant supérieur au reste dû. Continuer ?","window._reglForce=true;doRegler('"+fid+"')");return;}
+ window._reglForce=false;
+ f.regle=Number(f.regle)+mt;
+ f.paiements=f.paiements||[];
+ const src=$("paySrc").value;
+ const chequeNum=$("payCheque")?$("payCheque").value.trim():"";
+ const p={date:$("payDate").value||todayISO(),montant:mt,source:src==="C"?"banque":(src==="B"?"bons":"caisse")};
+ if(chequeNum)p.cheque=chequeNum;
+ f.paiements.push(p);
+ save();closeModal();render();toast("Règlement de "+fmt(mt)+" DA enregistré","ok");}
+function vFournisseurs(){
+ const fs=DB.tiers.filter(t=>t.type==="F");
+ const totDu=totalDuFournisseurs();
+ return `
+ <div class="grid-stats">
+   <div class="stat red"><div class="v">${fmt(totDu)}</div><div class="l">Total dû aux fournisseurs</div></div>
+  <div class="stat blue"><div class="v">${fmt(banqueSolde())}</div><div class="l">Solde banque</div></div>
+  <div class="stat gold"><div class="v">${fmt(caisseSolde())}</div><div class="l">Solde caisse</div>
+   <div class="stat" style="border-color:var(--accent2); background:rgba(34,211,238,0.05)"><div class="v" style="color:var(--accent2)">${fmt(bonsSolde())}</div><div class="l">Solde Bons Naftal</div></div>
+  </div>
+ </div>
+ <div class="card" style="margin-top:16px"><h2>🚛 Soldes par fournisseur <span class="subtle">— surtout carburant</span></h2>
+  <table><tr><th>Fournisseur</th><th class="num">Total facturé</th><th class="num">Réglé</th><th class="num">Reste dû</th><th>Solde</th></tr>
+  ${fs.map(f=>{const s=soldeFourn(f.tier_id);return`<tr><td>${tierNom(f.tier_id)}</td><td class="num">${fmt(s.du)}</td><td class="num">${fmt(s.paye)}</td>
+   <td class="num" style="color:${s.reste>0?"var(--red)":"var(--green)"}">${fmt(s.reste)}</td>
+   <td>${s.reste>0?'<span class="pill warn">Débiteur</span>':'<span class="pill ok">Soldé</span>'}</td></tr>`;}).join("")}
+  </table>
+ </div>
+ <div class="card"><h2>🎫 Suivi des Bons Naftal (Utilisés)</h2>
+   ${bonsUtilisesTable()}
+  </div>
+  <div class="card"><h2>📄 Factures à suivre</h2>
+  <div class="field" style="margin-bottom:10px;max-width:280px"><label>Recherche</label><input value="${esc(state.factFilter)}" oninput="state.factFilter=this.value;$('factHistWrap').innerHTML=factHistTable()"></div>
+  <div id="factHistWrap">${factHistTable()}</div>
+ </div>`;}
+/* ================= VUE : STOCK & HISTORIQUE ================= */
+function histTable(){
+ const q=state.histFilter.toLowerCase();
+ const sf=state.histSens||""; // filtre sens
+ const ops=DB.mouvements.map(m=>({id:String(m.operation_id),d:m.date_m,tier:m.id_tier,sens:m.sens}));
+ const rows=[];
+ DB.mouv_detail.forEach(md=>{
+  const o=ops.find(x=>x.id===String(md.id_operation));if(!o)return;
+  if(sf&&o.sens!==sf)return;
+  const a=article(md.id_art);if(!a)return;
+  const s=(a.article+" "+tierNom(o.tier)+" "+o.d).toLowerCase();
+  if(!s.includes(q))return;
+  rows.push({d:o.d,sens:o.sens,tier:o.tier,art:a,q:Number(md.quantite),pu:Number(md.prix_u)});});
+ rows.sort((a,b)=>b.d.localeCompare(a.d));
+ return`<table><tr><th>Date</th><th>Sens</th><th>Tiers</th><th>Article</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Montant</th></tr>
+ ${rows.slice(0,300).map(r=>`<tr><td>${frDate(r.d)}</td>
+  <td>${r.sens==="E"?'<span class="pill ok">Achat</span>':'<span class="pill mid">Vente</span>'}</td>
+  <td>${tierNom(r.tier)}</td><td>${esc(r.art.article)}</td><td class="num">${fmt(r.q)}</td>
+  <td class="num">${fmt(r.pu)}</td><td class="num">${fmt(r.q*r.pu)}</td></tr>`).join("")||`<tr><td colspan="7" class="subtle">Aucun mouvement.</td></tr>`}</table>`;}
+function vStock(){
+ const val=DB.articles.filter(a=>[1,2,3].includes(Number(a.type_a))).reduce((s,a)=>s+calcStockCarburant(a.type_a)*Number(a.pa),0)
+  +DB.articles.filter(a=>![1,2,3].includes(Number(a.type_a))).reduce((s,a)=>s+Number(a.qs)*Number(a.pa),0);
+ return `
+ <div class="card"><h2>📦 Stocks courants</h2>
+  <div class="field" style="margin-bottom:10px;max-width:280px"><label>Recherche article</label><input value="${esc(state.artFilter)}" oninput="state.artFilter=this.value;$('stockWrap').innerHTML=stockTable()"></div>
+  <div id="stockWrap">${stockTable()}</div>
+  <p class="subtle" style="margin-top:8px">Valeur totale estimée (au PA) : <b>${fmt(val)} DA</b>. Stock carburant = achats − litres vendus (index). Double-clic pour modifier.</p>
+ </div>
+ <div class="card"><h2>🧾 Historique des mouvements <span class="subtle">(ventes & achats)</span></h2>
+  <div class="row" style="margin-bottom:10px;gap:14px;flex-wrap:wrap">
+   <div class="field" style="min-width:220px"><label>Recherche (article, tiers, date aaaa-mm-jj)</label><input value="${esc(state.histFilter)}" oninput="state.histFilter=this.value;$('histWrap').innerHTML=histTable()"></div>
+   <div class="field"><label>Filtre</label>
+    <div class="tabs" style="margin:0">
+     <button class="${!state.histSens?'active':''}" onclick="state.histSens='';$('histWrap').innerHTML=histTable()">Tout</button>
+     <button class="${state.histSens==='E'?'active':''}" onclick="state.histSens='E';$('histWrap').innerHTML=histTable()">Achats</button>
+     <button class="${state.histSens==='S'?'active':''}" onclick="state.histSens='S';$('histWrap').innerHTML=histTable()">Ventes</button>
+    </div>
+   </div>
+  </div>
+  <div id="histWrap">${histTable()}</div>
+ </div>`;}
+function stockTable(){
+ const arts=DB.articles.filter(a=>state.artFilter===""||a.article.toLowerCase().includes(state.artFilter.toLowerCase()));
+ return`<table><tr><th>Article</th><th>Catégorie</th><th>Type</th><th class="num">Stock réel</th><th class="num">PA</th><th class="num">PV</th><th>État</th></tr>
+ ${arts.map(a=>{
+  const isCarb=[1,2,3].includes(Number(a.type_a));
+  const qs=isCarb?calcStockCarburant(a.type_a):Number(a.qs);
+  const badge=isCarb?'<span class="pill neutral" title="Calculé : achats − ventes index">Calculé</span>':'';
+  return`<tr ondblclick="openArticleModal(${a.art_id})" style="cursor:pointer" title="Double-clic pour modifier"><td>${esc(a.article)}</td><td>${catName(a.id_cat)}</td>
+  <td>${{0:"Lubrifiant",9:"Gaz butane",1:"Gasoil",2:"Essence",3:"GPL"}[a.type_a]||"—"}</td>
+  <td class="num">${fmt(qs)} ${esc(a.unite)} ${badge}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
+  <td>${Number(a.actif)?'<span class="pill ok">Actif</span>':'<span class="pill neutral">Inactif</span>'}</td></tr>`;
+ }).join("")}</table>`;}
+/* ================= VUE : TIERS ================= */
+function tierTable(){
+ const q=state.tierFilter.toLowerCase();
+ const ts=DB.tiers.filter(t=>t.type===state.tierTab&&(t.nom+" "+(t.prenom||"")).toLowerCase().includes(q));
+ const isP=state.tierTab==="P";
+ return`<table><tr><th>Nom</th><th>Prénom</th>${isP?'<th>Ordre (rotation)</th><th class="num">PU journée</th><th>Statut</th>':""}</tr>
+ ${ts.map(t=>`<tr ondblclick="openTierModal('${state.tierTab}',${t.tier_id})" style="cursor:pointer" title="Double-clic pour modifier"><td>${esc(t.nom)}</td><td>${esc(t.prenom||"")}</td>
+  ${isP?`<td><b>${t.ord}</b></td><td class="num">${fmt(t.pu)}</td><td>${Number(t.stat)?'<span class="pill ok">Actif</span>':'<span class="pill neutral">Inactif</span>'}</td>`:""}
+  <td style="white-space:nowrap"><button class="btn sm" onclick="event.stopPropagation();openTierModal('${state.tierTab}',${t.tier_id})">✏️</button>
+  <button class="btn sm red" onclick="event.stopPropagation();delTier(${t.tier_id})">🗑</button></td></tr>`).join("")||`<tr><td colspan="7" class="subtle">Aucun tiers.</td></tr>`}</table>`;}
+function vTiers(){
+ return `
+ <div class="card"><h2>👷 Tiers</h2>
+  <div class="tabs" style="max-width:420px">
+   <button class="${state.tierTab==="P"?"active":""}" onclick="state.tierTab='P';render()">Pompistes</button>
+   <button class="${state.tierTab==="F"?"active":""}" onclick="state.tierTab='F';render()">Fournisseurs</button>
+   <button class="${state.tierTab==="C"?"active":""}" onclick="state.tierTab='C';render()">Clients</button>
+  </div>
+  <div class="row between" style="margin-bottom:10px">
+   <div class="field" style="min-width:220px"><label>Recherche</label><input value="${esc(state.tierFilter)}" oninput="state.tierFilter=this.value;$('tierWrap').innerHTML=tierTable()"></div>
+   <button class="btn accent" onclick="openTierModal('${state.tierTab}')">＋ Ajouter</button>
+  </div>
+  <div id="tierWrap">${tierTable()}</div>
+  <p class="subtle" style="margin-top:8px">Rotation quotidienne : ord <b>1→3→5→1</b> (groupe Gasoil/Essence) et <b>2→4→6→2</b> (groupe GPL), automatique à la création d'une journée. Double-clic sur une ligne pour modifier.</p>
+ </div>`;}
+function openTierModal(type,id){
+ const t=id?tier(id):{nom:"",prenom:"",ord:1,pu:0,stat:1};
+ openModal(`<h2>${id?"Modifier":"Ajouter"} — ${type==="P"?"Pompiste":type==="F"?"Fournisseur":"Client"}</h2>
+ <input type="hidden" id="tType" value="${type}"><input type="hidden" id="tId" value="${id||""}">
+ <div class="row">
+  <div class="field"><label>Nom *</label><input id="tNom" value="${esc(t.nom)}"></div>
+  <div class="field"><label>Prénom</label><input id="tPrenom" value="${esc(t.prenom||"")}"></div>
+  ${type==="P"?`<div class="field"><label>Ord (1-6)</label><input id="tOrd" type="number" min="1" max="6" value="${t.ord}" style="width:80px"></div>
+  <div class="field"><label>PU journée</label><input id="tPu" type="number" value="${t.pu}" style="width:100px"></div>
+  <div class="field"><label>Statut</label><select id="tStat"><option value="1" ${Number(t.stat)?"selected":""}>Actif</option><option value="0" ${!Number(t.stat)?"selected":""}>Inactif</option></select></div>`:""}
+ </div>
+ <div style="text-align:right;margin-top:16px">
+  <button class="btn" onclick="closeModal()">Annuler</button>
+  <button class="btn accent" onclick="saveTier()">✔ Enregistrer</button></div>`);}
+function saveTier(){
+ const type=$("tType").value,id=$("tId").value;
+ const nom=$("tNom").value.trim();
+ if(!nom){toast("Le nom est obligatoire","err");return;}
+ const data={nom:nom,prenom:$("tPrenom").value.trim()};
+ if(type==="P"){data.ord=Number($("tOrd").value)||1;data.pu=Number($("tPu").value)||0;data.stat=Number($("tStat").value);}
+ if(id){const t=tier(id);Object.assign(t,data);toast("Tiers modifié","ok");}
+ else{const nid=DB.tiers.reduce((s,x)=>Math.max(s,Number(x.tier_id)||0),0)+1;
+  DB.tiers.push(Object.assign({tier_id:nid,type:type,aff:1,stat:1,pos:"",entre:"",sortie:"",pu:0,ord:0},data));
+  toast("Tiers ajouté","ok");}
+ save();closeModal();render();}
+function delTier(id){
+ if(DB.indexs.some(r=>String(r.index_agent)===String(id))){toast("Impossible : pompiste déjà planifié sur des journées","err");return;}
+ if(DB.mouvements.some(m=>String(m.id_tier)===String(id))){toast("Impossible : tiers utilisé dans des mouvements","err");return;}
+ if(DB.factures.some(f=>String(f.fournisseurId)===String(id))){toast("Impossible : fournisseur lié à des factures","err");return;}
+ confirmModal("Supprimer ce tiers ?","Cette opération est irréversible. Continuer ?","doDelTier('"+id+"')");}
+function doDelTier(id){
+ DB.tiers=DB.tiers.filter(t=>String(t.tier_id)!==String(id));
+ save();render();toast("Tiers supprimé","ok");}
+/* ================= VUE : ARTICLES ================= */
+function artTable(){
+ const q=state.artFilter.toLowerCase();
+ const arts=DB.articles.filter(a=>a.article.toLowerCase().includes(q));
+ return`<table><tr><th>Article</th><th>Catégorie</th><th>Type</th><th>Unité</th><th class="num">Magasin</th><th class="num">Vitrine</th><th class="num">PA</th><th class="num">PV</th><th>Actif</th></tr>
+ ${arts.map(a=>`<tr ondblclick="openArticleModal(${a.art_id})" style="cursor:pointer" title="Double-clic pour gérer"><td>${esc(a.article)}</td><td>${catName(a.id_cat)}</td>
+  <td>${{0:"Lubrifiant",9:"Gaz butane",1:"Gasoil",2:"Essence",3:"GPL"}[a.type_a]||"—"}</td>
+  <td>${esc(a.unite)}</td><td class="num">${fmt(a.qs)}</td><td class="num">${Number(a.type_a)===0?fmt(a.qs_vitrine||0):"—"}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
+  <td><button class="btn sm" onclick="event.stopPropagation();toggleArt(${a.art_id})">${Number(a.actif)?"✅":"⛔"}</button></td></tr>`).join("")}</table>`;}
+function vArticles(){
+ return `
+ <div class="card"><h2>🛢️ Articles</h2>
+  <div class="row between" style="margin-bottom:10px">
+   <div class="field" style="min-width:220px"><label>Recherche</label><input value="${esc(state.artFilter)}" oninput="state.artFilter=this.value;$('artWrap').innerHTML=artTable()"></div>
+   <button class="btn accent" onclick="openArticleModal()">＋ Ajouter un article</button>
+  </div>
+  <div id="artWrap">${artTable()}</div>
+  <p class="subtle" style="margin-top:8px">Double-clic sur une ligne pour modifier l'article.</p>
+ </div>`;}
+function openArticleModal(id){
+ const a=id?article(id):{article:"",id_cat:DB.categories[0].cat_id,unite:"unité",type_a:0,coeff:1,qs:0,qs_vitrine:0,pa:0,pv:0,actif:1};
+ openModal(`<h2>${id?"Modifier":"Ajouter"} un article</h2>
+ <input type="hidden" id="aId" value="${id||""}">
+ <div class="row">
+  <div class="field" style="flex:1"><label>Désignation *</label><input id="aNom" value="${esc(a.article)}"></div>
+  <div class="field"><label>Catégorie</label><select id="aCat">${DB.categories.map(c=>`<option value="${c.cat_id}" ${String(c.cat_id)===String(a.id_cat)?"selected":""}>${esc(c.cat)}</option>`).join("")}</select></div>
+  <div class="field"><label>Type</label><select id="aType" onchange="document.getElementById('qsVitrineRow').style.display=this.value==='0'?'':'none'">
+   ${[[0,"Lubrifiant"],[9,"Gaz butane"],[1,"Gasoil"],[2,"Essence"],[3,"GPL"]].map(t=>`<option value="${t[0]}" ${Number(a.type_a)===t[0]?"selected":""}>${t[1]}</option>`).join("")}</select></div>
+  <div class="field"><label>Unité</label><input id="aUnite" value="${esc(a.unite)}" style="width:80px"></div>
+ </div>
+ <div class="row" style="margin-top:10px">
+  <div class="field"><label>Magasin (qs)</label><input id="aQs" type="number" value="${a.qs}" style="width:90px"></div>
+  <div class="field" id="qsVitrineRow" style="display:${Number(a.type_a)===0?"":"none"}"><label>Vitrine</label><input id="aQsVitrine" type="number" value="${a.qs_vitrine||0}" style="width:90px"></div>
+  <div class="field"><label>PA</label><input id="aPa" type="number" value="${a.pa}" style="width:90px"></div>
+  <div class="field"><label>PV</label><input id="aPv" type="number" value="${a.pv}" style="width:90px"></div>
+  <div class="field"><label>Coeff</label><input id="aCoeff" type="number" value="${a.coeff}" style="width:70px"></div>
+ </div>
+ ${id&&Number(a.type_a)===0?`<div style="background:rgba(34,211,238,0.07);border:1px solid var(--accent2);border-radius:10px;padding:14px;margin-top:14px">
+  <h3 style="margin:0 0 6px;color:var(--accent2)">📥 Alimenter la vitrine</h3>
+  <p class="subtle" id="vitrineTextInfo" style="margin:0 0 10px">Magasin disponible : <b>${fmt(a.qs)}</b> — Vitrine actuelle : <b>${fmt(a.qs_vitrine||0)}</b></p>
+  <div class="row" style="align-items:flex-end;gap:12px">
+   <div class="field" style="margin:0"><label>Qté à transférer</label><input type="number" id="qteAlim" style="width:110px" min="0"></div>
+   <button class="btn" style="color:var(--accent2);border-color:var(--accent2)" onclick="doAlimVitrine(${id})">Transférer →</button>
+  </div>
+ </div>`:""}
+ <div style="display:flex;justify-content:space-between;margin-top:18px">
+  <div>${id?`<button class="btn red" onclick="delArticle(${id})">🗑 Supprimer</button>`:""}</div>
+  <div style="display:flex;gap:10px">
+   <button class="btn" onclick="closeModal()">Annuler</button>
+   <button class="btn accent" onclick="saveArticle()">✔ Enregistrer</button>
+  </div>
+ </div>`);}
+function saveArticle(){
+ const id=$("aId").value;
+ const nom=$("aNom").value.trim();
+ if(!nom){toast("Désignation obligatoire","err");return;}
+ const qsVit=$('aQsVitrine')?Number($('aQsVitrine').value)||0:0;
+ const data={article:nom,id_cat:Number($("aCat").value),type_a:Number($("aType").value),unite:$("aUnite").value||"unité",
+  qs:Number($("aQs").value)||0,qs_vitrine:qsVit,pa:Number($("aPa").value)||0,pv:Number($("aPv").value)||0,coeff:Number($("aCoeff").value)||1};
+ if(id){Object.assign(article(id),data);toast("Article modifié","ok");}
+ else{const nid=DB.articles.reduce((s,x)=>Math.max(s,Number(x.art_id)||0),0)+1;
+  DB.articles.push(Object.assign({art_id:nid,actif:1},data));toast("Article ajouté","ok");}
+ save();closeModal();render();}
+function delArticle(id){
+ if(DB.mouv_detail.some(m=>String(m.id_art)===String(id))){toast("Impossible : article utilisé dans des mouvements","err");return;}
+ if(DB.factures.some(f=>(f.lignes||[]).some(l=>String(l.artId)===String(id)))){toast("Impossible : article utilisé dans une facture","err");return;}
+ confirmModal("Supprimer cet article ?","Cette opération est irréversible. Continuer ?","doDelArticle("+id+")");}
+function doDelArticle(id){
+ DB.articles=DB.articles.filter(a=>String(a.art_id)!==String(id));
+ save();render();toast("Article supprimé","ok");}
+function doAlimVitrine(id){
+ const n=Number($('qteAlim').value);
+ if(!n||n<=0){toast("Quantité invalide","err");return;}
+ const a=article(id);
+ if(n>Number(a.qs)){
+  confirmModal("Stock insuffisant","Le magasin n'a que "+fmt(a.qs)+" unités. Transférer quand même ?","execAlimVitrine("+id+","+n+")");return;}
+ execAlimVitrine(id,n);}
+function execAlimVitrine(id,n){
+ const a=article(id);
+ a.qs=(Number(a.qs)||0)-n;
+ a.qs_vitrine=(Number(a.qs_vitrine)||0)+n;
+ save();render();
+ if($('aQs')) $('aQs').value=a.qs;
+ if($('aQsVitrine')) $('aQsVitrine').value=a.qs_vitrine;
+ if($('qteAlim')) $('qteAlim').value="";
+ if($('vitrineTextInfo')) $('vitrineTextInfo').innerHTML=`Magasin disponible : <b>${fmt(a.qs)}</b> — Vitrine actuelle : <b>${fmt(a.qs_vitrine||0)}</b>`;
+ toast(n+" unités transférées à la vitrine","ok");}
+function toggleArt(id){const a=article(id);a.actif=Number(a.actif)?0:1;save();render();}
+/* ================= VUE : CATÉGORIES ================= */
+function vCategories(){
+ return `
+ <div class="card"><h2>🏷️ Catégories</h2>
+  <table><tr><th>ID</th><th>Catégorie</th><th class="num">Articles</th></tr>
+  ${DB.categories.map(c=>`<tr><td>${c.cat_id}</td><td>${esc(c.cat)}</td>
+   <td class="num">${DB.articles.filter(a=>String(a.id_cat)===String(c.cat_id)).length}</td>
+   <td><button class="btn sm red" onclick="delCategorie(${c.cat_id})">🗑</button></td></tr>`).join("")}</table>
+  <div class="row" style="margin-top:12px">
+   <div class="field"><label>Nouvelle catégorie</label><input id="newCat" style="width:180px"></div>
+   <button class="btn accent" onclick="addCategorie()">＋ Ajouter</button>
+  </div>
+ </div>`;}
+function addCategorie(){
+ const n=$("newCat").value.trim();
+ if(!n){toast("Nom obligatoire","err");return;}
+ const nid=DB.categories.reduce((s,c)=>Math.max(s,Number(c.cat_id)||0),0)+1;
+ DB.categories.push({cat_id:nid,cat:n});
+ save();render();toast("Catégorie ajoutée","ok");}
+function delCategorie(id){
+ if(DB.articles.some(a=>String(a.id_cat)===String(id))){toast("Impossible : des articles utilisent cette catégorie","err");return;}
+ confirmModal("Supprimer cette catégorie ?","Cette opération est irréversible. Continuer ?","doDelCategorie('"+id+"')");}
+function doDelCategorie(id){
+ DB.categories=DB.categories.filter(c=>String(c.cat_id)!==String(id));
+ save();render();toast("Catégorie supprimée","ok");}
+/* ================= VUE : RÉFÉRENTIEL ================= */
+function vReferentiel(){
+ return `
+ <div class="grid2">
+  <div class="card"><h2>⚙️ Types de règlements (table agent)</h2>
+   <table><tr><th>Type</th><th>Libellé</th><th>Actif</th></tr>
+   ${DB.agent.map(a=>`<tr><td class="num">${a.agent_type}</td>
+    <td><input data-agent="${a.agent_id}" value="${esc(a.agent_libelle)}" style="width:160px"></td>
+    <td><select data-actif="${a.agent_id}">
+     <option value="Oui" ${(a.actif==="Oui"||a.actif===1||a.actif===true)?"selected":""}>Oui</option>
+     <option value="Non" ${(a.actif==="Non"||a.actif===0||a.actif===false)?"selected":""}>Non</option>
+    </select></td>
+   </tr>`).join("")}</table>
+   <p class="subtle" style="margin:8px 0">Actif = Oui : affiché dans la liste de sélection des règlements. Actif = Non : usage interne uniquement (Butane, Lubrifiants).</p>
+   <button class="btn accent" onclick="saveAgentLabels()">✔ Enregistrer les libellés & statuts</button>
+  </div>
+  <div class="card"><h2>🔧 Paramètres</h2>
+   <div class="row">
+    <div class="field"><label>Tiers « Clients divers » (ventes sans pompiste)</label>
+     <select id="metaCD">${DB.tiers.filter(t=>t.type==="C").map(t=>`<option value="${t.tier_id}" ${String(t.tier_id)===String(metaCD())?"selected":""}>${tierNom(t.tier_id)}</option>`).join("")}</select></div>
+   </div>
+   <div class="row" style="margin-top:10px">
+    <div class="field"><label>Fournisseur carburant par défaut</label>
+     <select id="metaFournCarb">${DB.tiers.filter(t=>t.type==="F").map(t=>`<option value="${t.tier_id}" ${String(t.tier_id)===String(DB.meta.fournisseurCarburantId)?"selected":""}>${tierNom(t.tier_id)}</option>`).join("")}</select></div>
+   </div>
+   <div class="row" style="margin-top:10px">
+    <div class="field"><label>Solde caisse initial</label><input id="metaCaisse" type="number" value="${DB.meta.caisseInit}" style="width:130px"></div>
+    <div class="field"><label>Solde banque initial</label><input id="metaBanque" type="number" value="${DB.meta.banqueInit}" style="width:130px"></div>
+   </div>
+   <div class="row" style="margin-top:10px">
+    <div class="field"><label>Stock initial Gasoil</label><input id="metaStockG" type="number" value="${(DB.meta.stockInitial&&DB.meta.stockInitial[1])||0}" style="width:130px"></div>
+    <div class="field"><label>Stock initial Essence</label><input id="metaStockE" type="number" value="${(DB.meta.stockInitial&&DB.meta.stockInitial[2])||0}" style="width:130px"></div>
+    <div class="field"><label>Stock initial GPL</label><input id="metaStockL" type="number" value="${(DB.meta.stockInitial&&DB.meta.stockInitial[3])||0}" style="width:130px"></div>
+   </div>
+   <div style="margin-top:12px"><button class="btn accent" onclick="saveMeta()">✔ Enregistrer</button></div>
+   <h3>Rotation des pompistes</h3>
+   <p class="subtle">Groupe Gasoil/Essence : ordre 1→3→5→1 · Groupe GPL : 2→4→6→2. Géré automatiquement à la création de chaque journée (code VBA <i>NouvelAgent</i>).</p>
+  </div>
+ </div>`;}
+function saveAgentLabels(){
+ document.querySelectorAll("[data-agent]").forEach(inp=>{
+  const a=DB.agent.find(x=>String(x.agent_id)===inp.dataset.agent);
+  if(a)a.agent_libelle=inp.value;});
+ document.querySelectorAll("[data-actif]").forEach(sel=>{
+  const a=DB.agent.find(x=>String(x.agent_id)===sel.dataset.actif);
+  if(a)a.actif=sel.value;});
+ save();toast("Libellés et statuts enregistrés","ok");}
+function saveMeta(){
+ DB.meta.clientsDiversId=Number($("metaCD").value);
+ DB.meta.fournisseurCarburantId=Number($("metaFournCarb").value);
+ DB.meta.caisseInit=Number($("metaCaisse").value)||0;
+ DB.meta.banqueInit=Number($("metaBanque").value)||0;
+ DB.meta.stockInitial = DB.meta.stockInitial || {};
+ DB.meta.stockInitial[1] = Number($("metaStockG")?$("metaStockG").value:0)||0;
+ DB.meta.stockInitial[2] = Number($("metaStockE")?$("metaStockE").value:0)||0;
+ DB.meta.stockInitial[3] = Number($("metaStockL")?$("metaStockL").value:0)||0;
+ if(!factForm.fourn||factForm.fourn===factForm._prevDefault)factForm.fourn=DB.meta.fournisseurCarburantId;
+ factForm._prevDefault=DB.meta.fournisseurCarburantId;
+ save();toast("Paramètres enregistrés","ok");}
+/* ================= VUE : TRÉSORERIE ================= */
+function vTresorerie(){
+ const sc=tresoSolde("caisse"),sb=tresoSolde("banque");
+ const tab=sel.tresoTab||"caisse";
+ const ledger=getLedger(tab).slice().reverse();
+ function opTable(ops){
+  if(!ops.length)return`<p class="subtle" style="margin-top:10px">Aucun historique disponible.</p>`;
+  return`<table style="margin-top:10px;font-size:12.5px">
+  <tr><th>Date</th><th>Sens</th><th>Source</th><th>Libellé / Obs.</th><th class="num">Montant</th><th class="num">Solde progressif</th></tr>
+  ${ops.map(t=>`<tr ${t.source==="treso"?`ondblclick="openEditTresoOp('${t.id}')" style="cursor:pointer" title="Double-clic pour modifier"`:""}>
+   <td>${frDate(t.date)}</td>
+   <td>${t.sens==="E"?'<span class="pill ok">Débit (+)</span>':'<span class="pill warn">Crédit (-)</span>'}</td>
+   <td><span class="pill neutral">${t.source}</span></td>
+   <td><b>${esc(t.libelle)}</b><div class="subtle">${esc(t.obs||"—")}</div></td>
+   <td class="num" style="color:${t.sens==="E"?"var(--green)":"var(--red)"};font-weight:700">${t.sens==="E"?"+":"-"} ${fmt(t.montant)} DA</td>
+   <td class="num" style="font-weight:700">${fmt(t.solde)} DA</td>
+  </tr>`).join("")}
+  </table>`;}
+ return `
+ <div class="grid-stats">
+  <div class="stat gold"><div class="v">${fmt(sc)}</div><div class="l">💵 Solde Caisse</div></div>
+  <div class="stat blue"><div class="v">${fmt(sb)}</div><div class="l">🏦 Solde Banque</div></div>
+  <div class="stat green"><div class="v">${fmt(sc+sb)}</div><div class="l">Total trésorerie</div></div>
+ </div>
+ <div class="card" style="margin-top:16px">
+  <h2>⇄ Virement entre comptes</h2>
+  <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
+   <div class="field"><label>De</label><select id="virDe"><option value="caisse">💵 Caisse</option><option value="banque">🏦 Banque</option></select></div>
+   <div class="field"><label>Vers</label><select id="virVers"><option value="banque">🏦 Banque</option><option value="caisse">💵 Caisse</option></select></div>
+   <div class="field"><label>Montant (DA)</label><input id="virMt" type="number" min="1" style="width:130px" placeholder="0"></div>
+   <div class="field"><label>Date</label><input id="virDate" type="date" value="${todayISO()}"></div>
+   <div class="field"><label>Obs.</label><input id="virObs" style="width:130px" placeholder="Optionnel"></div>
+   <button class="btn blue" onclick="virementTreso($('virDe').value,$('virVers').value,Number($('virMt').value),$('virDate').value||todayISO(),$('virObs').value)">⇄ Effectuer le virement</button>
+  </div>
+ </div>
  <div class="card">
-  <h2 style="margin-bottom:10px">📋 Suivi règlements carburant — En attente banque</h2>
-  ${facNonBanque.length?`<div style="overflow-x:auto"><table style="min-width:620px">
-   <thead><tr style="background:rgba(255,255,255,0.04)"><th style="text-align:left;padding:8px">Facture</th><th style="text-align:left;padding:8px">Fournisseur</th><th style="text-align:left;padding:8px">Date</th><th class="num" style="padding:8px">Qté G/E</th>
-      <th class="num" style="padding:8px">Qté GPL</th><th class="num" style="padding:8px">Montant</th><th class="num" style="padding:8px">Réglé</th><th style="text-align:center;padding:8px">Mode</th><th style="text-align:left;padding:8px">N° Chèque</th><th class="num" style="padding:8px;color:var(--red)">Reste dû</th></tr></thead>
-   <tbody>${facNonBanque.map(f=>{
-    let qteGE=0,qteGPL=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2)qteGE+=Number(l.qte);else if(art===3)qteGPL+=Number(l.qte);});
-    const regleAALaDate=(f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant),0);
-    const reste=Number(f.montant)-regleAALaDate;
-    const modes=(f.paiements||[]).filter(p=>p.date<=d).map(p=>{
-     if(p.source==="bons")return`<span style="background:rgba(251,191,36,0.15);color:#fbbf24;padding:2px 6px;border-radius:4px;font-size:12px">Bons Naftal</span>`;
-     if(p.source==="banque")return`<span style="background:rgba(99,179,237,0.15);color:#63b3ed;padding:2px 6px;border-radius:4px;font-size:12px">Banque</span>`;
-     return`<span style="background:rgba(72,187,120,0.15);color:#48bb78;padding:2px 6px;border-radius:4px;font-size:12px">Caisse</span>`;}).join(" ");
-    const cheques=(f.paiements||[]).filter(p=>p.date<=d&&p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
-    return`<tr><td style="padding:6px 4px">${esc(f.numero||"—")}</td><td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td><td style="padding:6px 4px">${frDate(f.date)}</td><td class="num" style="padding:6px 4px">${fmtQ(qteGE)}</td>
-       <td class="num" style="padding:6px 4px">${fmtQ(qteGPL)}</td><td class="num" style="padding:6px 4px">${fmt(f.montant)}</td><td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td><td style="text-align:center;padding:6px 4px">${modes||"—"}</td><td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td><td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td></tr>`;}).join("")}
-   </tbody></table></div>`:`<p class="subtle">Aucun règlement en attente.</p>`}
+  <div class="tabs">
+   <button class="${tab==="caisse"?"active":""}" onclick="sel.tresoTab='caisse';render()">💵 Caisse</button>
+   <button class="${tab==="banque"?"active":""}" onclick="sel.tresoTab='banque';render()">🏦 Banque</button>
+  </div>
+  <h2 style="margin-top:0">${tab==="caisse"?"💵 Caisse":"🏦 Banque"} — Solde : <span style="color:${tab==="caisse"?"var(--accent)":"var(--accent2)"};">${fmt(tab==="caisse"?sc:sb)} DA</span></h2>
+  <h3>Ajouter une opération</h3>
+  <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
+   <div class="field"><label>Sens</label><select id="tresoSens"><option value="S">－ Décaissement (charge)</option><option value="E">＋ Encaissement</option></select></div>
+   <div class="field" style="flex:1;min-width:160px"><label>Libellé *</label><input id="tresoLib" placeholder="Ex: Loyer, Salaire, Recette…"></div>
+   <div class="field"><label>Montant (DA) *</label><input id="tresoMt" type="number" min="1" style="width:130px"></div>
+   <div class="field"><label>Date</label><input id="tresoDate" type="date" value="${todayISO()}"></div>
+   <div class="field"><label>Obs.</label><input id="tresoObs" style="width:120px" placeholder="Optionnel"></div>
+   <button class="btn ${tab==="caisse"?"accent":"blue"}" onclick="
+    if(addTresoOp('${tab}',$('tresoSens').value,$('tresoLib').value,Number($('tresoMt').value),$('tresoObs').value,$('tresoDate').value||todayISO()))render();
+   ">＋ Ajouter</button>
+  </div>
+  <h3 style="margin-top:14px">Grand Livre (Historique complet)</h3>
+  ${opTable(ledger)}
+  <p class="subtle" style="margin-top:12px">Historique unifié incluant versements agents, factures et opérations directes.</p>
  </div>`;}
 
-loadAndRender();
-setInterval(loadAndRender,60000);
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)loadAndRender();});
+/* ================= VUE : PAIE ================= */
+const RUBRIQUES={1:"Salaire",2:"Prime",3:"Prêt",4:"Prêt_Rembour",5:"Avance",6:"Avance_Rembour",7:"Manque",9:"Net"};
+/* sens : gains +1 / retenues -1 (4 Prêt_Rembour et 5 Avance = -1 ; 7 Manque = retenue) */
+const RUB_SENS={1:1,2:1,3:1,4:-1,5:-1,6:1,7:-1,9:1};
+const TARIF_GE=3000,TARIF_GPL=2400; /* journaliers pompistes : Gasoil/Essence et GPL */
+function perDates(annee,mois){const y=2000+Number(annee),m=Number(mois);const dim=new Date(y,m,0).getDate();const out=[];for(let d=1;d<=dim;d++)out.push(y+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0"));return out;}
+function nextPeriod(annee,mois){let a=Number(annee),m=Number(mois)+1;if(m>12){m=1;a=(a+1)%100;}return{annee:String(a).padStart(2,"0"),mois:String(m).padStart(2,"0")};}
+function personnelList(){return DB.tiers.filter(t=>t.type==="P"&&Number(t.aff)===1&&(t.pos===""||t.pos===null||t.pos===undefined||Number(t.pos)===1));}
+function nextPaieCle(){return DB.paie.reduce((s,l)=>Math.max(s,Number(l.cle)||0),0)+1;}
+function paieLines(annee,mois,tierId){return DB.paie.filter(l=>String(l.annee)===String(annee)&&String(l.mois)===String(mois)&&(!tierId||String(l.idp_tier)===String(tierId)));}
+function netPaie(annee,mois,tid){return paieLines(annee,mois,tid).filter(l=>Number(l.rubrique)!==9).reduce((s,l)=>s+(RUB_SENS[l.rubrique]||1)*Number(l.prix),0);}
+function isPompiste(t){const o=Number(t.ord)||0;return o>=1&&o<=6;}
+/* Nombre de jours travaillés par un pompiste sur la période, issu de la table indexs */
+function pompisteDays(tid,annee,mois){
+ const geCodes=["P01","P02","P03","P04","P05","P06","P07","P08"],gplCodes=["P09","P10","P11","P12"];
+ let dGE=0,dGPL=0;
+ perDates(annee,mois).forEach(d=>{
+  const rows=DB.indexs.filter(r=>r.index_date===d&&String(r.index_agent)===String(tid));
+  if(rows.some(r=>geCodes.includes(r.index_name)))dGE++;
+  if(rows.some(r=>gplCodes.includes(r.index_name)))dGPL++;});
+ return{ge:dGE,gpl:dGPL};}
+/* Manque = différence positive (ventes - règlements) sur les journées de la période */
+function manquePeriode(tid,annee,mois){
+ let total=0,dates=[];
+ perDates(annee,mois).forEach(d=>{
+  const t=totauxCaisse(tid,d);
+  if(t.diff!==null&&Number(t.diff)>0){total+=Number(t.diff);dates.push(d);}});
+ return{total:total,dates:dates};}
+/* ---- Actualiser : recalcule salaires + récupère avances (agent_detail type 99) et manques ---- */
+function actualiserPaie(){
+ const a=sel.paieAnnee,m=sel.paieMois;
+ const dates=perDates(a,m),first=dates[0],last=dates[dates.length-1];
+ const dim=dates.length;let seq=nextPaieCle();
+ personnelList().forEach(t=>{
+  /* remplace les lignes auto (1 Salaire, 5 Avance, 7 Manque) ; primes/prêts manuels conservés */
+  DB.paie=DB.paie.filter(l=>!(String(l.annee)===String(a)&&String(l.mois)===String(m)&&String(l.idp_tier)===String(t.tier_id)&&[1,5,7].includes(Number(l.rubrique))));
+  if(isPompiste(t)){
+   const d=pompisteDays(t.tier_id,a,m);
+   if(d.ge>0)DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:1,sens:1,nj:d.ge,prix:d.ge*TARIF_GE});
+   if(d.gpl>0)DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:1,sens:1,nj:d.gpl,prix:d.gpl*TARIF_GPL});
+   if(d.ge===0&&d.gpl===0)DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:1,sens:1,nj:0,prix:0});
+  }else{
+   DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:1,sens:1,nj:dim,prix:Number(t.pu)||0});}
+  DB.agent_detail.filter(x=>String(x.id_agent)===String(t.tier_id)&&Number(x.type_agent)===99&&x.date_agent>=first&&x.date_agent<=last)
+   .forEach(x=>{DB.paie.push({cle:seq++,annee:a,mois:m,date_p:x.date_agent,idp_tier:t.tier_id,rubrique:5,sens:-1,nj:0,prix:Number(x.mt_agent)||0});});
+  const mk=manquePeriode(t.tier_id,a,m);
+  if(mk.total>0)DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:7,sens:-1,nj:mk.dates.length,prix:mk.total});
+ });
+ save();render();toast("Période "+m+"/"+a+" actualisée (salaires, avances, manques)","ok");}
+/* ---- Valider la période : lignes Net de la période + création des lignes de la période suivante ---- */
+function validerPeriode(){
+ const cur=sel.paieMois+"/"+sel.paieAnnee;
+ const np=nextPeriod(sel.paieAnnee,sel.paieMois);
+ confirmModal("Valider la période "+cur+" ?","Les lignes Net seront calculées pour cette période, puis les lignes Salaire de la période "+np.mois+"/"+np.annee+" seront créées.","doValiderPeriode()");return;}
+function doValiderPeriode(){
+ const cur=sel.paieMois+"/"+sel.paieAnnee;
+ const np=nextPeriod(sel.paieAnnee,sel.paieMois);
+ let seq=nextPaieCle();
+ const lastCur=perDates(sel.paieAnnee,sel.paieMois).pop();
+ personnelList().forEach(t=>{
+  const lines=paieLines(sel.paieAnnee,sel.paieMois,t.tier_id).filter(l=>Number(l.rubrique)!==9);
+  if(!lines.length)return;
+  DB.paie=DB.paie.filter(l=>!(String(l.annee)===String(sel.paieAnnee)&&String(l.mois)===String(sel.paieMois)&&String(l.idp_tier)===String(t.tier_id)&&Number(l.rubrique)===9));
+  const net=lines.reduce((s,l)=>s+(RUB_SENS[l.rubrique]||1)*Number(l.prix),0);
+  DB.paie.push({cle:seq++,annee:sel.paieAnnee,mois:sel.paieMois,date_p:lastCur,idp_tier:t.tier_id,rubrique:9,sens:1,nj:0,prix:net});
+ });
+ const firstDay="20"+np.annee+"-"+np.mois+"-01";
+ personnelList().forEach(t=>{
+  const exists=DB.paie.some(l=>String(l.annee)===String(np.annee)&&String(l.mois)===String(np.mois)&&String(l.idp_tier)===String(t.tier_id)&&Number(l.rubrique)===1);
+  if(!exists)DB.paie.push({cle:seq++,annee:np.annee,mois:np.mois,date_p:firstDay,idp_tier:t.tier_id,rubrique:1,sens:1,nj:0,prix:0});
+ });
+ sel.paieAnnee=np.annee;sel.paieMois=np.mois;
+ save();render();toast("Période "+cur+" validée — nouvelle période : "+np.mois+"/"+np.annee,"ok");}
+/* ---- ligne manuelle (prime, prêt, remboursement…) ---- */
+function openPaieLineModal(tid){
+ openModal(`<h2>Ajouter une ligne — ${tierNom(tid)}</h2>
+ <input type="hidden" id="plTid" value="${tid}">
+ <div class="row">
+  <div class="field"><label>Rubrique</label><select id="plRub">
+   ${Object.keys(RUBRIQUES).filter(r=>Number(r)!==9).map(r=>`<option value="${r}">${r} — ${RUBRIQUES[r]}</option>`).join("")}
+  </select></div>
+  <div class="field"><label>Date</label><input id="plDate" type="date" value="${todayISO()}"></div>
+  <div class="field"><label>NJ / Qté</label><input id="plNj" type="number" step="0.5" min="0" value="0" style="width:90px"></div>
+  <div class="field"><label>Prix (DA)</label><input id="plPrix" type="number" min="0" value="0" style="width:110px"></div>
+ </div>
+ <p class="subtle" style="margin-top:8px">Sens appliqué automatiquement : Prêt_Rembour (4), Avance (5) et Manque (7) = −1 retenue ; les autres = +1 gain. Plusieurs lignes possibles sur une même période (date_p distincte).</p>
+ <div style="text-align:right;margin-top:16px">
+  <button class="btn" onclick="closeModal()">Annuler</button>
+  <button class="btn accent" onclick="savePaieLine()">✔ Enregistrer</button></div>`);}
+function savePaieLine(){
+ const tid=Number($("plTid").value),rub=Number($("plRub").value);
+ const nj=Number($("plNj").value)||0,prix=Number($("plPrix").value)||0;
+ if(prix<=0){toast("Prix invalide","err");return;}
+ DB.paie.push({cle:nextPaieCle(),annee:sel.paieAnnee,mois:sel.paieMois,date_p:$("plDate").value||todayISO(),idp_tier:tid,rubrique:rub,sens:RUB_SENS[rub]||1,nj:nj,prix:prix});
+ save();closeModal();render();toast("Ligne de paie ajoutée","ok");}
+function delPaieLine(cle){
+ confirmModal("Supprimer cette ligne de paie ?","Voulez-vous supprimer cette ligne ?","doDelPaieLine('"+cle+"')");}
+function doDelPaieLine(cle){
+ DB.paie=DB.paie.filter(l=>String(l.cle)!==String(cle));
+ save();render();toast("Ligne supprimée","ok");}
+/* ---- Vue Paie ---- */
+function vPaie(){
+ const a=String(sel.paieAnnee),m=String(sel.paieMois);
+ const annees=[...new Set([a,...DB.paie.map(l=>String(l.annee))])].sort();
+ let totalNet=0,totalSal=0,totalRet=0;
+ const html=personnelList().map(t=>{
+  const lines=paieLines(a,m,t.tier_id).sort((x,y)=>Number(x.rubrique)-Number(y.rubrique)||String(x.date_p||"").localeCompare(String(y.date_p||"")));
+  const net=lines.filter(l=>Number(l.rubrique)!==9).reduce((s,l)=>s+(RUB_SENS[l.rubrique]||1)*Number(l.prix),0);
+  totalNet+=net;
+  totalSal+=lines.filter(l=>Number(l.rubrique)===1).reduce((s,l)=>s+Number(l.prix),0);
+  totalRet+=lines.filter(l=>(RUB_SENS[l.rubrique]||1)===-1).reduce((s,l)=>s+Number(l.prix),0);
+  return `<div class="card"><div class="row between">
+   <h2 style="margin:0">👤 ${tierNom(t.tier_id)} <span class="subtle">${isPompiste(t)?"Pompiste · ord "+t.ord:"Personnel"}${Number(t.pu)?" · PU "+fmt(t.pu)+" DA":""}</span></h2>
+   <div style="display:flex;align-items:center;gap:10px">Net : <b style="color:${net>=0?"var(--green)":"var(--red)"};font-size:17px">${fmt(net)} DA</b>
+   <button class="btn sm" onclick="openPaieLineModal(${t.tier_id})">＋ Ligne</button></div></div>
+   ${lines.length?`<table style="margin-top:10px"><tr><th>Rubrique</th><th>Sens</th><th>Date</th><th class="num">NJ/Qté</th><th class="num">Prix (DA)</th><th class="num">Signé</th><th></th></tr>
+   ${lines.map(l=>{const sens=RUB_SENS[l.rubrique]||1;return`<tr><td>${l.rubrique} — ${RUBRIQUES[l.rubrique]||"?"}</td>
+    <td>${sens===1?'<span class="pill ok">+ Gain</span>':'<span class="pill warn">− Retenue</span>'}</td>
+    <td>${frDate(l.date_p)}</td><td class="num">${fmtQ(l.nj)}</td><td class="num">${fmt(l.prix)}</td>
+    <td class="num" style="color:${sens===1?"var(--green)":"var(--red)"}">${sens===1?"+":"−"} ${fmt(l.prix)}</td>
+    <td><button class="tag-del" onclick="delPaieLine('${l.cle}')">✕</button></td></tr>`;}).join("")}</table>`
+   :`<p class="subtle" style="margin-top:8px">Aucune ligne pour ${m}/${a} — cliquez sur « Actualiser ».</p>`}
+  </div>`;}).join("");
+ return `
+ <div class="card"><div class="row between">
+   <div class="row">
+    <div class="field"><label>Année</label><select onchange="sel.paieAnnee=this.value;render()">${annees.map(x=>`<option value="${x}" ${String(x)===a?"selected":""}>20${x}</option>`).join("")}</select></div>
+    <div class="field"><label>Mois</label><select onchange="sel.paieMois=this.value;render()">${["01","02","03","04","05","06","07","08","09","10","11","12"].map(x=>`<option value="${x}" ${x===m?"selected":""}>${x}</option>`).join("")}</select></div>
+   </div>
+   <div class="row">
+    <button class="btn blue" onclick="actualiserPaie()">⟳ Actualiser</button>
+    <button class="btn accent" onclick="validerPeriode()">✔ Valider la période</button>
+   </div></div>
+  <p class="subtle" style="margin-top:8px">⟳ <b>Actualiser</b> : recalcule les Salaires — pompistes : jours travaillés (table indexs) × 3 000 DA (Gasoil/Essence) ou × 2 400 DA (GPL) ; autres personnels : PU fixe (tiers.pu). Récupère aussi les Avances (agent_detail type 99) et les Manques (différence caisse &gt; 0) de la période. Les primes/prêts saisis manuellement sont conservés.<br>
+  ✔ <b>Valider la période</b> : calcule les lignes <b>Net</b> (rubrique 9) de la période en cours, puis crée les lignes Salaire de la période suivante.</p>
+ </div>
+ <div class="grid-stats">
+  <div class="stat gold"><div class="v">${fmt(totalSal)}</div><div class="l">Salaires — ${m}/${a}</div></div>
+  <div class="stat red"><div class="v">${fmt(totalRet)}</div><div class="l">Retenues (avances, manques…)</div></div>
+  <div class="stat green"><div class="v">${fmt(totalNet)}</div><div class="l">Net à payer — ${m}/${a}</div></div>
+ </div>
+ ${html}`;}
+
+/* ================= VUE : DONNÉES (EXPORT / IMPORT EXCEL) ================= */
+/* Tables exportées, une feuille par table. meta est traité à part (clé/valeur). */
+const XLSX_TABLES=["categories","articles","tiers","mouvements","mouv_detail","agent_detail","indexs","factures","agent","tresorerie","paie"];
+function vDonnees(){
+ const kb=Math.round(JSON.stringify(DB).length/1024);
+ return `
+ <div class="card"><h2>💾 Sauvegarde & transfert (Excel)</h2>
+  <p class="subtle" style="margin-bottom:12px">Les données sont stockées sur Supabase (${kb} Ko en mémoire locale, ${pendingQueue.length} en attente d'envoi). Exportez régulièrement en <b>.xlsx</b> (un classeur Excel avec une feuille par table) comme sauvegarde de secours indépendante.</p>
+  <div class="row">
+   <button class="btn accent" onclick="doExportXlsx()">⬇️ Exporter (Excel .xlsx)</button>
+   <input type="file" id="impFile" accept=".xlsx,.xls" style="display:none" onchange="doImportXlsx(event)">
+   <button class="btn" onclick="$('impFile').click()">⬆️ Importer (Excel .xlsx/.xls)</button>
+   <button class="btn red" onclick="doReset()">♻️ Réinitialiser</button>
+  </div>
+  <p class="subtle" style="margin-top:10px">L'import remplace toutes les données actuelles par le contenu du classeur (une feuille par table : ${XLSX_TABLES.join(", ")}, plus une feuille <b>meta</b>).</p>
+ </div>
+ <div class="card"><h2>📊 Contenu de la base</h2>
+  <div class="grid-stats">
+   <div class="stat"><div class="v">${DB.indexs.length}</div><div class="l">Relevés d'index</div></div>
+   <div class="stat"><div class="v">${DB.mouvements.length}</div><div class="l">Mouvements</div></div>
+   <div class="stat"><div class="v">${DB.mouv_detail.length}</div><div class="l">Lignes de mouvements</div></div>
+   <div class="stat"><div class="v">${DB.agent_detail.length}</div><div class="l">Règlements</div></div>
+   <div class="stat"><div class="v">${DB.factures.length}</div><div class="l">Factures</div></div>
+  </div>
+ </div>`;}
+/* ---- EXPORT XLSX ---- */
+function doExportXlsx(){
+ const wb=XLSX.utils.book_new();
+ XLSX_TABLES.forEach(name=>{
+  const rows=DB[name]||[];
+  let ws;
+  if(rows.length){
+   /* factures / mouv_detail / mouvements ont des champs imbriqués (lignes, paiements) : on les aplatit en JSON texte pour rester sur une seule feuille par table */
+   const flat=rows.map(r=>{
+    const o={};
+    Object.keys(r).forEach(k=>{
+     const v=r[k];
+     o[k]=(v!==null&&typeof v==="object")?JSON.stringify(v):v;});
+    return o;});
+   ws=XLSX.utils.json_to_sheet(flat);
+  }else{
+   ws=XLSX.utils.json_to_sheet([{}]);
+  }
+  XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31));});
+ /* feuille meta : clé / valeur (aplati) */
+ const metaRows=[];
+ Object.keys(DB.meta||{}).forEach(k=>{
+  const v=DB.meta[k];
+  metaRows.push({cle:k,valeur:(v!==null&&typeof v==="object")?JSON.stringify(v):v});});
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(metaRows),"meta");
+ XLSX.writeFile(wb,"station-pro-"+todayISO()+".xlsx");
+ toast("Export Excel téléchargé","ok");}
+/* ---- IMPORT XLSX ---- */
+function tryParseJSON(v){
+ if(typeof v!=="string")return v;
+ const s=v.trim();
+ if(!s)return v;
+ if((s[0]==="{"&&s[s.length-1]==="}")||(s[0]==="["&&s[s.length-1]==="]")){
+  try{return JSON.parse(s);}catch(e){return v;}}
+ return v;}
+function doImportXlsx(ev){
+ const file=ev.target.files[0];if(!file)return;
+ const r=new FileReader();
+ r.onload=()=>{
+  try{
+   const data=new Uint8Array(r.result);
+   const wb=XLSX.read(data,{type:"array"});
+   const newDB=defaultDB();
+   let foundAny=false;
+   XLSX_TABLES.forEach(name=>{
+    const sheet=wb.Sheets[name.slice(0,31)];
+    if(!sheet)return;
+    let rows=XLSX.utils.sheet_to_json(sheet,{defval:null});
+    rows=rows.filter(row=>Object.keys(row).length>0);
+    rows=rows.map(row=>{
+     const o={};
+     Object.keys(row).forEach(k=>{o[k]=tryParseJSON(row[k]);});
+     return o;});
+    newDB[name]=rows;
+    foundAny=true;});
+   const metaSheet=wb.Sheets["meta"];
+   if(metaSheet){
+    const metaRows=XLSX.utils.sheet_to_json(metaSheet,{defval:null});
+    const meta={};
+    metaRows.forEach(row=>{if(row.cle!==undefined&&row.cle!==null&&row.cle!=="")meta[row.cle]=tryParseJSON(row.valeur);});
+    newDB.meta=Object.assign(defaultDB().meta,meta);
+    foundAny=true;}
+   if(!foundAny)throw new Error("Aucune feuille reconnue");
+   if(!window._importOk){confirmModal("Importer Excel","Remplacer TOUTES les données actuelles par le fichier Excel importé ?","window._importOk=true;window._importDB=newDB;doImportApply()");return;}
+   window._importOk=false;const newDB2=window._importDB;
+   DB=newDB2||newDB;
+   if(!DB.meta.fournisseurCarburantId)DB.meta.fournisseurCarburantId=21;
+   if(!DB.meta.qteMemoire)DB.meta.qteMemoire={Gasoil:20000,Essence:7000,GPL:8000};
+   save();render();toast("Import Excel réussi","ok");
+  }catch(e){toast("Fichier Excel invalide : "+e.message,"err");}};
+ r.readAsArrayBuffer(file);}
+function doImportApply(){const newDB=window._importDB;if(!newDB)return;DB=newDB;if(!DB.meta.fournisseurCarburantId)DB.meta.fournisseurCarburantId=21;if(!DB.meta.qteMemoire)DB.meta.qteMemoire={Gasoil:20000,Essence:7000,GPL:8000};save();render();toast("Import Excel réussi","ok");}
+function doReset(){
+ confirmModal("⚠️ EFFACEMENT TOTAL","Tout effacer ? Exportez d'abord vos données ! Cette action est irréversible.","doResetConfirm()");}
+function doResetConfirm(){
+ DB=defaultDB();save();render();toast("Base réinitialisée","err");}
+/* ================= MODAL & TOAST ================= */
+function openModal(html){$("modal-root").innerHTML=`<div class="modal-wrap" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;}
+function closeModal(){$("modal-root").innerHTML="";}
+function confirmModal(title,text,actionCode){
+ openModal(`<h2>⚠️ ${esc(title)}</h2>
+  <p style="margin:14px 0 18px">${esc(text)}</p>
+  <div style="display:flex;justify-content:flex-end;gap:10px">
+   <button class="btn" onclick="closeModal()">Annuler</button>
+   <button class="btn red" id="confirmYesBtn">Oui, continuer</button>
+  </div>`);
+ document.getElementById('confirmYesBtn').onclick=function(){closeModal();eval(actionCode);};}
+function promptModal(title,text,defaultVal,callbackFn){
+ openModal(`<h2>💬 ${esc(title)}</h2>
+  <p style="margin:14px 0 6px">${esc(text)}</p>
+  <div class="field" style="margin-bottom:16px"><input id="prmInput" value="${esc(defaultVal||'')}"></div>
+  <div style="display:flex;justify-content:flex-end;gap:10px">
+   <button class="btn" onclick="closeModal()">Annuler</button>
+   <button class="btn accent" id="prmOkBtn">Valider</button>
+  </div>`);
+ document.getElementById('prmOkBtn').onclick=function(){const v=$('prmInput').value;closeModal();callbackFn(v);};}
+function toast(msg,type){
+ const t=document.createElement("div");
+ t.className="toast "+(type||"");
+ t.textContent=msg;
+ $("toast-root").appendChild(t);
+ setTimeout(()=>{t.style.opacity="0";t.style.transition="opacity .4s";setTimeout(()=>t.remove(),400);},3200);}
+(async function start(){
+ if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(e=>console.error("Service worker non enregistré",e));}
+ $("view").innerHTML='<div class="empty"><div class="big">⏳</div>Connexion à Supabase…</div>';
+ await loadDB();
+ render();})();

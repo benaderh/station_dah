@@ -1874,7 +1874,7 @@ function openArticleModal(id){
  </div>
  ${id&&Number(a.type_a)===0?`<div style="background:rgba(34,211,238,0.07);border:1px solid var(--accent2);border-radius:10px;padding:14px;margin-top:14px">
   <h3 style="margin:0 0 6px;color:var(--accent2)">📥 Alimenter la vitrine</h3>
-  <p class="subtle" style="margin:0 0 10px">Magasin disponible : <b>${fmt(a.qs)}</b> — Vitrine actuelle : <b>${fmt(a.qs_vitrine||0)}</b></p>
+  <p class="subtle" id="vitrineTextInfo" style="margin:0 0 10px">Magasin disponible : <b>${fmt(a.qs)}</b> — Vitrine actuelle : <b>${fmt(a.qs_vitrine||0)}</b></p>
   <div class="row" style="align-items:flex-end;gap:12px">
    <div class="field" style="margin:0"><label>Qté à transférer</label><input type="number" id="qteAlim" style="width:110px" min="0"></div>
    <button class="btn" style="color:var(--accent2);border-color:var(--accent2)" onclick="doAlimVitrine(${id})">Transférer →</button>
@@ -1916,7 +1916,12 @@ function execAlimVitrine(id,n){
  const a=article(id);
  a.qs=(Number(a.qs)||0)-n;
  a.qs_vitrine=(Number(a.qs_vitrine)||0)+n;
- save();render();toast(n+" unités transférées à la vitrine","ok");}
+ save();render();
+ if($('aQs')) $('aQs').value=a.qs;
+ if($('aQsVitrine')) $('aQsVitrine').value=a.qs_vitrine;
+ if($('qteAlim')) $('qteAlim').value="";
+ if($('vitrineTextInfo')) $('vitrineTextInfo').innerHTML=`Magasin disponible : <b>${fmt(a.qs)}</b> — Vitrine actuelle : <b>${fmt(a.qs_vitrine||0)}</b>`;
+ toast(n+" unités transférées à la vitrine","ok");}
 function toggleArt(id){const a=article(id);a.actif=Number(a.actif)?0:1;save();render();}
 /* ================= VUE : CATÉGORIES ================= */
 function vCategories(){
