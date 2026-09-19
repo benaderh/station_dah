@@ -77,8 +77,8 @@ async function afterLogin(){
  const{data:{user}}=await sb.auth.getUser();
  if(!user){$("loginBox").style.display="block";$("subHead").textContent="Connecte-toi pour continuer.";return;}
  const{data:prof,error}=await sb.from("profiles").select("*").eq("id",user.id).maybeSingle();
- if(error||!prof){
-  showMsg("Erreur de profil. Ce compte n'est pas autorisé.","err");
+ if(error||!prof||!['divers','admin','patron'].includes(prof.role)){
+  showMsg("Erreur : Ce compte n'est pas autorisé sur cette page. (Rôle attendu : divers)","err");
   await sb.auth.signOut();$("loginBox").style.display="block";return;}
  profile=prof;
  $("loginBox").style.display="none";
@@ -100,7 +100,7 @@ async function loadContext(){
   if(pendErr) throw pendErr;
   window.pendingSales = pendData || [];
   
-  myTier=DB.tiers.find(x=>x.nom === '👤 Clients divers — ventes diverses sans pompiste attribué');
+  myTier=DB.tiers.find(x=>x.nom === 'Clients divers' || String(x.tier_id) === '24');
   
   const ds=datesDesc();
   today=ds[0]||null;
@@ -143,7 +143,7 @@ async function loadContext(){
 
 function renderApp(){
  if(!myTier){
-  $("appBox").innerHTML=`<div class="card"><h2>⚠️ Agent introuvable</h2><p class="sub" style="margin:0">L'agent '👤 Clients divers — ventes diverses sans pompiste attribué' n'a pas été trouvé dans la base de données.</p></div>${logoutBtn()}`;
+  $("appBox").innerHTML=`<div class="card"><h2>⚠️ Agent introuvable</h2><p class="sub" style="margin:0">L'agent 'Clients divers' n'a pas été trouvé dans la base de données.</p></div>${logoutBtn()}`;
   return;
  }
  $("appBox").innerHTML=`
