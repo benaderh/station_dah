@@ -166,7 +166,7 @@ async function loadContext(){
      const art_id = r.pistolet.split("_")[2];
      const a = DB.articles.find(x=>String(x.art_id)===String(art_id));
      if(a) {
-      a.qs = (Number(a.qs)||0) - Number(r.valeur);
+      a.qs_vitrine = (Number(a.qs_vitrine)||0) - Number(r.valeur);
       if(r.rec_date === today && Number(r.ord) === Number(profile.ord)) {
        const mt = Number(r.valeur) * Number(a.pv);
        window.myExtraSales += mt;
@@ -323,7 +323,7 @@ function renderGaz(){
   <h2>🔥 Gaz Butane</h2>
   <div style="font-weight:bold;margin-bottom:6px">${esc(g.article)}</div>
   <div class="row2">
-   <div>Stock: <b>${fmtQ(g.qs)}</b></div>
+   <div>Stock: <b>${fmtQ(g.qs_vitrine||0)}</b></div>
    <div>Prix: <b>${fmt(g.pv)} DA</b></div>
   </div>
   <div class="row2" style="margin-top:10px;align-items:center">
@@ -380,7 +380,7 @@ function onScanSuccess(decodedText, decodedResult) {
   $("reader").style.display = "none";
   $("lubResult").style.display = "block";
   $("lubName").textContent = a.article;
-  $("lubStock").textContent = fmtQ(a.qs) + " " + (a.unite||"");
+  $("lubStock").textContent = fmtQ(a.qs_vitrine||0) + " " + (a.unite||"");
   $("lubPrix").textContent = fmt(a.pv);
   $("lubQte").value = 1;
   $("lubQte").dataset.art = a.art_id;
@@ -431,7 +431,7 @@ async function sendVente(art_id, qteInputId, pv){
   showMsg("✓ Vente envoyée : " + qte + "x " + a.article, "ok");
   
   // Mise à jour locale (visuelle)
-  a.qs = (Number(a.qs)||0) - qte;
+  a.qs_vitrine = (Number(a.qs_vitrine)||0) - qte;
   const mt = qte * Number(a.pv);
   window.myExtraSales = (window.myExtraSales || 0) + mt;
   if(!window.myExtraSalesList) window.myExtraSalesList = [];

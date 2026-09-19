@@ -422,7 +422,7 @@ function refreshOpMontant(opId){
 function addMouvLine(opId,artId,qte,pu){
  DB.mouv_detail.push({mouv_detail_id:uid(),id_operation:opId,id_art:artId,quantite:qte,prix_u:pu,prix_v:0,qte_r:0});
  refreshOpMontant(opId);
- const a=article(artId);if(a)a.qs=(Number(a.qs)||0)-Number(qte);}
+ const a=article(artId);if(a)a.qs_vitrine=(Number(a.qs_vitrine)||0)-Number(qte);}
 /* ================= AGENT_DETAIL ================= */
 function upsertAgentDetail(tid,type,mt,obs){
  const ex=DB.agent_detail.find(x=>String(x.id_agent)===String(tid)&&x.date_agent===sel.date&&Number(x.type_agent)===Number(type));
@@ -709,7 +709,7 @@ async function validateAllReleve(){
     const op=getOrCreateOp(sel.date,pTier.tier_id);
     const mid=uid();
     DB.mouv_detail.push({mouv_detail_id:mid,id_operation:op.operation_id,id_art:art_id,quantite:v.valeur,prix_u:a.pv,remise:0,montant_ligne:v.valeur*a.pv});
-    a.qs=(Number(a.qs)||0)-v.valeur;
+    a.qs_vitrine=(Number(a.qs_vitrine)||0)-v.valeur;
     refreshOpMontant(op.operation_id);
     vCount++;
    }
@@ -735,7 +735,7 @@ async function validateVentesReleve(){
     const op=getOrCreateOp(sel.date,pTier.tier_id);
     const mid=uid();
     DB.mouv_detail.push({mouv_detail_id:mid,id_operation:op.operation_id,id_art:art_id,quantite:v.valeur,prix_u:a.pv,remise:0,montant_ligne:v.valeur*a.pv});
-    a.qs=(Number(a.qs)||0)-v.valeur;
+    a.qs_vitrine=(Number(a.qs_vitrine)||0)-v.valeur;
     refreshOpMontant(op.operation_id);vCount++;ids.push(v.id);
    }
   }
@@ -752,7 +752,7 @@ async function validateVenteReleve(id, art_id, qte, tier_id){
  const op=getOrCreateOp(sel.date,tier_id);
  const mid=uid();
  DB.mouv_detail.push({mouv_detail_id:mid,id_operation:op.operation_id,id_art:art_id,quantite:qte,prix_u:a.pv,remise:0,montant_ligne:qte*a.pv});
- a.qs=(Number(a.qs)||0)-qte;refreshOpMontant(op.operation_id);save();
+ a.qs_vitrine=(Number(a.qs_vitrine)||0)-qte;refreshOpMontant(op.operation_id);save();
  try{
   const{error}=await sb.from("releve_pending").delete().eq("id",id);
   if(error)throw error;
@@ -1046,7 +1046,7 @@ function saveEditGazVente(mdId,opId){
  const qte=Number($("gzQte").value),pu=Number($("gzPu").value);
  if(qte<=0){toast("Quantité invalide","err");return;}
  const g=DB.articles.find(a=>Number(a.type_a)===9);
- if(g){g.qs=(Number(g.qs)||0)+Number(md.quantite)-qte;}
+ if(g){g.qs_vitrine=(Number(g.qs_vitrine)||0)+Number(md.quantite)-qte;}
  md.quantite=qte;md.prix_u=pu;
  const newTier=Number($("gzAgent").value);
  const op=DB.mouvements.find(m=>String(m.operation_id)===String(opId));
@@ -1056,7 +1056,7 @@ function saveEditGazVente(mdId,opId){
 function delGazVente(mdId,opId){
  const md=DB.mouv_detail.find(x=>x.mouv_detail_id===mdId);if(!md)return;
  const g=DB.articles.find(a=>Number(a.type_a)===9);
- if(g)g.qs=(Number(g.qs)||0)+Number(md.quantite);
+ if(g)g.qs_vitrine=(Number(g.qs_vitrine)||0)+Number(md.quantite);
  DB.mouv_detail=DB.mouv_detail.filter(x=>x.mouv_detail_id!==mdId);
  refreshOpMontant(opId);
  save();closeModal();render();toast("Vente gaz butane supprimée","ok");}
@@ -1169,7 +1169,7 @@ function saveEditReglement(id){
 function delLubVente(mdId,opId){
  const md=DB.mouv_detail.find(x=>x.mouv_detail_id===mdId);if(!md)return;
  const a=article(md.id_art);
- if(a)a.qs=(Number(a.qs)||0)+Number(md.quantite);
+ if(a)a.qs_vitrine=(Number(a.qs_vitrine)||0)+Number(md.quantite);
  DB.mouv_detail=DB.mouv_detail.filter(x=>x.mouv_detail_id!==mdId);
  refreshOpMontant(opId);
  save();closeModal();render();toast("Vente lubrifiant supprimée","ok");}
@@ -1221,11 +1221,11 @@ function saveEditLubVente(mdId,opId){
  const qte=Number($("elQte").value),pu=Number($("elPu").value);
  if(qte<=0){toast("Quantité invalide","err");return;}
  const oldArt=article(md.id_art);
- if(oldArt)oldArt.qs=(Number(oldArt.qs)||0)+Number(md.quantite);
+ if(oldArt)oldArt.qs_vitrine=(Number(oldArt.qs_vitrine)||0)+Number(md.quantite);
  md.id_art=Number($("elArt").value);
  md.quantite=qte;md.prix_u=pu;
  const newArt=article(md.id_art);
- if(newArt)newArt.qs=(Number(newArt.qs)||0)-qte;
+ if(newArt)newArt.qs_vitrine=(Number(newArt.qs_vitrine)||0)-qte;
  const newTier=Number($("elAgent").value);
  const op=DB.mouvements.find(m=>String(m.operation_id)===String(opId));
  if(op&&newTier)op.id_tier=newTier;
@@ -1824,14 +1824,14 @@ function vStock(){
  </div>`;}
 function stockTable(){
  const arts=DB.articles.filter(a=>state.artFilter===""||a.article.toLowerCase().includes(state.artFilter.toLowerCase()));
- return`<table><tr><th>Article</th><th>Catégorie</th><th>Type</th><th class="num">Stock réel</th><th class="num">PA</th><th class="num">PV</th><th>État</th></tr>
+ return`<table><tr><th>Article</th><th>Catégorie</th><th>Type</th><th class="num">Magasin</th><th class="num">Vitrine</th><th class="num">PA</th><th class="num">PV</th><th>État</th></tr>
  ${arts.map(a=>{
   const isCarb=[1,2,3].includes(Number(a.type_a));
   const qs=isCarb?calcStockCarburant(a.type_a):Number(a.qs);
   const badge=isCarb?'<span class="pill neutral" title="Calculé : achats − ventes index">Calculé</span>':'';
   return`<tr ondblclick="openArticleModal(${a.art_id})" style="cursor:pointer" title="Double-clic pour modifier"><td>${esc(a.article)}</td><td>${catName(a.id_cat)}</td>
   <td>${{0:"Lubrifiant",9:"Gaz butane",1:"Gasoil",2:"Essence",3:"GPL"}[a.type_a]||"—"}</td>
-  <td class="num">${fmt(qs)} ${esc(a.unite)} ${badge}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
+  <td class="num">${fmt(qs)} ${esc(a.unite)} ${badge}</td><td class="num">${isCarb?"—":fmt(a.qs_vitrine||0)}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
   <td>${Number(a.actif)?'<span class="pill ok">Actif</span>':'<span class="pill neutral">Inactif</span>'}</td></tr>`;
  }).join("")}</table>`;}
 /* ================= VUE : TIERS ================= */
@@ -1895,12 +1895,13 @@ function delTier(id){
 function artTable(){
  const q=state.artFilter.toLowerCase();
  const arts=DB.articles.filter(a=>a.article.toLowerCase().includes(q));
- return`<table><tr><th>Article</th><th>Catégorie</th><th>Type</th><th>Unité</th><th class="num">Stock</th><th class="num">PA</th><th class="num">PV</th><th>Actif</th></tr>
+ return`<table><tr><th>Article</th><th>Catégorie</th><th>Type</th><th>Unité</th><th class="num">Magasin</th><th class="num">Vitrine</th><th class="num">PA</th><th class="num">PV</th><th>Actif</th></tr>
  ${arts.map(a=>`<tr ondblclick="openArticleModal(${a.art_id})" style="cursor:pointer" title="Double-clic pour modifier"><td>${esc(a.article)}</td><td>${catName(a.id_cat)}</td>
   <td>${{0:"Lubrifiant",9:"Gaz butane",1:"Gasoil",2:"Essence",3:"GPL"}[a.type_a]||"—"}</td>
-  <td>${esc(a.unite)}</td><td class="num">${fmt(a.qs)}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
+  <td>${esc(a.unite)}</td><td class="num">${fmt(a.qs)}</td><td class="num">${fmt(a.qs_vitrine||0)}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
   <td><button class="btn sm" onclick="event.stopPropagation();toggleArt(${a.art_id})">${Number(a.actif)?"✅":"⛔"}</button></td>
-  <td style="white-space:nowrap"><button class="btn sm" onclick="event.stopPropagation();openArticleModal(${a.art_id})">✏️</button>
+  <td style="white-space:nowrap"><button class="btn sm" onclick="event.stopPropagation();alimVitrine(${a.art_id})" title="Alimenter Vitrine">📥</button>
+  <button class="btn sm" onclick="event.stopPropagation();openArticleModal(${a.art_id})">✏️</button>
   <button class="btn sm red" onclick="event.stopPropagation();delArticle(${a.art_id})">🗑</button></td></tr>`).join("")}</table>`;}
 function vArticles(){
  return `
@@ -1913,7 +1914,7 @@ function vArticles(){
   <p class="subtle" style="margin-top:8px">Double-clic sur une ligne pour modifier l'article.</p>
  </div>`;}
 function openArticleModal(id){
- const a=id?article(id):{article:"",id_cat:DB.categories[0].cat_id,unite:"unité",type_a:0,coeff:1,qs:0,pa:0,pv:0,actif:1,code_barre:""};
+ const a=id?article(id):{article:"",id_cat:DB.categories[0].cat_id,unite:"unité",type_a:0,coeff:1,qs:0,qs_vitrine:0,pa:0,pv:0,actif:1,code_barre:""};
  openModal(`<h2>${id?"Modifier":"Ajouter"} un article</h2>
  <input type="hidden" id="aId" value="${id||""}">
  <div class="row">
@@ -1925,10 +1926,11 @@ function openArticleModal(id){
  </div>
  <div class="row" style="margin-top:10px">
   <div class="field"><label>Code-barre</label><input id="aCodeBarre" value="${esc(a.code_barre||"")}" style="width:120px" placeholder="Scan..."></div>
-  <div class="field"><label>Stock (qs)</label><input id="aQs" type="number" value="${a.qs}" style="width:100px"></div>
-  <div class="field"><label>PA</label><input id="aPa" type="number" value="${a.pa}" style="width:100px"></div>
-  <div class="field"><label>PV</label><input id="aPv" type="number" value="${a.pv}" style="width:100px"></div>
-  <div class="field"><label>Coeff</label><input id="aCoeff" type="number" value="${a.coeff}" style="width:80px"></div>
+  <div class="field"><label>Magasin (qs)</label><input id="aQs" type="number" value="${a.qs}" style="width:70px"></div>
+  <div class="field"><label>Vitrine</label><input id="aQsVitrine" type="number" value="${a.qs_vitrine||0}" style="width:70px"></div>
+  <div class="field"><label>PA</label><input id="aPa" type="number" value="${a.pa}" style="width:70px"></div>
+  <div class="field"><label>PV</label><input id="aPv" type="number" value="${a.pv}" style="width:70px"></div>
+  <div class="field"><label>Coeff</label><input id="aCoeff" type="number" value="${a.coeff}" style="width:70px"></div>
  </div>
  <div style="text-align:right;margin-top:16px">
   <button class="btn" onclick="closeModal()">Annuler</button>
@@ -1938,7 +1940,7 @@ function saveArticle(){
  const nom=$("aNom").value.trim();
  if(!nom){toast("Désignation obligatoire","err");return;}
  const data={article:nom,id_cat:Number($("aCat").value),type_a:Number($("aType").value),unite:$("aUnite").value||"unité",
-  code_barre:$("aCodeBarre").value.trim(),qs:Number($("aQs").value)||0,pa:Number($("aPa").value)||0,pv:Number($("aPv").value)||0,coeff:Number($("aCoeff").value)||1};
+  code_barre:$("aCodeBarre").value.trim(),qs:Number($("aQs").value)||0,qs_vitrine:Number($("aQsVitrine").value)||0,pa:Number($("aPa").value)||0,pv:Number($("aPv").value)||0,coeff:Number($("aCoeff").value)||1};
  if(id){Object.assign(article(id),data);toast("Article modifié","ok");}
  else{const nid=DB.articles.reduce((s,x)=>Math.max(s,Number(x.art_id)||0),0)+1;
   DB.articles.push(Object.assign({art_id:nid,actif:1},data));toast("Article ajouté","ok");}
@@ -1949,6 +1951,16 @@ function delArticle(id){
  DB.articles=DB.articles.filter(a=>String(a.art_id)!==String(id));
  save();render();toast("Article supprimé","ok");}
 function toggleArt(id){const a=article(id);a.actif=Number(a.actif)?0:1;save();render();}
+function alimVitrine(id){
+ const a=article(id);
+ const q=prompt("Alimenter la vitrine pour "+a.article+"\\nStock magasin : "+fmt(a.qs)+"\\n\\nQuantité à transférer :");
+ const n=Number(q);
+ if(!n||n<=0)return;
+ if(n>Number(a.qs)&&!confirm("Attention, le magasin n'a pas assez de stock ("+fmt(a.qs)+"). Transférer quand même ?"))return;
+ a.qs=(Number(a.qs)||0)-n;
+ a.qs_vitrine=(Number(a.qs_vitrine)||0)+n;
+ save();render();toast(n+" unités transférées à la vitrine","ok");
+}
 /* ================= VUE : CATÉGORIES ================= */
 function vCategories(){
  return `
