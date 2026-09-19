@@ -1,51 +1,4 @@
-<!doctype html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>Station Pro — Tableau de bord</title>
-<link rel="icon" href="icon.svg" type="image/svg+xml">
-<meta name="theme-color" content="#0a0e18">
-<style>
- :root{--bg:#0a0e18;--card:#111827;--line:#1f2937;--muted:#8b95a7;--gold:#f5b83e;--blue:#63b3ed;--red:#f87171;--green:#34d399;--accent:#2563eb;--accent2:#63b3ed;--border:#1f2937;--ink:#e5e9f0}
- *{box-sizing:border-box}
- body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:14px}
- .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
- h1{font-size:18px;margin:0}
- h2{font-size:14px;margin:0}
- table{width:100%;border-collapse:collapse;font-size:13px}
- .num{text-align:right}
- .row{display:flex;align-items:center}
- .row.between{justify-content:space-between}
- select,input,button{font-family:inherit}
- .btn{background:var(--line);color:var(--ink);border:none;border-radius:8px;padding:8px 12px;font-size:13px}
- .btn.accent{background:var(--accent)}
- .diff-pos{color:var(--green)} .diff-neg{color:var(--red)}
- .grid-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
- .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
- .stat .v{font-size:19px;font-weight:700}
- .stat .l{font-size:12px;color:var(--muted);margin-top:2px}
- .stat.gold .v{color:var(--gold)} .stat.blue .v{color:var(--blue)} .stat.green .v{color:var(--green)} .stat.red .v{color:var(--red)}
- .subtle{color:var(--muted);font-size:13px}
- .status{font-size:11px;color:var(--muted);margin-bottom:6px}
- .err{background:#3b1717;border:1px solid #7f1d1d;color:#fca5a5;padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px}
- .empty{color:var(--muted);font-size:13px;padding:20px;text-align:center}
-</style>
-</head>
-<body>
-<div id="loginBox" class="card" style="display:none;max-width:360px;margin:20px auto">
- <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">Email</label>
- <input id="email" type="email" autocomplete="username" style="width:100%;background:#0d1424;border:1px solid var(--line);color:#e5e9f0;border-radius:10px;padding:12px;font-size:16px;margin-bottom:10px">
- <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">Mot de passe</label>
- <input id="password" type="password" autocomplete="current-password" style="width:100%;background:#0d1424;border:1px solid var(--line);color:#e5e9f0;border-radius:10px;padding:12px;font-size:16px;margin-bottom:10px">
- <button class="btn accent" style="width:100%" onclick="doLogin()">Se connecter</button>
-</div>
-<div class="status" id="status">Connexion…</div>
-<div id="errBox"></div>
-<div id="out"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script>
 const SUPABASE_URL="https://twxpixyjuacreatxncfo.supabase.co";
 const SUPABASE_KEY="sb_publishable_VdDiO_xSqIvBbWak_wPASw__zsfWGby";
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
@@ -317,6 +270,3 @@ function render(){
 loadAndRender();
 setInterval(loadAndRender,60000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)loadAndRender();});
-</script>
-</body>
-</html>
