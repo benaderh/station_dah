@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Station Pro — Tableau de bord</title>
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon_patron.svg" type="image/svg+xml">
 <meta name="theme-color" content="#0a0e18">
 <style>
  :root{--bg:#0a0e18;--card:#111827;--line:#1f2937;--muted:#8b95a7;--gold:#f5b83e;--blue:#63b3ed;--red:#f87171;--green:#34d399;--accent:#2563eb;--accent2:#63b3ed;--border:#1f2937;--ink:#e5e9f0}
@@ -38,7 +38,7 @@
  <input id="email" type="email" autocomplete="username" style="width:100%;background:#0d1424;border:1px solid var(--line);color:#e5e9f0;border-radius:10px;padding:12px;font-size:16px;margin-bottom:10px">
  <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">Mot de passe</label>
  <input id="password" type="password" autocomplete="current-password" style="width:100%;background:#0d1424;border:1px solid var(--line);color:#e5e9f0;border-radius:10px;padding:12px;font-size:16px;margin-bottom:10px">
- <button class="btn accent" style="width:100%" onclick="doLogin()">Se connecter</button>
+ <button class="btn accent" style="width:100%" onclick="doLogin()">تسجيل الدخول</button>
 </div>
 <div class="status" id="status">Connexion…</div>
 <div id="errBox"></div>
@@ -84,7 +84,7 @@ function todayISO(){const d=new Date();return d.getFullYear()+"-"+String(d.getMo
 const article=id=>DB.articles.find(a=>String(a.art_id)===String(id));
 const tier=id=>DB.tiers.find(t=>String(t.tier_id)===String(id));
 const tierNom=id=>{const t=tier(id);return t?esc(t.nom+" "+(t.prenom||"")).trim():"—";};
-const agentLib=ty=>{if(Number(ty)===99)return"Avance sur salaire";const a=DB.agent.find(x=>Number(x.agent_type)===Number(ty));return a?esc(a.agent_libelle):"—";};
+const agentLib=ty=>{if(Number(ty)===99)return"تسبيف sur salaire";const a=DB.agent.find(x=>Number(x.agent_type)===Number(ty));return a?esc(a.agent_libelle):"—";};
 function fuelArtId(t){const ta=t==="G"?1:t==="E"?2:3;const a=DB.articles.find(x=>x.type_a===ta);return a?a.art_id:null;}
 function prixFor(t){const a=article(fuelArtId(t));return a?Number(a.pv)||0:0;}
 const idxRow=(d,n)=>DB.indexs.find(r=>r.index_date===d&&r.index_name===n);
@@ -107,7 +107,7 @@ function normMode(m){if(m==="cash"||m==="Espèce"||m==="E")return"E";if(m==="cre
 function getLedger(compte){
  const ledger=[];
  DB.tresorerie.forEach(t=>{if(t.compte===compte)ledger.push({id:t.id,date:t.date,libelle:t.libelle,obs:t.obs||"",sens:t.sens,montant:Number(t.montant),source:"treso"});});
- const agGroup={};DB.agent_detail.forEach(a=>{const ty=Number(a.type_agent),mt=Number(a.mt_agent),d=a.date_agent;const k=d+"_"+ty;if(!agGroup[k])agGroup[k]={date:d,ty:ty,mt:0,cle_id:a.cle_id};agGroup[k].mt+=mt;});Object.values(agGroup).forEach(g=>{if(compte==="caisse"){if(g.ty===1)ledger.push({id:g.cle_id,date:g.date,libelle:"Versement "+agentLib(1)+" (Total)",obs:"",sens:"E",montant:g.mt,source:"agent"});if(g.ty===5||g.ty===6)ledger.push({id:g.cle_id,date:g.date,libelle:"Retrait "+agentLib(g.ty)+" (Total)",obs:"",sens:"S",montant:g.mt,source:"agent"});}});
+ const agGroup={};DB.agent_detail.forEach(a=>{const ty=Number(a.type_agent),mt=Number(a.mt_agent),d=a.date_agent;const k=d+"_"+ty;if(!agGroup[k])agGroup[k]={date:d,ty:ty,mt:0,cle_id:a.cle_id};agGroup[k].mt+=mt;});Object.values(agGroup).forEach(g=>{if(compte==="caisse"){if(g.ty===1)ledger.push({id:g.cle_id,date:g.date,libelle:"دفعة "+agentLib(1)+" (Total)",obs:"",sens:"E",montant:g.mt,source:"agent"});if(g.ty===5||g.ty===6)ledger.push({id:g.cle_id,date:g.date,libelle:"Retrait "+agentLib(g.ty)+" (Total)",obs:"",sens:"S",montant:g.mt,source:"agent"});}});
  DB.factures.forEach(f=>{(f.paiements||[]).forEach((p,idx)=>{let isCaisse=p.source==="caisse",isBanque=p.source==="banque";if(!p.source){const nm=normMode(f.mode);isCaisse=nm==="E";isBanque=nm==="C";}if((compte==="caisse"&&isCaisse)||(compte==="banque"&&isBanque)){ledger.push({id:f.id+"_p"+idx,date:p.date,libelle:"Paiement Facture "+(f.numero?f.numero:(f.type==="carburant"?"Carb":"Div")),obs:tierNom(f.fournisseurId),sens:"S",montant:Number(p.montant),source:"facture"});}});});
  ledger.sort((a,b)=>a.date.localeCompare(b.date));
  let solde=compte==="caisse"?(Number(DB.meta.caisseInit)||0):(Number(DB.meta.banqueInit)||0);
@@ -200,7 +200,7 @@ function render(){
    const v=mds.reduce((s,md)=>s+(Number(md.quantite)*Number(md.prix_u)),0);
    qte+=q;vente+=v;marge+=(v-(q*Number(a.pa||0)));stock+=Number(a.qs||0);});
   return{label,vente,marge,stock,row:`<tr><td>${label}</td><td class="num">${fmt(vente)}</td><td class="num ${marge>=0?"diff-pos":"diff-neg"}">${fmt(marge)}</td></tr>`};}
- const rowGaz=diversRow(9,"Gaz Butane"),rowLub=diversRow(0,"Lubrifiants");
+ const rowGaz=diversRow(9,"غا البوتاٍ"),rowLub=diversRow(0,"الزيوت");
  const tvDiv=rowGaz.vente+rowLub.vente,tmDiv=rowGaz.marge+rowLub.marge;
 
  const facNonBanque=DB.factures.filter(f=>{
@@ -253,7 +253,7 @@ function render(){
   <div class="stat gold"><div class="v">${fmt(soldeFin)}</div><div class="l">Caisse (Fin de journée)</div></div>
   <div class="stat blue"><div class="v">${fmt(soldeBanque)}</div><div class="l">Banque (Cumulé)</div></div>
   <div class="stat green"><div class="v">${fmt(tmCarb)}</div><div class="l">Marge Carburant</div></div>
-  <div class="stat"><div class="v">${fmt(tmDiv)}</div><div class="l">Marge Gaz &amp; Lubrifiants</div></div>
+  <div class="stat"><div class="v">${fmt(tmDiv)}</div><div class="l">Marge Gaz &amp; الزيوت</div></div>
   <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)</div></div>
   <div class="stat green"><div class="v">${fmt(tmCarb+tmDiv)}</div><div class="l">Marge Globale</div></div>
  </div>
@@ -289,7 +289,7 @@ function render(){
   </table>
  </div>
  <div class="card" style="margin-bottom:12px">
-  <h2 style="margin-bottom:10px">🛢️ Gaz Butane &amp; Lubrifiants</h2>
+  <h2 style="margin-bottom:10px">🛢️ غا البوتاٍ &amp; الزيوت</h2>
   <table>
    <thead><tr style="background:rgba(255,255,255,0.04)"><th style="text-align:left;padding:8px">Article</th><th class="num" style="padding:8px">Vente (DA)</th><th class="num" style="padding:8px">Marge (DA)</th></tr></thead>
    <tbody>${rowGaz.row}${rowLub.row}<tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:8px 4px">Total</td><td class="num" style="padding:8px 4px;color:var(--gold)">${fmt(tvDiv)}</td><td class="num" style="padding:8px 4px;color:${tmDiv>=0?"var(--green)":"var(--red)"}">${fmt(tmDiv)}</td></tr></tbody>
@@ -299,7 +299,7 @@ function render(){
   <h2 style="margin-bottom:10px">📋 Suivi règlements carburant — En attente banque</h2>
   ${facNonBanque.length?`<div style="overflow-x:auto"><table style="min-width:620px">
    <thead><tr style="background:rgba(255,255,255,0.04)"><th style="text-align:left;padding:8px">Facture</th><th style="text-align:left;padding:8px">Fournisseur</th><th style="text-align:left;padding:8px">Date</th><th class="num" style="padding:8px">Qté G/E</th>
-      <th class="num" style="padding:8px">Qté GPL</th><th class="num" style="padding:8px">Montant</th><th class="num" style="padding:8px">Réglé</th><th style="text-align:center;padding:8px">Mode</th><th style="text-align:left;padding:8px">N° Chèque</th><th class="num" style="padding:8px;color:var(--red)">Reste dû</th></tr></thead>
+      <th class="num" style="padding:8px">Qté GPL</th><th class="num" style="padding:8px">المبلز</th><th class="num" style="padding:8px">Réglé</th><th style="text-align:center;padding:8px">Mode</th><th style="text-align:left;padding:8px">N° Chèque</th><th class="num" style="padding:8px;color:var(--red)">Reste dû</th></tr></thead>
    <tbody>${facNonBanque.map(f=>{
     let qteGE=0,qteGPL=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2)qteGE+=Number(l.qte);else if(art===3)qteGPL+=Number(l.qte);});
     const regleAALaDate=(f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant),0);

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Station Pro — Pompiste</title>
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon_pompiste.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest_pompiste.json">
 <meta name="theme-color" content="#0a0e18">
 <style>
@@ -49,7 +49,7 @@
 <div id="loginBox" class="card" style="display:none">
  <label>Email</label><input id="email" type="email" autocomplete="username">
  <label>Mot de passe</label><input id="password" type="password" autocomplete="current-password">
- <button onclick="doLogin()">Se connecter</button>
+ <button onclick="doLogin()">تسجيل الدخول</button>
 </div>
 
 <div id="appBox" style="display:none"></div>
@@ -233,13 +233,13 @@ function bilanCard(){
 
  return`<div class="card">
   ${salesHtml}
-  <h3 style="font-size:13px;margin:0 0 6px 0;color:var(--warn)">💸 Versements</h3>
-  ${versements.length?`<table><tr><th>Versement</th><th class="num">Montant</th></tr>
-   ${versements.map(m=>`<tr><td>${esc(m.obs_agent||"Avance")}</td><td class="num">${fmt(m.mt_agent)} DA</td></tr>`).join("")}
+  <h3 style="font-size:13px;margin:0 0 6px 0;color:var(--warn)">💸 الدفعتt</h3>
+  ${versements.length?`<table><tr><th>دفعة</th><th class="num">المبلز</th></tr>
+   ${versements.map(m=>`<tr><td>${esc(m.obs_agent||"تسبيف")}</td><td class="num">${fmt(m.mt_agent)} DA</td></tr>`).join("")}
    </table>`:`<p class="sub" style="margin:0 0 12px 0">Aucun versement enregistré aujourd'hui.</p>`}
   <table style="margin-top:12px;border-top:1px solid var(--line);padding-top:6px">
    <tr><td>الوقود</td><td class="num" id="bilanCarburants">0 DA</td></tr>
-   <tr><td>الزيوت</td><td class="num" id="bilanLubrifiants">0 DA</td></tr>
+   <tr><td>الزيوت</td><td class="num" id="bilanالزيوت">0 DA</td></tr>
    <tr><td>الغاز</td><td class="num" id="bilanGaz">0 DA</td></tr>
    <tr><td style="font-weight:bold">المجموع</td><td class="num" style="font-weight:bold" id="bilanVentes">0 DA</td></tr>
    <tr><td>التسبيقات</td><td class="num">${fmt(totalVers)} DA</td></tr>
@@ -290,7 +290,7 @@ function refreshCompute(){
   bv.textContent=fmt(totalVentes)+" DA";
   const bc=$("bilanCarburants"); if(bc) bc.textContent=fmt(totalCarburants)+" DA";
   const bg=$("bilanGaz"); if(bg) bg.textContent=fmt(totalGaz)+" DA";
-  const bl=$("bilanLubrifiants"); if(bl) bl.textContent=fmt(totalLub)+" DA";
+  const bl=$("bilanالزيوت"); if(bl) bl.textContent=fmt(totalLub)+" DA";
   const versements=DB.agent_detail.filter(a=>String(a.id_agent)===String((myTier||{}).tier_id)&&a.date_agent===today);
   const totalVers=versements.reduce((s,a)=>s+Number(a.mt_agent||0),0);
   $("bilanReste").textContent=fmt(totalVentes-totalVers)+" DA";}}
@@ -320,11 +320,11 @@ function renderGaz(){
  const g = DB.articles.find(a=>Number(a.type_a)===9);
  if(!g) return "";
  return `<div class="card">
-  <h2>🔥 Gaz Butane</h2>
+  <h2>🔥 غا البوتاٍ</h2>
   <div style="font-weight:bold;margin-bottom:6px">${esc(g.article)}</div>
   <div class="row2">
-   <div>Stock: <b>${fmtQ(g.qs_vitrine||0)}</b></div>
-   <div>Prix: <b>${fmt(g.pv)} DA</b></div>
+   <div>المخزوق: <b>${fmtQ(g.qs_vitrine||0)}</b></div>
+   <div>السعر: <b>${fmt(g.pv)} DA</b></div>
   </div>
   <div class="row2" style="margin-top:10px;align-items:center">
    <div style="display:flex;gap:4px">
@@ -332,24 +332,24 @@ function renderGaz(){
     <input id="gazQte" type="number" value="1" style="text-align:center;padding:8px;width:100%" oninput="calcGazMt(${g.pv})" onfocus="this.select()">
     <button class="btn" style="margin:0;padding:8px" onclick="adjQte('gazQte',1,${g.pv})">+</button>
    </div>
-   <div style="text-align:right">Mt: <b id="gazMt" style="color:var(--accent)">${fmt(g.pv)} DA</b></div>
+   <div style="text-align:right">المبلز: <b id="gazMt" style="color:var(--accent)">${fmt(g.pv)} DA</b></div>
   </div>
-  <button class="btn accent" style="width:100%;margin-top:10px" ondblclick="sendVente(${g.art_id}, 'gazQte', ${g.pv})">Ok (Double-clic)</button>
+  <button class="btn accent" style="width:100%;margin-top:10px" ondblclick="sendVente(${g.art_id}, 'gazQte', ${g.pv})">تأكيد (نقر مزدوج)</button>
  </div>`;
 }
 
 let html5QrcodeScanner = null;
 function renderLub(){
  return `<div class="card">
-  <h2>🛢️ Lubrifiants</h2>
-  <button id="startCamBtn" class="btn" style="width:100%;margin-bottom:10px" onclick="startScanner()">📸 Scanner Code-barre</button>
+  <h2>🛢️ الزيوت</h2>
+  <button id="startCamBtn" class="btn" style="width:100%;margin-bottom:10px" onclick="startScanner()">📸 لسح الرمز الشریطٍ</button>
   <div id="reader" style="width:100%;margin-bottom:10px;display:none;background:#fff;border-radius:8px;overflow:hidden"></div>
-  <button id="cancelCamBtn" class="btn ghost" style="width:100%;margin-bottom:10px;display:none" onclick="stopScanner()">Annuler (fermer caméra)</button>
+  <button id="cancelCamBtn" class="btn ghost" style="width:100%;margin-bottom:10px;display:none" onclick="stopScanner()">إلغا ؅غلاق الكامیرا)</button>
   <div id="lubResult" style="display:none;border:1px solid var(--line);padding:10px;border-radius:6px">
    <div id="lubName" style="font-weight:bold;color:var(--accent);margin-bottom:6px"></div>
    <div class="row2">
-    <div>Stock: <b id="lubStock"></b></div>
-    <div>Prix: <b id="lubPrix"></b> DA</div>
+    <div>المخزوق: <b id="lubStock"></b></div>
+    <div>السعر: <b id="lubPrix"></b> DA</div>
    </div>
    <div class="row2" style="margin-top:10px;align-items:center">
     <div style="display:flex;gap:4px">
@@ -357,10 +357,10 @@ function renderLub(){
      <input id="lubQte" type="number" value="1" style="text-align:center;padding:8px;width:100%" oninput="calcLubMt()" onfocus="this.select()">
      <button class="btn" style="margin:0;padding:8px" onclick="adjQte('lubQte',1,0)">+</button>
     </div>
-    <div style="text-align:right">Mt: <b id="lubMt" style="color:var(--accent)"></b> DA</div>
+    <div style="text-align:right">المبلز: <b id="lubMt" style="color:var(--accent)"></b> DA</div>
    </div>
-   <button class="btn accent" style="width:100%;margin-top:10px" id="lubOkBtn">Ok (Double-clic)</button>
-   <button class="btn ghost" style="width:100%;margin-top:10px" onclick="cancelLubSale()">Annuler</button>
+   <button class="btn accent" style="width:100%;margin-top:10px" id="lubOkBtn">تأكيد (نقر مزدوج)</button>
+   <button class="btn ghost" style="width:100%;margin-top:10px" onclick="cancelLubSale()">إلغح</button>
   </div>
  </div>`;
 }
@@ -474,7 +474,7 @@ async function sendVente(art_id, qteInputId, pv){
  }
 }
 
-function logoutBtn(){return`<button class="ghost" onclick="doLogout()">Se déconnecter</button>`;}
+function logoutBtn(){return`<button class="ghost" onclick="doLogout()">تسجيل الخروج</button>`;}
 
 /* ====== Démarrage ====== */
 (async function start(){
