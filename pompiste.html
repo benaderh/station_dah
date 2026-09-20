@@ -535,7 +535,7 @@
     <input id="gazQte" type="number" value="1" style="text-align:center;padding:8px;width:100%" oninput="calcGazMt(${g.pv})" onfocus="this.select()">
     <button class="btn" style="margin:0;padding:8px" onclick="adjQte('gazQte',1,${g.pv})">+</button>
    </div>
-   <div style="text-align:right">المبلغ: <b id="gazMt" style="color:var(--accent)">${fmt(g.pv)} DA</b></div>
+   <div style="text-align:right">المبلغ: <b id="gazMt" style="color:var(--accent)">${fmt(g.pv)} دج</b></div>
   </div>
   <button class="btn accent" style="width:100%;margin-top:10px" ondblclick="sendVente(${g.art_id}, 'gazQte', ${g.pv})">تأكيد (نقر مزدوج)</button>
  </div>`;
@@ -560,7 +560,7 @@
      <input id="lubQte" type="number" value="1" style="text-align:center;padding:8px;width:100%" oninput="calcLubMt()" onfocus="this.select()">
      <button class="btn" style="margin:0;padding:8px" onclick="adjQte('lubQte',1,0)">+</button>
     </div>
-    <div style="text-align:right">المبلغ: <b id="lubMt" style="color:var(--accent)"></b> DA</div>
+    <div style="text-align:right">المبلغ: <b id="lubMt" style="color:var(--accent)"></b> دج</div>
    </div>
    <button class="btn accent" style="width:100%;margin-top:10px" id="lubOkBtn">تأكيد (نقر مزدوج)</button>
    <button class="btn ghost" style="width:100%;margin-top:10px" onclick="cancelLubSale()">إلغح</button>
