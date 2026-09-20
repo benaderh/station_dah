@@ -231,8 +231,9 @@ let html5QrcodeScanner = null;
 function renderLub(){
  return `<div class="card">
   <h2>🛢️ Lubrifiants</h2>
-  <button class="btn" style="width:100%;margin-bottom:10px" onclick="startScanner()">📸 Scanner Code-barre</button>
+  <button id="startCamBtn" class="btn" style="width:100%;margin-bottom:10px" onclick="startScanner()">📸 Scanner Code-barre</button>
   <div id="reader" style="width:100%;margin-bottom:10px;display:none;background:#fff;border-radius:8px;overflow:hidden"></div>
+  <button id="cancelCamBtn" class="btn ghost" style="width:100%;margin-bottom:10px;display:none" onclick="stopScanner()">Annuler (fermer caméra)</button>
   <div id="lubResult" style="display:none;border:1px solid var(--line);padding:10px;border-radius:6px">
    <div id="lubName" style="font-weight:bold;color:var(--accent);margin-bottom:6px"></div>
    <div class="row2">
@@ -248,13 +249,30 @@ function renderLub(){
     <div style="text-align:right">Mt: <b id="lubMt" style="color:var(--accent)"></b> DA</div>
    </div>
    <button class="btn accent" style="width:100%;margin-top:10px" id="lubOkBtn">Ok (Double-clic)</button>
+   <button class="btn ghost" style="width:100%;margin-top:10px" onclick="cancelLubSale()">Annuler</button>
   </div>
  </div>`;
+}
+
+function stopScanner() {
+ if(html5QrcodeScanner) {
+  html5QrcodeScanner.stop().then(() => { html5QrcodeScanner.clear(); html5QrcodeScanner = null; }).catch(e=>console.log(e));
+ }
+ $("reader").style.display = "none";
+ if($("cancelCamBtn")) $("cancelCamBtn").style.display = "none";
+ if($("startCamBtn")) $("startCamBtn").style.display = "block";
+}
+
+function cancelLubSale() {
+ $("lubResult").style.display = "none";
+ $("lubQte").value = 1;
 }
 
 function startScanner() {
  $("lubResult").style.display = "none";
  $("reader").style.display = "block";
+ if($("cancelCamBtn")) $("cancelCamBtn").style.display = "block";
+ if($("startCamBtn")) $("startCamBtn").style.display = "none";
  if(!html5QrcodeScanner) {
   html5QrcodeScanner = new Html5Qrcode("reader");
  }
@@ -267,6 +285,8 @@ function onScanSuccess(decodedText, decodedResult) {
    html5QrcodeScanner.stop().then(() => { html5QrcodeScanner.clear(); html5QrcodeScanner = null; }).catch(e=>console.log(e));
   }
   $("reader").style.display = "none";
+  if($("cancelCamBtn")) $("cancelCamBtn").style.display = "none";
+  if($("startCamBtn")) $("startCamBtn").style.display = "block";
   $("lubResult").style.display = "block";
   $("lubName").textContent = a.article;
   $("lubStock").textContent = fmtQ(a.qs_vitrine||0) + " " + (a.unite||"");
