@@ -1076,7 +1076,7 @@ function openEditReglement(id){
   <div class="field"><label>Montant</label><input id="erMt" type="number" value="${a.mt_agent}" style="width:120px"></div>
  </div>
  <div style="text-align:right;margin-top:18px;display:flex;justify-content:space-between">
-  <button class="btn red" onclick="confirmModal('Supprimer ce règlement ?','Voulez-vous supprimer ce règlement ?',\"delReglement('${id}');closeModal()\")">🗑 Supprimer</button>
+  <button class="btn red" onclick="confirmModal('Supprimer ce règlement ?','Voulez-vous supprimer ce règlement ?',&quot;delReglement('${id}');closeModal()&quot;)">🗑 Supprimer</button>
   <div style="display:flex;gap:8px">
    <button class="btn" onclick="closeModal()">Annuler</button>
    <button class="btn accent" onclick="saveEditReglement('${id}')">✔ Enregistrer</button>
@@ -1568,7 +1568,7 @@ function openFactureEdit(fid){
  <p class="subtle" style="margin-top:8px">Réglé actuellement : <b>${fmt(f.regle)} DA</b>. En mode Cash le règlement est réajusté sur le nouveau total ; en mode Crédit, le réglé déjà versé est conservé (plafonné au nouveau total).</p>
  <div style="text-align:right;margin-top:16px">
   <button class="btn" onclick="closeModal()">Annuler</button>
-  <button class="btn red" onclick="confirmModal('Supprimer cette facture ?','Supprimer définitivement cette facture ? Cette action est irréversible.',\"deleteFacture('${f.id}')\")" >🗑 Supprimer</button>
+  <button class="btn red" onclick="confirmModal('Supprimer cette facture ?','Supprimer définitivement cette facture ? Cette action est irréversible.',&quot;deleteFacture('${f.id}')&quot;)" >🗑 Supprimer</button>
   <button class="btn accent" onclick="saveFactureEdit('${f.id}')">✔ Enregistrer</button>
  </div>`);}
 function saveFactureEdit(fid){
