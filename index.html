@@ -159,7 +159,7 @@ const PIST=[
  {c:"P05",t:"E"},{c:"P06",t:"E"},{c:"P07",t:"E"},{c:"P08",t:"E"},
  {c:"P09",t:"L"},{c:"P10",t:"L"},{c:"P11",t:"L"},{c:"P12",t:"L"}];
 function defaultDB(){return{tresorerie:[],
- categories:[{cat_id:1,cat:"Carburant"},{cat_id:2,cat:"Lubrifiant"},{cat_id:3,cat:"غا البوتاٍ"}],
+ categories:[{cat_id:1,cat:"Carburant"},{cat_id:2,cat:"Lubrifiant"},{cat_id:3,cat:"غاز البوتان"}],
  articles:[
   {art_id:1,article:"Gasoil",id_cat:1,unite:"L",type_a:1,coeff:1,qs:0,pa:0,pv:115,actif:1},
   {art_id:2,article:"Essence",id_cat:1,unite:"L",type_a:2,coeff:1,qs:0,pa:0,pv:145,actif:1},
@@ -1211,7 +1211,7 @@ function vJournal(){
  const tvCarb=(carbG.q*(aG?Number(aG.pv||0):0))+(carbE.q*(aE?Number(aE.pv||0):0))+(carbGPL.q*(aL?Number(aL.pv||0):0));
  const tmCarb=(carbG.q*(aG?Number(aG.pv||0)-Number(aG.pa||0):0))+(carbE.q*(aE?Number(aE.pv||0)-Number(aE.pa||0):0))+(carbGPL.q*(aL?Number(aL.pv||0)-Number(aL.pa||0):0));
 
- /* ---- غا البوتاٍ & الزيوت ---- */
+ /* ---- غاز البوتان & الزيوت ---- */
  function diversRow(typeA,label){
   const arts=typeA===0?DB.articles.filter(a=>Number(a.type_a)===0&&Number(a.actif)):[DB.articles.find(a=>Number(a.type_a)===9)].filter(Boolean);
   let qte=0,vente=0,marge=0,stock=0;
@@ -1227,7 +1227,7 @@ function vJournal(){
   });
   return{label,vente,marge,stock,row:`<tr><td>${label}</td><td class="num">${fmt(vente)}</td><td class="num ${marge>=0?"diff-pos":"diff-neg"}">${fmt(marge)}</td></tr>`};
  }
- const rowGaz=diversRow(9,"غا البوتاٍ");
+ const rowGaz=diversRow(9,"غاز البوتان");
  const rowLub=diversRow(0,"الزيوت");
  const tvDiv=rowGaz.vente+rowLub.vente;
  const tmDiv=rowGaz.marge+rowLub.marge;
@@ -1383,7 +1383,7 @@ function vJournal(){
 
  <!-- GAZ & LUBRIFIANTS -->
  <div class="card" style="margin-bottom:12px">
-  <h2 style="margin-top:0;margin-bottom:10px">🛢️ غا البوتاٍ &amp; الزيوت</h2>
+  <h2 style="margin-top:0;margin-bottom:10px">🛢️ غاز البوتانٍ &amp; الزيوت</h2>
   <table style="width:100%">
    <thead><tr style="background:rgba(255,255,255,0.04)">
     <th style="text-align:left;padding:8px">Article</th>
