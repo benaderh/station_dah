@@ -1509,13 +1509,14 @@ function factQtesStr(f){
 function factHistTable(){
  const q=state.factFilter.toLowerCase();
  const fs=DB.factures.filter(f=>{const s=(tierNom(f.fournisseurId)+" "+(f.numero||"")+" "+f.type).toLowerCase();return s.includes(q);}).slice().reverse();
+ return `<table><thead><tr><th>Date</th><th>Type</th><th>Fournisseur</th><th>N°</th><th>Chèque</th><th>Qtés</th><th class="num">Montant</th><th class="num">Réglé</th><th class="num">Reste</th><th>Mode</th></tr></thead><tbody>
  ${fs.map(f=>{
   const cheques=(f.paiements||[]).filter(p=>p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
   return `<tr ondblclick="openFactureEdit('${f.id}')" style="cursor:pointer" title="Dl_clic pour modifier"><td>${frDate(f.date)}</td><td>${f.type==="carburant"?"⛽ Carburant":"📦 Divers"}</td><td>${tierNom(f.fournisseurId)}</td>
   <td>${esc(f.numero||"—")}</td><td style="color:var(--accent2);font-size:12px">${cheques}</td><td style="font-size:12px">${factQtesStr(f)}</td><td class="num">${fmt(f.montant)}</td><td class="num">${fmt(f.regle)}</td>
   <td class="num" style="color:${f.montant-f.regle>0?"var(--red)":"var(--green)"}">${fmt(f.montant-f.regle)}</td>
   <td>${f.mode==="credit"?'<span class="pill warn">Crédit</span>':'<span class="pill ok">Cash</span>'}</td></tr>`;
- }).join("")||`<tr><td colspan="10" class="subtle">Aucune facture.</td></tr>`}</table>`;}
+ }).join("")||`<tr><td colspan="10" class="subtle">Aucune facture.</td></tr>`}</tbody></table>`;}
 /* ---- édition d'une facture (double-clic) ---- */
 let editFactLines=[];
 function factEditProds(f){return f.type==="carburant"?DB.articles.filter(a=>[1,2,3].includes(Number(a.type_a))):DB.articles.filter(a=>[0,9].includes(Number(a.type_a)));}
