@@ -1,47 +1,77 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>Station Pro — Tableau de bord</title>
+<title>Station Pro — Tableau de bord Patron</title>
 <link rel="icon" href="icon_patron.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest_patron.json">
 <meta name="theme-color" content="#0a0e18">
 <style>
- :root{--bg:#0a0e18;--card:#111827;--line:#1f2937;--muted:#8b95a7;--gold:#f5b83e;--blue:#63b3ed;--red:#f87171;--green:#34d399;--accent:#2563eb;--accent2:#63b3ed;--border:#1f2937;--ink:#e5e9f0}
- *{box-sizing:border-box}
- body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:14px}
- .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
- h1{font-size:18px;margin:0}
- h2{font-size:14px;margin:0}
- table{width:100%;border-collapse:collapse;font-size:13px}
- .num{text-align:right}
- .row{display:flex;align-items:center}
- .row.between{justify-content:space-between}
- select,input,button{font-family:inherit}
- .btn{background:var(--line);color:var(--ink);border:none;border-radius:8px;padding:8px 12px;font-size:13px}
- .btn.accent{background:var(--accent)}
- .diff-pos{color:var(--green)} .diff-neg{color:var(--red)}
- .grid-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
- .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
- .stat .v{font-size:19px;font-weight:700}
- .stat .l{font-size:12px;color:var(--muted);margin-top:2px}
- .stat.gold .v{color:var(--gold)} .stat.blue .v{color:var(--blue)} .stat.green .v{color:var(--green)} .stat.red .v{color:var(--red)}
- .subtle{color:var(--muted);font-size:13px}
- .status{font-size:11px;color:var(--muted);margin-bottom:6px}
- .err{background:#3b1717;border:1px solid #7f1d1d;color:#fca5a5;padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px}
- .empty{color:var(--muted);font-size:13px;padding:20px;text-align:center}
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg:#0b0f1a;--panel:#111827;--card:#161f33;--card2:#1c2740;--line:#263350;
+ --ink:#e8edf7;--muted:#8d99b5;--accent:#f59e0b;--accent2:#22d3ee;--blue:#3b82f6;
+ --green:#22c55e;--red:#ef4444;--orange:#fb923c;--gold:#f5b83e;--radius:14px;
+ --border:#263350;
+}
+html,body{height:100%;background:var(--bg);color:var(--ink);font-family:"Segoe UI",Roboto,Arial,sans-serif;font-size:14px}
+body{padding:16px}
+::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:#2b3a5e;border-radius:6px}::-webkit-scrollbar-track{background:transparent}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:14px}
+h1{font-size:18px;font-weight:700;margin:0}
+h2{font-size:14.5px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:rgba(255,255,255,.025)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.row{display:flex;align-items:center}
+.row.between{justify-content:space-between}
+.grid-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.stat .v{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums}
+.stat .l{font-size:11.5px;color:var(--muted);margin-top:3px}
+.stat.gold .v{color:var(--gold)}
+.stat.blue .v{color:var(--accent2)}
+.stat.green .v{color:var(--green)}
+.stat.red .v{color:var(--red)}
+.diff-pos{color:var(--red)}
+.diff-neg{color:var(--orange)}
+select{background:#fff;border:1px solid var(--accent);color:#000;border-radius:9px;padding:8px 12px;font-size:14px;font-weight:600;min-width:140px;cursor:pointer;font-family:inherit}
+.btn{border:none;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;background:var(--card2);color:var(--ink);border:1px solid var(--line);transition:all .15s;font-family:inherit}
+.btn:hover{filter:brightness(1.15)}
+.btn.red{background:linear-gradient(90deg,#dc2626,#ef4444);color:#fff;border:none}
+.err{background:#3b1717;border:1px solid #7f1d1d;color:#fca5a5;padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px}
+.login-box{max-width:380px;margin:40px auto}
+.login-box label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+.login-box input{width:100%;background:#0d1424;border:1px solid var(--line);color:#e5e9f0;border-radius:10px;padding:12px;font-size:16px;margin-bottom:12px;font-family:inherit}
+.login-box .btn-login{background:linear-gradient(90deg,var(--accent),var(--orange));color:#1a1206;width:100%;padding:12px;font-size:15px;border:none;border-radius:10px;cursor:pointer;font-weight:700}
+.status{font-size:12px;color:var(--muted);margin-bottom:8px}
+.subtle{color:var(--muted);font-size:12px}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700}
+.pill.ok{background:rgba(34,197,94,.15);color:var(--green)}
+.pill.warn{background:rgba(239,68,68,.15);color:var(--red)}
+@media print{
+ .no-print{display:none!important}
+ .card{break-inside:avoid;border:1px solid #ccc;background:#fff;color:#000;border-radius:4px;margin-bottom:10px;padding:12px}
+ th{background:#f0f0f0;color:#000}
+ .diff-pos{color:#166534}.diff-neg{color:#991b1b}
+}
 </style>
 </head>
 <body>
-<div id="loginBox" class="card" style="display:none;max-width:360px;margin:20px auto">
- <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">Email</label>
- <input id="email" type="email" autocomplete="username" style="width:100%;background:#0d1424;border:1px solid var(--line);color:#e5e9f0;border-radius:10px;padding:12px;font-size:16px;margin-bottom:10px">
- <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">Mot de passe</label>
- <input id="password" type="password" autocomplete="current-password" style="width:100%;background:#0d1424;border:1px solid var(--line);color:#e5e9f0;border-radius:10px;padding:12px;font-size:16px;margin-bottom:10px">
- <button class="btn accent" style="width:100%" onclick="doLogin()">Connecter</button>
-</div>
+
 <div class="status" id="status">Connexion…</div>
 <div id="errBox"></div>
+<div id="loginBox" class="login-box card" style="display:none">
+ <label>Email</label>
+ <input id="email" type="email" autocomplete="username">
+ <label>Mot de passe</label>
+ <input id="password" type="password" autocomplete="current-password">
+ <button class="btn-login" onclick="doLogin()">Connecter</button>
+</div>
 <div id="out"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -51,7 +81,7 @@ const SUPABASE_KEY="sb_publishable_VdDiO_xSqIvBbWak_wPASw__zsfWGby";
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=id=>document.getElementById(id);
 
-/* ====== Connexion ====== */
+/* ====== Auth ====== */
 async function doLogin(){
  const email=$("email").value.trim(),password=$("password").value;
  if(!email||!password){$("status").textContent="Email et mot de passe requis.";return;}
@@ -69,12 +99,12 @@ async function checkAuth(){
  $("loginBox").style.display="none";
  return true;}
 
-/* ====== Données ====== */
+/* ====== Tables ====== */
 const TABLES=["tresorerie","categories","articles","tiers","mouvements","mouv_detail","agent_detail","indexs","factures","agent"];
 let DB={tresorerie:[],categories:[],articles:[],tiers:[],mouvements:[],mouv_detail:[],agent_detail:[],indexs:[],factures:[],agent:[],meta:{}};
 let selDate=null;
 
-/* ====== Fonctions utilitaires — copiées telles quelles depuis station.html ====== */
+/* ====== Helpers ====== */
 const PIST=[{c:"P01",t:"G"},{c:"P02",t:"G"},{c:"P03",t:"G"},{c:"P04",t:"G"},{c:"P05",t:"E"},{c:"P06",t:"E"},{c:"P07",t:"E"},{c:"P08",t:"E"},{c:"P09",t:"L"},{c:"P10",t:"L"},{c:"P11",t:"L"},{c:"P12",t:"L"}];
 const fmt=n=>Math.round(Number(n)||0).toLocaleString("fr-FR");
 const fmtQ=n=>{const v=Number(n)||0;return v===Math.round(v)?v.toLocaleString("fr-FR"):v.toLocaleString("fr-FR",{maximumFractionDigits:3});};
@@ -119,7 +149,6 @@ function caisseDuJour(d){
  led.forEach(l=>{if(l.source==="agent"&&l.sens==="E")espece+=l.montant;if(l.source==="agent"&&l.sens==="S")sorties+=l.montant;if((l.source==="facture"||l.source==="treso")&&l.sens==="S")paiements+=l.montant;if(l.source==="treso"&&l.sens==="E")espece+=l.montant;});
  return{espece,sorties,paiements,net:espece-sorties-paiements};}
 function caisseSoldeAvant(date){const led=getLedger("caisse");const last=led.filter(l=>l.date<date).pop();return last?last.solde:(Number(DB.meta.caisseInit)||0);}
-function banqueSolde(){const led=getLedger("banque");return led.length?led[led.length-1].solde:(Number(DB.meta.banqueInit)||0);}
 function calcStockCarburant(typeA,dateLimit=null){
  const artObj=DB.articles.find(a=>Number(a.type_a)===Number(typeA));
  if(!artObj)return 0;
@@ -148,7 +177,7 @@ function allDates(){const s=new Set();
 
 /* ====== Chargement ====== */
 async function loadAndRender(){
- $("status").textContent="Connexion…";
+ $("status").textContent="Chargement…";
  $("errBox").innerHTML="";
  if(!(await checkAuth()))return;
  try{
@@ -164,18 +193,19 @@ async function loadAndRender(){
  }catch(e){
   console.error(e);
   $("status").textContent="Erreur de connexion";
-  $("errBox").innerHTML='<div class="err">Impossible de charger les données (réseau ou Supabase indisponible) : '+esc(e.message)+"</div>";
+  $("errBox").innerHTML='<div class="err">Impossible de charger les données : '+esc(e.message)+"</div>";
  }}
 
-/* ====== Rendu — reproduction fidèle de vJournal (tableau de bord admin) ====== */
+/* ====== Rendu ====== */
 function render(){
  const ds=allDates().slice().reverse();
  const today=todayISO();
  if(!selDate||!ds.includes(selDate))selDate=ds.includes(today)?today:(ds.length?ds[0]:"");
- if(!ds.length){$("out").innerHTML=`<div class="card empty">📒 Aucune donnée enregistrée.</div>`;return;}
+ if(!ds.length){$("out").innerHTML=`<div class="card" style="text-align:center;padding:40px">📒 Aucune donnée enregistrée.</div>`;return;}
  const d=selDate;
  const g=calcGroup(d);
 
+ /* ---- Carburant ---- */
  function carbRow(typeA,label){
   const a=DB.articles.find(x=>Number(x.type_a)===typeA);
   if(!a)return`<tr><td>${label}</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>`;
@@ -190,19 +220,22 @@ function render(){
  const tvCarb=(carbG.q*(aG?Number(aG.pv||0):0))+(carbE.q*(aE?Number(aE.pv||0):0))+(carbGPL.q*(aL?Number(aL.pv||0):0));
  const tmCarb=(carbG.q*(aG?Number(aG.pv||0)-Number(aG.pa||0):0))+(carbE.q*(aE?Number(aE.pv||0)-Number(aE.pa||0):0))+(carbGPL.q*(aL?Number(aL.pv||0)-Number(aL.pa||0):0));
 
- function diversRow(typeA,label){
+ /* ---- Gaz & Lubrifiants (pour calculs caisse/marge uniquement) ---- */
+ function diversMt(typeA){
   const arts=typeA===0?DB.articles.filter(a=>Number(a.type_a)===0&&Number(a.actif)):[DB.articles.find(a=>Number(a.type_a)===9)].filter(Boolean);
-  let qte=0,vente=0,marge=0,stock=0;
+  let vente=0,marge=0;
   arts.forEach(a=>{
    const ops=DB.mouvements.filter(m=>m.date_m===d).map(m=>String(m.operation_id));
    const mds=DB.mouv_detail.filter(md=>ops.includes(String(md.id_operation))&&String(md.id_art)===String(a.art_id)&&DB.mouvements.find(m=>String(m.operation_id)===String(md.id_operation)&&m.sens==="S"));
    const q=mds.reduce((s,md)=>s+Number(md.quantite),0);
    const v=mds.reduce((s,md)=>s+(Number(md.quantite)*Number(md.prix_u)),0);
-   qte+=q;vente+=v;marge+=(v-(q*Number(a.pa||0)));stock+=Number(a.qs||0);});
-  return{label,vente,marge,stock,row:`<tr><td>${label}</td><td class="num">${fmt(vente)}</td><td class="num ${marge>=0?"diff-pos":"diff-neg"}">${fmt(marge)}</td></tr>`};}
- const rowGaz=diversRow(9,"Gaz butane"),rowLub=diversRow(0,"Lubrifiants");
- const tvDiv=rowGaz.vente+rowLub.vente,tmDiv=rowGaz.marge+rowLub.marge;
+   vente+=v;marge+=(v-(q*Number(a.pa||0)));});
+  return{vente,marge};}
+ const gazMt=diversMt(9),lubMt=diversMt(0);
+ const tvDiv=gazMt.vente+lubMt.vente;
+ const tmDiv=gazMt.marge+lubMt.marge;
 
+ /* ---- Règlements carburant non validés banque ---- */
  const facNonBanque=DB.factures.filter(f=>{
   if(f.type!=="carburant"||f.date>d)return false;
   const regleAALaDate=(f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant),0);
@@ -210,99 +243,152 @@ function render(){
   const hasBons=(f.paiements||[]).filter(p=>p.date<=d).some(p=>p.source==="bons");
   return reste>0||hasBons;
  }).sort((a,b)=>b.date.localeCompare(a.date));
-  let resteQteGE=0,resteQteGPL=0,resteValeurGE=0,resteValeurGPL=0;
-  const resteCarburant=facNonBanque.reduce((s,f)=>{
-   const regleAALaDate=(f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant),0);
-   const reste=Number(f.montant)-regleAALaDate;
-   if(reste>0&&Number(f.montant)>0){
-    const ratio=reste/Number(f.montant);
-    let mtGE=0,mtGPL=0;
-    (f.lignes||[]).forEach(l=>{
-     const art=Number(l.artId);
-     const val=Number(l.qte)*(Number(l.pu)||1);
-     if(art===1||art===2){resteQteGE+=Number(l.qte)*ratio; mtGE+=val;}
-     else if(art===3){resteQteGPL+=Number(l.qte)*ratio; mtGPL+=val;}
-    });
-    const totMt=mtGE+mtGPL||1;
-    resteValeurGE+=reste*(mtGE/totMt);
-    resteValeurGPL+=reste*(mtGPL/totMt);
-   }
-   return s+reste;},0);
+ let resteValeurGE=0,resteValeurGPL=0;
+ const resteCarburant=facNonBanque.reduce((s,f)=>{
+  const regleAALaDate=(f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant),0);
+  const reste=Number(f.montant)-regleAALaDate;
+  if(reste>0&&Number(f.montant)>0){
+   const ratio=reste/Number(f.montant);
+   let mtGE=0,mtGPL=0;
+   (f.lignes||[]).forEach(l=>{
+    const art=Number(l.artId);
+    const val=Number(l.qte)*(Number(l.pu)||1);
+    if(art===1||art===2)mtGE+=val;
+    else if(art===3)mtGPL+=val;
+   });
+   const totMt=mtGE+mtGPL||1;
+   resteValeurGE+=reste*(mtGE/totMt);
+   resteValeurGPL+=reste*(mtGPL/totMt);}
+  return s+reste;},0);
 
+ /* ---- Suivi caisse ---- */
  const cj=caisseDuJour(d);
  const soldePrec=caisseSoldeAvant(d);
  const soldeFin=soldePrec+cj.net;
  const parType={};DB.agent_detail.filter(x=>x.date_agent===d&&Number(x.type_agent)!==1).forEach(x=>{parType[x.type_agent]=(parType[x.type_agent]||0)+Number(x.mt_agent);});
  const paiementsDetails=getLedger("caisse").filter(l=>l.date===d&&(l.source==="facture"||l.source==="treso")&&l.sens==="S");
-
- const ledBanque=getLedger("banque").filter(l=>l.date===d);
- const bEncaisse=ledBanque.filter(l=>l.sens==="E").reduce((s,l)=>s+l.montant,0);
- const bDecaisse=ledBanque.filter(l=>l.sens==="S").reduce((s,l)=>s+l.montant,0);
- const soldeBanque=banqueSolde();
+ const autresEncDetails=getLedger("caisse").filter(l=>l.date===d&&l.source==="treso"&&l.sens==="E");
+ const autresEnc=autresEncDetails.reduce((s,l)=>s+l.montant,0);
 
  $("out").innerHTML=`
- <div class="row between" style="margin-bottom:16px;align-items:center;background:var(--card);padding:14px 18px;border-radius:12px;border:1px solid var(--line)">
+ <div class="row between" style="margin-bottom:16px;align-items:center;background:var(--card);padding:14px 18px;border-radius:var(--radius);border:1px solid var(--line)">
   <div style="display:flex;align-items:center;gap:12px">
    <span style="font-size:24px">📊</span>
    <h1>Tableau de bord</h1>
   </div>
   <div class="row" style="gap:10px;flex-wrap:wrap">
-   <select style="padding:8px 12px;border-radius:9px;background:#fff;border:1px solid var(--accent);color:#000;font-size:14px;font-weight:600;min-width:140px;cursor:pointer" onchange="selDate=this.value;render()">
+   <select onchange="selDate=this.value;render()">
     ${ds.map(x=>`<option value="${x}" ${x===d?"selected":""}>${frDate(x)}</option>`).join("")}
    </select>
-   <button class="btn" onclick="loadAndRender()">🔄</button>
+   <button class="btn red no-print" onclick="window.print()">📄 PDF</button>
   </div>
  </div>
- <div class="grid-stats" style="margin-bottom:16px">
+
+ <div class="grid-stats">
   <div class="stat gold"><div class="v">${fmt(soldeFin)}</div><div class="l">Caisse (Fin de journée)</div></div>
-  <div class="stat blue"><div class="v">${fmt(soldeBanque)}</div><div class="l">Banque (Cumulé)</div></div>
   <div class="stat green"><div class="v">${fmt(tmCarb)}</div><div class="l">Marge Carburant</div></div>
-  <div class="stat"><div class="v">${fmt(tmDiv)}</div><div class="l">Marge Gaz &amp; الزيوت</div></div>
-  <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)<br><span style="font-size:11px;opacity:0.85">Gasoil/Essence: ${fmt(resteValeurGE)} DA | GPL: ${fmt(resteValeurGPL)} DA</span></div></div>
+  <div class="stat"><div class="v">${fmt(tmDiv)}</div><div class="l">Marge Gaz &amp; Lubrifiants</div></div>
+  <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)<br><span style="font-size:13px;font-weight:700;color:var(--red)">${fmt(resteValeurGE+resteValeurGPL)}</span><br><span style="font-size:11px;opacity:0.85">G/E: ${fmt(resteValeurGE)} | GPL: ${fmt(resteValeurGPL)}</span></div></div>
   <div class="stat green"><div class="v">${fmt(tmCarb+tmDiv)}</div><div class="l">Marge Globale</div></div>
  </div>
- <div class="card" style="margin-bottom:12px">
-  <h2 style="margin-bottom:10px">💵 Suivi de Caisse</h2>
+
+ <!-- SUIVI CAISSE -->
+ <div class="card">
+  <h2>💵 Suivi de Caisse</h2>
   <table style="max-width:480px">
-   <tr><td style="padding:7px 4px">Solde initial (report)</td><td class="num" style="padding:7px 4px;font-weight:700">${fmt(soldePrec)} DA</td></tr>
-   <tr><td style="padding:7px 4px;color:var(--green)">＋ Encaissements</td><td class="num" style="padding:7px 4px;color:var(--green)">+ ${fmt(cj.espece)} DA</td></tr>
-    <tr><td colspan="2" style="padding:2px 4px 2px;font-size:12px;color:var(--muted);font-weight:600">Detail encaissements :</td></tr>
-    <tr><td style="padding:3px 4px 3px 16px;font-size:13px;color:var(--muted)">Carburant</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(tvCarb)} DA</td></tr>
-    <tr><td style="padding:3px 4px 3px 16px;font-size:13px;color:var(--muted)">Lubrifiants</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowLub.vente)} DA</td></tr>
-    <tr><td style="padding:3px 4px 3px 16px;font-size:13px;color:var(--muted)">Gaz butane</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowGaz.vente)} DA</td></tr>
+   <tr>
+    <td style="padding:7px 4px">Solde initial (report)</td>
+    <td class="num" style="padding:7px 4px;font-weight:700">${fmt(soldePrec)} DA</td>
+   </tr>
+   <tr>
+    <td style="padding:7px 4px;color:var(--green)">＋ Encaissements</td>
+    <td class="num" style="padding:7px 4px;color:var(--green)">+ ${fmt(cj.espece)} DA</td>
+   </tr>
+   <tr><td colspan="2" style="padding:2px 4px;font-size:12px;color:var(--muted);font-weight:600">Détail encaissements :</td></tr>
+   <tr><td style="padding:3px 4px 3px 16px;font-size:13px;color:var(--muted)">Carburant</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(tvCarb)} DA</td></tr>
+   <tr><td style="padding:3px 4px 3px 16px;font-size:13px;color:var(--muted)">Lubrifiants</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(lubMt.vente)} DA</td></tr>
+   <tr><td style="padding:3px 4px 3px 16px;font-size:13px;color:var(--muted)">Gaz butane</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(gazMt.vente)} DA</td></tr>
+   ${autresEnc>0?autresEncDetails.reduce((h,l)=>h+`<tr><td style="padding:3px 4px 3px 16px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs&&l.obs!=="Aucune"?` (${esc(l.obs)})`:""}</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(l.montant)} DA</td></tr>`,`<tr><td style="padding:3px 4px 3px 16px;font-size:13px;font-weight:600;color:var(--muted)">Autres encaissements</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(autresEnc)} DA</td></tr>`):""}
    <tr><td colspan="2" style="padding:4px 4px 2px;font-size:12px;color:var(--muted);font-weight:600">Détail décaissements :</td></tr>
-   ${Object.keys(parType).length?Object.keys(parType).sort().map(t=>`<tr><td style="padding:4px 4px 4px 16px;font-size:13px;color:var(--muted)">− ${agentLib(t)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(parType[t])} DA</td></tr>`).join(""):`<tr><td colspan="2" style="padding:4px 16px;font-size:12px;color:var(--muted)">Aucun décaissement saisi</td></tr>`}
-   ${paiementsDetails.length>0?`<tr><td colspan="2" style="padding:6px 4px 2px;font-size:12px;color:var(--muted);font-weight:600">Détail paiements fournisseurs &amp; divers :</td></tr>${paiementsDetails.map(l=>`<tr><td style="padding:4px 4px 4px 16px;font-size:13px;color:var(--muted)">− ${esc(l.libelle)}${l.obs?` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>`:""}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td></tr>`).join("")}`:""}
-   <tr style="border-top:2px solid var(--border)"><td style="padding:10px 4px;font-weight:700;font-size:15px">Solde final caisse</td><td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:${soldeFin>=0?"var(--accent)":"var(--red)"}">${fmt(soldeFin)} DA</td></tr>
+   ${Object.keys(parType).length?Object.keys(parType).sort().map(t=>`
+   <tr>
+    <td style="padding:4px 4px 4px 16px;font-size:13px;color:var(--muted)">− ${agentLib(t)}</td>
+    <td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(parType[t])} DA</td>
+   </tr>`).join(""):
+   `<tr><td colspan="2" style="padding:4px 16px;font-size:12px;color:var(--muted)">Aucun décaissement saisi</td></tr>`}
+   ${paiementsDetails.length>0?`<tr>
+    <td colspan="2" style="padding:6px 4px 2px;font-size:12px;color:var(--muted);font-weight:600">Détail paiements fournisseurs &amp; divers :</td>
+   </tr>
+   ${paiementsDetails.map(l=>`<tr>
+    <td style="padding:4px 4px 4px 16px;font-size:13px;color:var(--muted)">− ${esc(l.libelle)}${l.obs?` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>`:""}</td>
+    <td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td>
+   </tr>`).join("")}`:""}
+   <tr style="border-top:2px solid var(--border)">
+    <td style="padding:10px 4px;font-weight:700;font-size:15px">Solde final caisse</td>
+    <td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:${soldeFin>=0?"var(--accent)":"var(--red)"}">${fmt(soldeFin)} DA</td>
+   </tr>
   </table>
  </div>
- <div class="card" style="margin-bottom:12px">
-  <h2 style="margin-bottom:10px">⛽ Carburant</h2>
+
+ <!-- CARBURANT -->
+ <div class="card">
+  <h2>⛽ Carburant</h2>
   <table>
-   <thead><tr style="background:rgba(255,255,255,0.04)"><th style="text-align:left;padding:8px">Article</th><th class="num" style="padding:8px">Vente (DA)</th><th class="num" style="padding:8px">Marge (DA)</th><th class="num" style="padding:8px">Stock</th></tr></thead>
+   <thead><tr style="background:rgba(255,255,255,0.04)">
+    <th style="text-align:left;padding:8px">Article</th>
+    <th class="num" style="padding:8px">Vente (DA)</th>
+    <th class="num" style="padding:8px">Marge (DA)</th>
+    <th class="num" style="padding:8px">Stock</th>
+   </tr></thead>
    <tbody>
-    ${carbRow(1,"Gasoil")}${carbRow(2,"Essence")}${carbRow(3,"GPL")}
-    <tr style="border-top:2px solid var(--border);font-weight:700"><td style="padding:8px 4px">Total</td><td class="num" style="padding:8px 4px;color:var(--gold)">${fmt(tvCarb)}</td><td class="num" style="padding:8px 4px;color:${tmCarb>=0?"var(--green)":"var(--red)"}">${fmt(tmCarb)}</td><td class="num" style="padding:8px 4px">—</td></tr>
+    ${carbRow(1,"Gasoil")}
+    ${carbRow(2,"Essence")}
+    ${carbRow(3,"GPL")}
+    <tr style="border-top:2px solid var(--border);font-weight:700">
+     <td style="padding:8px 4px">Total</td>
+     <td class="num" style="padding:8px 4px;color:var(--gold)">${fmt(tvCarb)}</td>
+     <td class="num" style="padding:8px 4px;color:${tmCarb>=0?"var(--green)":"var(--red)"}">${fmt(tmCarb)}</td>
+     <td class="num" style="padding:8px 4px">—</td>
+    </tr>
    </tbody>
   </table>
  </div>
+
+ <!-- RÈGLEMENTS CARBURANT -->
  <div class="card">
-  <h2 style="margin-bottom:10px">📋 Suivi règlements carburant — En attente banque</h2>
-  ${facNonBanque.length?`<div style="overflow-x:auto"><table style="min-width:620px">
-   <thead><tr style="background:rgba(255,255,255,0.04)"><th style="text-align:left;padding:8px">Facture</th><th style="text-align:left;padding:8px">Fournisseur</th><th style="text-align:left;padding:8px">Date</th><th class="num" style="padding:8px">Qté</th>
-      <th class="num" style="padding:8px">Mt</th><th style="text-align:left;padding:8px">N° Chèque</th><th class="num" style="padding:8px;color:var(--red)">Reste dû</th></tr></thead>
-   <tbody>${facNonBanque.map(f=>{
-    const qteStr=(f.lignes||[]).map(l=>{const a=DB.articles.find(x=>String(x.art_id)===String(l.artId));return a?esc(a.article)+": "+fmtQ(l.qte):"";}).filter(Boolean).join("<br>");
-    const regleAALaDate=(f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant),0);
-    const reste=Number(f.montant)-regleAALaDate;
-    const modes=(f.paiements||[]).filter(p=>p.date<=d).map(p=>{
-     if(p.source==="bons")return`<span style="background:rgba(251,191,36,0.15);color:#fbbf24;padding:2px 6px;border-radius:4px;font-size:12px">Bons Naftal</span>`;
-     if(p.source==="banque")return`<span style="background:rgba(99,179,237,0.15);color:#63b3ed;padding:2px 6px;border-radius:4px;font-size:12px">Banque</span>`;
-     return`<span style="background:rgba(72,187,120,0.15);color:#48bb78;padding:2px 6px;border-radius:4px;font-size:12px">Caisse</span>`;}).join(" ");
-    const cheques=(f.paiements||[]).filter(p=>p.date<=d&&p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
-    return`<tr><td style="padding:6px 4px">${esc(f.numero||"—")}</td><td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td><td style="padding:6px 4px">${frDate(f.date)}</td><td style="padding:6px 4px;font-size:12px;white-space:nowrap">${qteStr}</td><td class="num" style="padding:6px 4px">${fmt(f.montant)}</td><td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td><td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):`✔`}</td></tr>`;
-   </tbody></table></div>`:`<p class="subtle">Aucun règlement en attente.</p>`}
- </div>`;}
+  <h2>📋 Suivi règlements carburant — En attente banque</h2>
+  ${facNonBanque.length?`
+  <div style="overflow-x:auto">
+   <table style="min-width:620px">
+    <thead><tr style="background:rgba(255,255,255,0.04);border-bottom:2px solid var(--line)">
+     <th style="text-align:center;padding:8px">Facture</th>
+     <th style="text-align:center;padding:8px">Fournisseur</th>
+     <th style="text-align:center;padding:8px">Date</th>
+     <th style="text-align:center;padding:8px">Qté</th>
+     <th style="text-align:center;padding:8px">Mt</th>
+     <th style="text-align:center;padding:8px">N° Chèque</th>
+     <th style="text-align:center;padding:8px;color:var(--red)">Reste dû</th>
+    </tr></thead>
+    <tbody>${facNonBanque.map(f=>{
+     const qteStr=(f.lignes||[]).map(l=>{const a=DB.articles.find(x=>String(x.art_id)===String(l.artId));return a?esc(a.article)+": "+fmtQ(l.qte):"";}).filter(Boolean).join("<br>");
+     const regleAALaDate=(f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant),0);
+     const reste=Number(f.montant)-regleAALaDate;
+     const cheques=(f.paiements||[]).filter(p=>p.date<=d&&p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
+     return`<tr style="border-bottom:1px solid var(--line)">
+      <td style="padding:6px 8px;text-align:center">${esc(f.numero||"—")}</td>
+      <td style="padding:6px 8px">${tierNom(f.fournisseurId)}</td>
+      <td style="padding:6px 8px;text-align:center">${frDate(f.date)}</td>
+      <td style="padding:6px 8px;font-size:12px;white-space:nowrap;text-align:center">${qteStr}</td>
+      <td class="num" style="padding:6px 8px">${fmt(f.montant)}</td>
+      <td style="padding:6px 8px;font-size:12px;color:var(--accent2);text-align:center">${cheques}</td>
+      <td class="num" style="padding:6px 8px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td>
+     </tr>`;}).join("")}
+    </tbody>
+   </table>
+  </div>`
+  :`<p class="subtle" style="padding:8px 0">✅ Aucune facture carburant en attente de validation bancaire.</p>`}
+ </div>`;
+}
 
 loadAndRender();
 setInterval(loadAndRender,60000);
