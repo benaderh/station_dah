@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
@@ -678,7 +678,7 @@ function vDashboard(){
     </tr></thead>
     <tbody>
      ${facNonBanque.map(f=>{
-     let qte=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2||art===3)qte+=Number(l.qte);});
+     const qteStr=(f.lignes||[]).map(l=>{const a=DB.articles.find(x=>String(x.art_id)===String(l.artId));return a?esc(a.article)+": "+fmtQ(l.qte):"";}).filter(Boolean).join("<br>");
       const regleAALaDate = (f.paiements||[]).filter(p=>!last || p.date<=last).reduce((s,p)=>s+Number(p.montant), 0);
       const reste=Number(f.montant)-regleAALaDate;
      const modes=(f.paiements||[]).filter(p=>!last || p.date<=last).map(p=>{
@@ -691,7 +691,7 @@ function vDashboard(){
       <td style="padding:6px 4px">${esc(f.numero||"—")}</td>
       <td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td>
       <td style="padding:6px 4px">${frDate(f.date)}</td>
-      <td class="num" style="padding:6px 4px">${fmtQ(qte)}</td>
+      <td style="padding:6px 4px;font-size:12px;white-space:nowrap">${qteStr}</td>
        <td class="num" style="padding:6px 4px">${fmt(f.montant)}</td>
        <td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td>
       <td style="text-align:center;padding:6px 4px">${modes||"—"}</td>
@@ -1239,20 +1239,25 @@ function vJournal(){
   const hasBons=(f.paiements||[]).filter(p=>p.date<=d).some(p=>p.source==="bons");
   return reste>0||hasBons;
  }).sort((a,b)=>b.date.localeCompare(a.date));
- let resteQteGE=0,resteQteGPL=0;
- const resteCarburant=facNonBanque.reduce((s,f)=>{
-  const regleAALaDate = (f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant), 0);
-  const reste = Number(f.montant)-regleAALaDate;
-  if(reste>0 && Number(f.montant)>0){
-   const ratio = reste/Number(f.montant);
-   (f.lignes||[]).forEach(l=>{
-    const art=Number(l.artId);
-    if(art===1||art===2)resteQteGE+=Number(l.qte)*ratio;
-    else if(art===3)resteQteGPL+=Number(l.qte)*ratio;
-   });
-  }
-  return s+reste;
- },0);
+  let resteQteGE=0,resteQteGPL=0,resteValeurGE=0,resteValeurGPL=0;
+  const resteCarburant=facNonBanque.reduce((s,f)=>{
+   const regleAALaDate = (f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant), 0);
+   const reste = Number(f.montant)-regleAALaDate;
+   if(reste>0 && Number(f.montant)>0){
+    const ratio = reste/Number(f.montant);
+    let mtGE=0,mtGPL=0;
+    (f.lignes||[]).forEach(l=>{
+     const art=Number(l.artId);
+     const val=Number(l.qte)*(Number(l.pu)||1);
+     if(art===1||art===2){resteQteGE+=Number(l.qte)*ratio; mtGE+=val;}
+     else if(art===3){resteQteGPL+=Number(l.qte)*ratio; mtGPL+=val;}
+    });
+    const totMt=mtGE+mtGPL||1;
+    resteValeurGE+=reste*(mtGE/totMt);
+    resteValeurGPL+=reste*(mtGPL/totMt);
+   }
+   return s+reste;
+  },0);
 
  /* ---- Suivi caisse ---- */
  const cj=caisseDuJour(d);
@@ -1419,7 +1424,7 @@ function vJournal(){
     </tr></thead>
     <tbody>
      ${facNonBanque.map(f=>{
-     let qte=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2||art===3)qte+=Number(l.qte);});
+     const qteStr=(f.lignes||[]).map(l=>{const a=DB.articles.find(x=>String(x.art_id)===String(l.artId));return a?esc(a.article)+": "+fmtQ(l.qte):"";}).filter(Boolean).join("<br>");
       const regleAALaDate = (f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant), 0);
       const reste=Number(f.montant)-regleAALaDate;
      const modes=(f.paiements||[]).filter(p=>p.date<=d).map(p=>{
@@ -1432,7 +1437,7 @@ function vJournal(){
       <td style="padding:6px 4px">${esc(f.numero||"—")}</td>
       <td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td>
       <td style="padding:6px 4px">${frDate(f.date)}</td>
-      <td class="num" style="padding:6px 4px">${fmtQ(qte)}</td>
+      <td style="padding:6px 4px;font-size:12px;white-space:nowrap">${qteStr}</td>
        <td class="num" style="padding:6px 4px">${fmt(f.montant)}</td>
        <td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td>
       <td style="text-align:center;padding:6px 4px">${modes||"—"}</td>
