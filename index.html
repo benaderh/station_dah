@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
@@ -666,13 +666,13 @@ function vDashboard(){
   <div style="overflow-x:auto">
    <table style="width:100%;min-width:620px">
     <thead><tr style="background:rgba(255,255,255,0.04)">
-     <th style="text-align:center;padding:8px">Facture</th>
-     <th style="text-align:center;padding:8px">Fournisseur</th>
-     <th style="text-align:left;padding:8px">Date</th>
-     <th class="num" style="padding:8px">Qté</th>
-      <th class="num" style="padding:8px">Mt</th>
-          <th style="text-align:left;padding:8px">N° Chèque</th>
-     <th class="num" style="padding:8px;color:var(--red)">Reste dû</th>
+     <th style="text-align:center;padding:8px;border-left:1px solid var(--line);border-right:1px solid var(--line)">Facture</th>
+     <th style="text-align:center;padding:8px;border-right:1px solid var(--line)">Fournisseur</th>
+     <th style="text-align:center;padding:8px;border-right:1px solid var(--line)">Date</th>
+     <th class="num" style="text-align:center;padding:8px;border-right:1px solid var(--line)">Qté</th>
+      <th class="num" style="padding:8px;border-right:1px solid var(--line)">Mt</th>
+          <th style="text-align:center;padding:8px;border-right:1px solid var(--line)">N° Chèque</th>
+     <th class="num" style="padding:8px;color:var(--red);border-right:1px solid var(--line)">Reste dû</th>
     </tr></thead>
     <tbody>
      ${facNonBanque.map(f=>{
@@ -686,13 +686,13 @@ function vDashboard(){
      }).join(" ");
      const cheques=(f.paiements||[]).filter(p=>(!last || p.date<=last) && p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
      return `<tr>
-      <td style="padding:6px 8px">${esc(f.numero||"—")}</td>
-      <td style="padding:6px 8px">${tierNom(f.fournisseurId)}</td>
-      <td style="padding:6px 8px">${frDate(f.date)}</td>
-      <td style="padding:6px 8px;font-size:12px;white-space:nowrap">${qteStr}</td>
-       <td class="num" style="padding:6px 4px">${fmt(f.montant)}</td>
-      <td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td>
-      <td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td>
+      <td style="text-align:center;padding:6px 8px;border-left:1px solid var(--line);border-right:1px solid var(--line)">${esc(f.numero||"—")}</td>
+      <td style="padding:6px 8px;border-right:1px solid var(--line)">${tierNom(f.fournisseurId)}</td>
+      <td style="text-align:center;padding:6px 8px;border-right:1px solid var(--line)">${frDate(f.date)}</td>
+      <td style="text-align:center;padding:6px 8px;font-size:12px;white-space:nowrap;border-right:1px solid var(--line)">${qteStr}</td>
+       <td class="num" style="padding:6px 4px;border-right:1px solid var(--line)">${fmt(f.montant)}</td>
+      <td style="text-align:center;padding:6px 4px;font-size:12px;color:var(--accent2);border-right:1px solid var(--line)">${cheques}</td>
+      <td class="num" style="padding:6px 4px;color:var(--red);font-weight:700;border-right:1px solid var(--line)">${reste>0?fmt(reste):"✔"}</td>
      </tr>`;
     }).join("")}
     </tbody>
@@ -1290,7 +1290,7 @@ function vJournal(){
   <div class="stat blue"><div class="v">${fmt(soldeBanque)}</div><div class="l">Banque (Cumulé)</div></div>
   <div class="stat green"><div class="v">${fmt(tmCarb)}</div><div class="l">Marge Carburant</div></div>
   <div class="stat"><div class="v">${fmt(tmDiv)}</div><div class="l">Marge Gaz & Lubrifiants</div></div>
-  <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)<br><span style="font-size:13px;font-weight:700;color:var(--red)">${fmt(resteValeurGE+resteValeurGPL)}</span><br><span style="font-size:11px;opacity:0.85">G/E: ${fmt(resteValeurGE)} | GPL: ${fmt(resteValeurGPL)}</span></div></div>
+  <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)<br><span style="font-size:14px;font-weight:bold;opacity:0.85">G/E: ${fmt(resteValeurGE)} | GPL: ${fmt(resteValeurGPL)}</span></div></div>
   <div class="stat green"><div class="v">${fmt(tmCarb + tmDiv)}</div><div class="l">Marge Globale</div></div>
  </div>
 
@@ -1416,13 +1416,13 @@ function vJournal(){
   <div style="overflow-x:auto">
    <table style="width:100%;min-width:620px">
     <thead><tr style="background:rgba(255,255,255,0.04)">
-     <th style="text-align:center;padding:8px">Facture</th>
-     <th style="text-align:center;padding:8px">Fournisseur</th>
-     <th style="text-align:center;padding:8px">Date</th>
-     <th class="num" style="padding:8px">Qté</th>
-      <th class="num" style="padding:8px">Mt</th>
-          <th style="text-align:center;padding:8px">N° Chèque</th>
-     <th class="num" style="padding:8px;color:var(--red)">Reste dû</th>
+     <th style="text-align:center;padding:8px;border-left:1px solid var(--line);border-right:1px solid var(--line)">Facture</th>
+     <th style="text-align:center;padding:8px;border-right:1px solid var(--line)">Fournisseur</th>
+     <th style="text-align:center;padding:8px;border-right:1px solid var(--line)">Date</th>
+     <th class="num" style="text-align:center;padding:8px;border-right:1px solid var(--line)">Qté</th>
+      <th class="num" style="padding:8px;border-right:1px solid var(--line)">Mt</th>
+          <th style="text-align:center;padding:8px;border-right:1px solid var(--line)">N° Chèque</th>
+     <th class="num" style="padding:8px;color:var(--red);border-right:1px solid var(--line)">Reste dû</th>
     </tr></thead>
     <tbody>
      ${facNonBanque.map(f=>{
@@ -1436,13 +1436,13 @@ function vJournal(){
      }).join(" ");
      const cheques=(f.paiements||[]).filter(p=>p.date<=d && p.cheque).map(p=>esc(p.cheque)).join(", ")||(f.cheque?esc(f.cheque):"—");
      return`<tr style="border-bottom:1px solid var(--line)">
-      <td style="padding:6px 8px">${esc(f.numero||"—")}</td>
-      <td style="padding:6px 8px">${tierNom(f.fournisseurId)}</td>
-      <td style="padding:6px 8px">${frDate(f.date)}</td>
-      <td style="padding:6px 8px;font-size:12px;white-space:nowrap">${qteStr}</td>
-       <td class="num" style="padding:6px 4px">${fmt(f.montant)}</td>
-      <td style="padding:6px 4px;font-size:12px;color:var(--accent2)">${cheques}</td>
-      <td class="num" style="padding:6px 4px;color:var(--red);font-weight:700">${reste>0?fmt(reste):"✔"}</td>
+      <td style="text-align:center;padding:6px 8px;border-left:1px solid var(--line);border-right:1px solid var(--line)">${esc(f.numero||"—")}</td>
+      <td style="padding:6px 8px;border-right:1px solid var(--line)">${tierNom(f.fournisseurId)}</td>
+      <td style="text-align:center;padding:6px 8px;border-right:1px solid var(--line)">${frDate(f.date)}</td>
+      <td style="text-align:center;padding:6px 8px;font-size:12px;white-space:nowrap;border-right:1px solid var(--line)">${qteStr}</td>
+       <td class="num" style="padding:6px 4px;border-right:1px solid var(--line)">${fmt(f.montant)}</td>
+      <td style="text-align:center;padding:6px 4px;font-size:12px;color:var(--accent2);border-right:1px solid var(--line)">${cheques}</td>
+      <td class="num" style="padding:6px 4px;color:var(--red);font-weight:700;border-right:1px solid var(--line)">${reste>0?fmt(reste):"✔"}</td>
      </tr>`;
     }).join("")}
     </tbody>
