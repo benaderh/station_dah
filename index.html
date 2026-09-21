@@ -669,8 +669,7 @@ function vDashboard(){
      <th style="text-align:left;padding:8px">Facture</th>
      <th style="text-align:left;padding:8px">Fournisseur</th>
      <th style="text-align:left;padding:8px">Date</th>
-     <th class="num" style="padding:8px">Qté G/E</th>
-      <th class="num" style="padding:8px">Qté GPL</th>
+     <th class="num" style="padding:8px">Qté</th>
       <th class="num" style="padding:8px">Mt</th>
      <th class="num" style="padding:8px">Réglé</th>
      <th style="text-align:center;padding:8px">Mode</th>
@@ -679,7 +678,7 @@ function vDashboard(){
     </tr></thead>
     <tbody>
      ${facNonBanque.map(f=>{
-     let qteGE=0,qteGPL=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2)qteGE+=Number(l.qte);else if(art===3)qteGPL+=Number(l.qte);});
+     let qte=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2||art===3)qte+=Number(l.qte);});
       const regleAALaDate = (f.paiements||[]).filter(p=>!last || p.date<=last).reduce((s,p)=>s+Number(p.montant), 0);
       const reste=Number(f.montant)-regleAALaDate;
      const modes=(f.paiements||[]).filter(p=>!last || p.date<=last).map(p=>{
@@ -692,8 +691,7 @@ function vDashboard(){
       <td style="padding:6px 4px">${esc(f.numero||"—")}</td>
       <td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td>
       <td style="padding:6px 4px">${frDate(f.date)}</td>
-      <td class="num" style="padding:6px 4px">${fmtQ(qteGE)}</td>
-       <td class="num" style="padding:6px 4px">${fmtQ(qteGPL)}</td>
+      <td class="num" style="padding:6px 4px">${fmtQ(qte)}</td>
        <td class="num" style="padding:6px 4px">${fmt(f.montant)}</td>
        <td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td>
       <td style="text-align:center;padding:6px 4px">${modes||"—"}</td>
@@ -1412,8 +1410,7 @@ function vJournal(){
      <th style="text-align:left;padding:8px">Facture</th>
      <th style="text-align:left;padding:8px">Fournisseur</th>
      <th style="text-align:left;padding:8px">Date</th>
-     <th class="num" style="padding:8px">Qté G/E</th>
-      <th class="num" style="padding:8px">Qté GPL</th>
+     <th class="num" style="padding:8px">Qté</th>
       <th class="num" style="padding:8px">Mt</th>
      <th class="num" style="padding:8px">Réglé</th>
      <th style="text-align:center;padding:8px">Mode</th>
@@ -1422,7 +1419,7 @@ function vJournal(){
     </tr></thead>
     <tbody>
      ${facNonBanque.map(f=>{
-     let qteGE=0,qteGPL=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2)qteGE+=Number(l.qte);else if(art===3)qteGPL+=Number(l.qte);});
+     let qte=0;(f.lignes||[]).forEach(l=>{const art=Number(l.artId);if(art===1||art===2||art===3)qte+=Number(l.qte);});
       const regleAALaDate = (f.paiements||[]).filter(p=>p.date<=d).reduce((s,p)=>s+Number(p.montant), 0);
       const reste=Number(f.montant)-regleAALaDate;
      const modes=(f.paiements||[]).filter(p=>p.date<=d).map(p=>{
@@ -1435,8 +1432,7 @@ function vJournal(){
       <td style="padding:6px 4px">${esc(f.numero||"—")}</td>
       <td style="padding:6px 4px">${tierNom(f.fournisseurId)}</td>
       <td style="padding:6px 4px">${frDate(f.date)}</td>
-      <td class="num" style="padding:6px 4px">${fmtQ(qteGE)}</td>
-       <td class="num" style="padding:6px 4px">${fmtQ(qteGPL)}</td>
+      <td class="num" style="padding:6px 4px">${fmtQ(qte)}</td>
        <td class="num" style="padding:6px 4px">${fmt(f.montant)}</td>
        <td class="num" style="padding:6px 4px">${fmt(regleAALaDate)}</td>
       <td style="text-align:center;padding:6px 4px">${modes||"—"}</td>
