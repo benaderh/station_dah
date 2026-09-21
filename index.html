@@ -1782,11 +1782,11 @@ function tierTable(){
  const q=state.tierFilter.toLowerCase();
  const ts=DB.tiers.filter(t=>t.type===state.tierTab&&(t.nom+" "+(t.prenom||"")).toLowerCase().includes(q));
  const isP=state.tierTab==="P";
- return`<table><tr><th>Nom</th><th>Prénom</th>${isP?'<th>Ordre (rotation)</th><th class="num">PU journée</th><th>Statut</th>':""}</tr>
+ return`<table><tr><th>Nom</th><th>Prénom</th>${isP?'<th>Ord</th><th class="num">PU journée</th><th>Poste</th><th>Statut</th>':""}</tr>
  ${ts.map(t=>`<tr ondblclick="openTierModal('${state.tierTab}',${t.tier_id})" style="cursor:pointer" title="Dl_clic pour modifier"><td>${esc(t.nom)}</td><td>${esc(t.prenom||"")}</td>
-  ${isP?`<td><b>${t.ord}</b></td><td class="num">${fmt(t.pu)}</td><td>${Number(t.stat)?'<span class="pill ok">Actif</span>':'<span class="pill neutral">Inactif</span>'}</td>`:""}
+  ${isP?`<td><b>${t.ord===null||t.ord===''||t.ord===undefined?'—':t.ord}</b></td><td class="num">${fmt(t.pu)}</td><td>${Number(t.pos)===1||t.pos==='1'?'<span class="pill ok">En poste</span>':'<span class="pill neutral">Sorti</span>'}</td><td>${Number(t.stat)?'<span class="pill ok">Actif</span>':'<span class="pill neutral">Inactif</span>'}</td>`:""}
   <td style="white-space:nowrap"><button class="btn sm" onclick="event.stopPropagation();openTierModal('${state.tierTab}',${t.tier_id})">✏️</button>
-  <button class="btn sm red" onclick="event.stopPropagation();delTier(${t.tier_id})">🗑</button></td></tr>`).join("")||`<tr><td colspan="7" class="subtle">Aucun tiers.</td></tr>`}</table>`;}
+  <button class="btn sm red" onclick="event.stopPropagation();delTier(${t.tier_id})">🗑</button></td></tr>`).join("")||`<tr><td colspan="8" class="subtle">Aucun tiers.</td></tr>`}</table>`;}
 function vTiers(){
  return `
  <div class="card"><h2>👷 Tiers</h2>
@@ -1800,19 +1800,52 @@ function vTiers(){
    <button class="btn accent" onclick="openTierModal('${state.tierTab}')">＋ Ajouter</button>
   </div>
   <div id="tierWrap">${tierTable()}</div>
+  ${state.tierTab==="P"?ordWarnings():""}
   <p class="subtle" style="margin-top:8px">Rotation quotidienne : ord <b>1→3→5→1</b> (groupe Gasoil/Essence) et <b>2→4→6→2</b> (groupe GPL), automatique à la création d'une journée. Dl_clic sur une ligne pour modifier.</p>
  </div>`;}
+function ordWarnings(){
+ var pm=DB.tiers.filter(function(t){return t.type==="P";});
+ var om={};
+ pm.forEach(function(t){
+  var o=(t.ord===null||t.ord===undefined||t.ord==='')?null:Number(t.ord);
+  if(o>=1&&o<=6){if(!om[o])om[o]=[];om[o].push(t);}
+ });
+ var msgs=[];
+ for(var v=1;v<=6;v++){
+  if(om[v]&&om[v].length>1){
+   var noms=om[v].map(function(t){return esc(t.nom)+" "+(t.prenom||"");}).join(", ");
+   msgs.push("Doublon ord <b>"+v+"</b> : "+noms);
+  }
+ }
+ for(var v=1;v<=6;v++){
+  if(!om[v]||!om[v].length)msgs.push("Ord <b>"+v+"</b> non attribué à aucun pompiste");
+ }
+ if(!msgs.length)return"";
+ return'<div style="margin-top:10px;padding:10px 14px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);border-radius:10px">'
+  +'<div style="color:var(--red);font-weight:700;margin-bottom:6px">⚠️ Problèmes détectés (rotation) :</div>'
+  +msgs.map(function(m){return '<div style="color:var(--red);font-size:13px;margin-top:3px">• '+m+'</div>';}).join("")
+  +'</div>';}
 function openTierModal(type,id){
- const t=id?tier(id):{nom:"",prenom:"",ord:1,pu:0,stat:1};
+ const t=id?tier(id):{nom:"",prenom:"",ord:"",pu:0,stat:1,pos:"1",entre:"",sortie:""};
+ const ordVal=(t.ord===null||t.ord===undefined||t.ord==="")?"":t.ord;
  openModal(`<h2>${id?"Modifier":"Ajouter"} — ${type==="P"?"Pompiste":type==="F"?"Fournisseur":"Client"}</h2>
  <input type="hidden" id="tType" value="${type}"><input type="hidden" id="tId" value="${id||""}">
  <div class="row">
   <div class="field"><label>Nom *</label><input id="tNom" value="${esc(t.nom)}"></div>
   <div class="field"><label>Prénom</label><input id="tPrenom" value="${esc(t.prenom||"")}"></div>
-  ${type==="P"?`<div class="field"><label>Ord (1-6)</label><input id="tOrd" type="number" min="1" max="6" value="${t.ord}" style="width:80px"></div>
-  <div class="field"><label>PU journée</label><input id="tPu" type="number" value="${t.pu}" style="width:100px"></div>
-  <div class="field"><label>Statut</label><select id="tStat"><option value="1" ${Number(t.stat)?"selected":""}>Actif</option><option value="0" ${!Number(t.stat)?"selected":""}>Inactif</option></select></div>`:""}
  </div>
+ ${type==="P"?`
+ <div class="row" style="margin-top:8px">
+  <div class="field"><label>Date d'entrée</label><input id="tEntre" type="date" value="${esc(t.entre||'')}"></div>
+  <div class="field"><label>Date de sortie</label><input id="tSortie" type="date" value="${esc(t.sortie||'')}"></div>
+ </div>
+ <div class="row" style="margin-top:8px">
+  <div class="field"><label>Position</label><select id="tPos"><option value="1" ${Number(t.pos)===1||t.pos==="1"||t.pos===1?"selected":""}>En poste</option><option value="0" ${Number(t.pos)===0&&(t.pos===0||t.pos==="0")?"selected":""}>Sorti</option></select></div>
+  <div class="field"><label>Ord rotation (1–6, vide = aucun)</label><input id="tOrd" type="number" min="1" max="6" value="${esc(String(ordVal))}" placeholder="1 à 6" style="width:100px"
+   oninput="const v=parseInt(this.value);if(this.value!==''&&(isNaN(v)||v<1||v>6)){this.style.borderColor='var(--red)';}else{this.style.borderColor='';}" ></div>
+  <div class="field"><label>PU journée</label><input id="tPu" type="number" value="${t.pu||0}" style="width:100px"></div>
+  <div class="field"><label>Statut</label><select id="tStat"><option value="1" ${Number(t.stat)?"selected":""}>Actif</option><option value="0" ${!Number(t.stat)?"selected":""}>Inactif</option></select></div>
+ </div>`:""}
  <div style="text-align:right;margin-top:16px">
   <button class="btn" onclick="closeModal()">Annuler</button>
   <button class="btn accent" onclick="saveTier()">✔ Enregistrer</button></div>`);}
@@ -1821,10 +1854,20 @@ function saveTier(){
  const nom=$("tNom").value.trim();
  if(!nom){toast("Le nom est obligatoire","err");return;}
  const data={nom:nom,prenom:$("tPrenom").value.trim()};
- if(type==="P"){data.ord=Number($("tOrd").value)||1;data.pu=Number($("tPu").value)||0;data.stat=Number($("tStat").value);}
+ if(type==="P"){
+  const ordRaw=$("tOrd").value.trim();
+  const ordNum=ordRaw===""?null:parseInt(ordRaw);
+  if(ordRaw!==""&&(isNaN(ordNum)||ordNum<1||ordNum>6)){toast("Ord doit être entre 1 et 6 (ou vide)","err");return;}
+  data.ord=ordNum;
+  data.pu=Number($("tPu").value)||0;
+  data.stat=Number($("tStat").value);
+  data.pos=Number($("tPos").value);
+  data.entre=$("tEntre").value||"";
+  data.sortie=$("tSortie").value||"";
+ }
  if(id){const t=tier(id);Object.assign(t,data);toast("Tiers modifié","ok");}
  else{const nid=DB.tiers.reduce((s,x)=>Math.max(s,Number(x.tier_id)||0),0)+1;
-  DB.tiers.push(Object.assign({tier_id:nid,type:type,aff:1,stat:1,pos:"",entre:"",sortie:"",pu:0,ord:0},data));
+  DB.tiers.push(Object.assign({tier_id:nid,type:type,aff:1,stat:1,pos:1,entre:"",sortie:"",pu:0,ord:null},data));
   toast("Tiers ajouté","ok");}
  save();closeModal();render();}
 function delTier(id){
@@ -2202,14 +2245,25 @@ function doExportXlsx(){
   const rows=DB[name]||[];
   let ws;
   if(rows.length){
-   /* factures / mouv_detail / mouvements ont des champs imbriqués (lignes, paiements) : on les aplatit en JSON texte pour rester sur une seule feuille par table */
+   /* Dates: export as text to avoid Excel serial number conversion */
+   const DATE_TXT={tiers:['entre','sortie'],indexs:['index_date'],mouvements:['date_m'],agent_detail:['date_agent'],factures:['date'],tresorerie:['date']};
+   const dtF=DATE_TXT[name]||[];
    const flat=rows.map(r=>{
     const o={};
     Object.keys(r).forEach(k=>{
      const v=r[k];
-     o[k]=(v!==null&&typeof v==="object")?JSON.stringify(v):v;});
-    return o;});
-   ws=XLSX.utils.json_to_sheet(flat);
+     if(dtF.includes(k)){o[k]=v?String(v):'';}
+     else{o[k]=(v!==null&&typeof v==="object")?JSON.stringify(v):v;}
+    });return o;});
+   ws=XLSX.utils.json_to_sheet(flat,{cellDates:false});
+   if(dtF.length&&flat.length){
+    const hdr=Object.keys(flat[0]);
+    dtF.forEach(f=>{
+     const ci=hdr.indexOf(f);if(ci<0)return;
+     const col=XLSX.utils.encode_col(ci);
+     for(let ri=1;ri<=flat.length;ri++){const a=col+ri;if(ws[a]){ws[a].t='s';ws[a].z='@';}}
+    });
+   }
   }else{
    ws=XLSX.utils.json_to_sheet([{}]);
   }
