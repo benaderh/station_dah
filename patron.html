@@ -579,7 +579,7 @@ let factForm={fourn:"",num:"",date:todayISO(),mode:"credit",cheque:""};
 function setView(v){view=v;render();}
 function metaCD(){const m=DB.meta.clientsDiversId;return DB.tiers.some(t=>String(t.tier_id)===String(m))?m:(DB.tiers.find(t=>t.type==="C")||{}).tier_id;}
 function render(){
- $("nav").innerHTML=NAV.map(s=>`<div class="nav-sec">${s.sec}</div>`+s.items.map(i=>`<div class="nav-item ${view===i.id?"active":""}" onclick="setView('${i.id}')"><span class="ico">${i.ico}</span>${i.label}</div>`).join("")).join("");
+ const navEl=$("nav");if(navEl)navEl.innerHTML=NAV.map(s=>`<div class="nav-sec">${s.sec}</div>`+s.items.map(i=>`<div class="nav-item ${view===i.id?"active":""}" onclick="setView('${i.id}')"><span class="ico">${i.ico}</span>${i.label}</div>`).join("")).join("");
  $("vTitle").textContent=TITLES[view][0];
  $("vSub").textContent=TITLES[view][1];
  $("topRight").innerHTML= view==="dashboard" ? "" : `<span class="chip">📅 ${frDate(todayISO())}</span>
