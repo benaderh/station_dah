@@ -254,7 +254,7 @@ function render(){
   <div class="stat blue"><div class="v">${fmt(soldeBanque)}</div><div class="l">Banque (Cumulé)</div></div>
   <div class="stat green"><div class="v">${fmt(tmCarb)}</div><div class="l">Marge Carburant</div></div>
   <div class="stat"><div class="v">${fmt(tmDiv)}</div><div class="l">Marge Gaz &amp; الزيوت</div></div>
-  <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)</div></div>
+  <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)<br><span style="font-size:11px;opacity:0.85">Gasoil/Essence: ${fmtQ(resteQteGE)} | GPL: ${fmtQ(resteQteGPL)}</span></div></div>
   <div class="stat green"><div class="v">${fmt(tmCarb+tmDiv)}</div><div class="l">Marge Globale</div></div>
  </div>
  <div class="card" style="margin-bottom:12px">
