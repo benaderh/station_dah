@@ -2989,18 +2989,20 @@
       const a = sel.paieAnnee, m = sel.paieMois;
       const dates = perDates(a, m), first = dates[0], last = dates[dates.length - 1];
       const dim = dates.length;
-      /* Bug 2 fix : supprimer d'abord TOUTES les lignes auto (1,2,8) de la période entière, avant la boucle */
-      DB.paie = DB.paie.filter(l => !(String(l.annee) === String(a) && String(l.mois) === String(m) && [1, 2, 8].includes(Number(l.rubrique))));
+      /* Bug 2 fix : supprimer d'abord TOUTES les lignes auto (1,2,6,8) de la période entière, avant la boucle */
+      /* rubrique 6 = Avance depuis agent_detail : doit aussi être nettoyée pour éviter la duplication */
+      DB.paie = DB.paie.filter(l => !(String(l.annee) === String(a) && String(l.mois) === String(m) && [1, 2, 6, 8].includes(Number(l.rubrique))));
       let seq = nextPaieCle();
       personnelList().forEach(t => {
         if (isPompiste(t)) {
           const d = pompisteDays(t.tier_id, a, m);
-          if (d.ge > 0) DB.paie.push({ cle: seq++, annee: a, mois: m, date_p: last, idp_tier: t.tier_id, rubrique: 1, sens: 1, nj: d.ge, prix: d.ge * TARIF_GE });
-          if (d.gpl > 0) DB.paie.push({ cle: seq++, annee: a, mois: m, date_p: last, idp_tier: t.tier_id, rubrique: 1, sens: 1, nj: d.gpl, prix: d.gpl * TARIF_GPL });
+          /* Bug 1 fix : prix = TARIF unitaire (PU/jour), le total = nj × prix est calculé à l'affichage */
+          if (d.ge > 0) DB.paie.push({ cle: seq++, annee: a, mois: m, date_p: last, idp_tier: t.tier_id, rubrique: 1, sens: 1, nj: d.ge, prix: TARIF_GE });
+          if (d.gpl > 0) DB.paie.push({ cle: seq++, annee: a, mois: m, date_p: last, idp_tier: t.tier_id, rubrique: 1, sens: 1, nj: d.gpl, prix: TARIF_GPL });
           if (d.ge === 0 && d.gpl === 0) DB.paie.push({ cle: seq++, annee: a, mois: m, date_p: last, idp_tier: t.tier_id, rubrique: 1, sens: 1, nj: 0, prix: 0 });
         } else {
-          /* Bug 1 fix : prix = nj × PU (total période), pas PU seul */
-          DB.paie.push({ cle: seq++, annee: a, mois: m, date_p: last, idp_tier: t.tier_id, rubrique: 1, sens: 1, nj: dim, prix: dim * (Number(t.pu) || 0) });
+          /* Bug 1 fix : prix = PU fixe (tiers.pu), nj = nb jours de la période, total = nj × PU */
+          DB.paie.push({ cle: seq++, annee: a, mois: m, date_p: last, idp_tier: t.tier_id, rubrique: 1, sens: 1, nj: dim, prix: Number(t.pu) || 0 });
         }
         /* Avances depuis agent_detail type 99 → rubrique 6 (Avance) */
         DB.agent_detail.filter(x => String(x.id_agent) === String(t.tier_id) && Number(x.type_agent) === 99 && x.date_agent >= first && x.date_agent <= last)
