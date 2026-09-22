@@ -2959,7 +2959,17 @@
     const TARIF_GE = 3000, TARIF_GPL = 2400; /* journaliers pompistes : Gasoil/Essence et GPL */
     function perDates(annee, mois) { const y = 2000 + Number(annee), m = Number(mois); const dim = new Date(y, m, 0).getDate(); const out = []; for (let d = 1; d <= dim; d++)out.push(y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0")); return out; }
     function nextPeriod(annee, mois) { let a = Number(annee), m = Number(mois) + 1; if (m > 12) { m = 1; a = (a + 1) % 100; } return { annee: String(a).padStart(2, "0"), mois: String(m).padStart(2, "0") }; }
-    function personnelList() { return DB.tiers.filter(t => t.type === "P" && Number(t.aff) === 1 && (t.pos === "" || t.pos === null || t.pos === undefined || Number(t.pos) === 1)); }
+    function personnelList() {
+      return DB.tiers
+        .filter(t => t.type === "P" && Number(t.aff) === 1 && (t.pos === "" || t.pos === null || t.pos === undefined || Number(t.pos) === 1))
+        .sort((a, b) => {
+          const aP = isPompiste(a), bP = isPompiste(b);
+          if (aP && bP) return (Number(a.ord) || 0) - (Number(b.ord) || 0); /* pompistes : tri par ord */
+          if (aP) return -1;  /* pompiste avant non-pompiste */
+          if (bP) return 1;
+          return (Number(a.tier_id) || 0) - (Number(b.tier_id) || 0); /* reste : tri par tier_id */
+        });
+    }
     function nextPaieCle() { return DB.paie.reduce((s, l) => Math.max(s, Number(l.cle) || 0), 0) + 1; }
     function paieLines(annee, mois, tierId) { return DB.paie.filter(l => String(l.annee) === String(annee) && String(l.mois) === String(mois) && (!tierId || String(l.idp_tier) === String(tierId))); }
     function netPaie(annee, mois, tid) { return paieLines(annee, mois, tid).filter(l => Number(l.rubrique) !== 9).reduce((s, l) => s + (RUB_SENS[l.rubrique] || 1) * (Number(l.nj) || 1) * Number(l.prix), 0); }
