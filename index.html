@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
@@ -464,7 +464,7 @@ function venteTypeMt(d,ta){
 function normMode(m){if(m==="cash"||m==="Espèce"||m==="E")return"E";if(m==="credit"||m==="Crédit"||m==="T")return"T";if(m==="banque"||m==="Chèque"||m==="C")return"C";if(m==="bons"||m==="Bons Naftal"||m==="B")return"B";return String(m||"E");}
 function getLedger(compte){
  const ledger=[];
- DB.tresorerie.forEach(t=>{if(t.compte===compte)ledger.push({id:t.id,date:t.date,libelle:t.libelle,obs:t.obs||"",sens:t.sens,montant:Number(t.montant),source:"treso"});});
+ DB.tresorerie.forEach(t=>{if(t.compte===compte)ledger.push({id:t.id,date:t.date,libelle:t.libelle,obs:t.obs||"",sens:t.sens,montant:Number(t.montant),source:t.source||"treso",paie_cle:t.paie_cle||null});});
  const agGroup={};DB.agent_detail.forEach(a=>{const ty=Number(a.type_agent),mt=Number(a.mt_agent),d=a.date_agent;const k=d+"_"+ty;if(!agGroup[k])agGroup[k]={date:d,ty:ty,mt:0,cle_id:a.cle_id};agGroup[k].mt+=mt;});Object.values(agGroup).forEach(g=>{if(compte==="caisse"){if(g.ty===1)ledger.push({id:g.cle_id,date:g.date,libelle:"دفعة "+agentLib(1)+" (Total)",obs:"",sens:"E",montant:g.mt,source:"agent"});if(g.ty===5||g.ty===6)ledger.push({id:g.cle_id,date:g.date,libelle:"Retrait "+agentLib(g.ty)+" (Total)",obs:"",sens:"S",montant:g.mt,source:"agent"});}});
  DB.factures.forEach(f=>{(f.paiements||[]).forEach((p,idx)=>{let isCaisse=p.source==="caisse",isBanque=p.source==="banque";if(!p.source){const nm=normMode(f.mode);isCaisse=nm==="E";isBanque=nm==="C";}if((compte==="caisse"&&isCaisse)||(compte==="banque"&&isBanque)){ledger.push({id:f.id+"_p"+idx,date:p.date,libelle:"Paiement Facture "+(f.numero?f.numero:(f.type==="carburant"?"Carb":"Div")),obs:tierNom(f.fournisseurId),sens:"S",montant:Number(p.montant),source:"facture"});}});});
  ledger.sort((a,b)=>a.date.localeCompare(b.date));
@@ -1171,10 +1171,18 @@ function openChangeAgent(grp){
  <div style="text-align:right;margin-top:14px"><button class="btn" onclick="closeModal()">Fermer</button></div>`);}
 function applyChangeAgent(grp,newId){
  const codes=grp==="t1"?["P01","P02","P03","P04","P05","P06","P07","P08"]:["P09","P10","P11","P12"];
+ const oldId=calcGroup(sel.date)[grp==="t1"?"t1":"t2"];
  codes.forEach(c=>{const r=idxRow(sel.date,c);if(r)r.index_agent=newId;});
- if(String(sel.tierId)===String(calcGroup(sel.date)[grp==="t1"?"t1":"t2"]))sel.tierId=newId;
- save();closeModal();render();
- toast("Agent remplacé pour cette journée (changement exceptionnel)","ok");}
+ if(String(sel.tierId)===String(oldId))sel.tierId=newId;
+ /* Vérifier si l'ancien agent a des entrées dans agent_detail pour cette date */
+ const adRows=DB.agent_detail.filter(x=>String(x.id_agent)===String(oldId)&&x.date_agent===sel.date);
+ if(adRows.length>0){
+  if(confirm("⚠️ L'agent "+tierNom(oldId)+" a "+adRows.length+" entrée(s) dans agent_detail pour le "+frDate(sel.date)+".\n\nVoulez-vous aussi les transférer au nouvel agent ("+tierNom(newId)+") ?")){
+   adRows.forEach(x=>{x.id_agent=newId;});
+   toast("Agent remplacé + "+adRows.length+" ligne(s) agent_detail transférée(s)","ok");
+  }else{toast("Agent remplacé (agent_detail inchangé)","ok");}
+ }else{toast("Agent remplacé pour cette journée (changement exceptionnel)","ok");}
+ save();closeModal();render();}
 /* ================= VUE : JOURNAL ================= */
 function allDates(){const s=new Set();
  DB.indexs.forEach(r=>s.add(r.index_date));DB.mouvements.forEach(m=>s.add(m.date_m));DB.agent_detail.forEach(a=>s.add(a.date_agent));
@@ -2075,16 +2083,31 @@ function vTresorerie(){
  </div>`;}
 
 /* ================= VUE : PAIE ================= */
-const RUBRIQUES={1:"Salaire",2:"Prime",3:"Prêt",4:"Prêt_Rembour",5:"Avance",6:"Avance_Rembour",7:"Manque",9:"Net"};
-/* sens : gains +1 / retenues -1 (4 Prêt_Rembour et 5 Avance = -1 ; 7 Manque = retenue) */
-const RUB_SENS={1:1,2:1,3:1,4:-1,5:-1,6:1,7:-1,9:1};
+/* ---- Migration des données existantes (ancienne numérotation → nouvelle) ---- */
+function migrerRubriques(){
+ const MAP_OLD_NEW={2:3,3:4,4:5,5:6,6:7,7:8}; /* ancienne → nouvelle numérotation */
+ /* Détection: si on a rub=2 et libellé=Prime, ou rub=7 et pas encore la nouvelle config */
+ const needMig=DB.paie.some(l=>Number(l.rubrique)===7); /* 7=Manque ancienne version */
+ if(!needMig)return;
+ let changed=0;
+ DB.paie.forEach(l=>{
+  const oldRub=Number(l.rubrique);
+  if(MAP_OLD_NEW[oldRub]!==undefined){l.rubrique=MAP_OLD_NEW[oldRub];changed++;}
+ });
+ if(changed>0){save();console.log("Migration paie: "+changed+" lignes migrées vers nouvelle numérotation.");}
+}
+const RUBRIQUES={1:"Salaire",2:"Absence",3:"Prime",4:"Prêt",5:"Prêt_Rembour",6:"Avance",7:"Avance_Rembour",8:"Manque",9:"Net"};
+/* sens : gains +1 / retenues -1 ; 2=Absence, 5=Prêt_Rembour, 7=Avance_Rembour, 8=Manque = -1 */
+const RUB_SENS={1:1,2:-1,3:1,4:1,5:-1,6:-1,7:-1,8:-1,9:1};
+/* Sens dans la caisse pour saisie automatique (S=décaissement sortie, E=encaissement entrée) */
+const RUB_CAISSE_SENS={2:"S",3:"S",4:"S",5:"E",6:"S",7:"E",8:"E"};
 const TARIF_GE=3000,TARIF_GPL=2400; /* journaliers pompistes : Gasoil/Essence et GPL */
 function perDates(annee,mois){const y=2000+Number(annee),m=Number(mois);const dim=new Date(y,m,0).getDate();const out=[];for(let d=1;d<=dim;d++)out.push(y+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0"));return out;}
 function nextPeriod(annee,mois){let a=Number(annee),m=Number(mois)+1;if(m>12){m=1;a=(a+1)%100;}return{annee:String(a).padStart(2,"0"),mois:String(m).padStart(2,"0")};}
 function personnelList(){return DB.tiers.filter(t=>t.type==="P"&&Number(t.aff)===1&&(t.pos===""||t.pos===null||t.pos===undefined||Number(t.pos)===1));}
 function nextPaieCle(){return DB.paie.reduce((s,l)=>Math.max(s,Number(l.cle)||0),0)+1;}
 function paieLines(annee,mois,tierId){return DB.paie.filter(l=>String(l.annee)===String(annee)&&String(l.mois)===String(mois)&&(!tierId||String(l.idp_tier)===String(tierId)));}
-function netPaie(annee,mois,tid){return paieLines(annee,mois,tid).filter(l=>Number(l.rubrique)!==9).reduce((s,l)=>s+(RUB_SENS[l.rubrique]||1)*Number(l.prix),0);}
+function netPaie(annee,mois,tid){return paieLines(annee,mois,tid).filter(l=>Number(l.rubrique)!==9).reduce((s,l)=>s+(RUB_SENS[l.rubrique]||1)*(Number(l.nj)||1)*Number(l.prix),0);}
 function isPompiste(t){const o=Number(t.ord)||0;return o>=1&&o<=6;}
 /* Nombre de jours travaillés par un pompiste sur la période, issu de la table indexs */
 function pompisteDays(tid,annee,mois){
@@ -2108,8 +2131,8 @@ function actualiserPaie(){
  const dates=perDates(a,m),first=dates[0],last=dates[dates.length-1];
  const dim=dates.length;let seq=nextPaieCle();
  personnelList().forEach(t=>{
-  /* remplace les lignes auto (1 Salaire, 5 Avance, 7 Manque) ; primes/prêts manuels conservés */
-  DB.paie=DB.paie.filter(l=>!(String(l.annee)===String(a)&&String(l.mois)===String(m)&&String(l.idp_tier)===String(t.tier_id)&&[1,5,7].includes(Number(l.rubrique))));
+  /* remplace uniquement les lignes auto (1 Salaire, 2 Absence, 8 Manque) ; primes/prêts/avances manuels conservés */
+  DB.paie=DB.paie.filter(l=>!(String(l.annee)===String(a)&&String(l.mois)===String(m)&&String(l.idp_tier)===String(t.tier_id)&&[1,2,8].includes(Number(l.rubrique))));
   if(isPompiste(t)){
    const d=pompisteDays(t.tier_id,a,m);
    if(d.ge>0)DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:1,sens:1,nj:d.ge,prix:d.ge*TARIF_GE});
@@ -2117,10 +2140,11 @@ function actualiserPaie(){
    if(d.ge===0&&d.gpl===0)DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:1,sens:1,nj:0,prix:0});
   }else{
    DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:1,sens:1,nj:dim,prix:Number(t.pu)||0});}
+  /* Avances depuis agent_detail type 99 → rubrique 6 (Avance) */
   DB.agent_detail.filter(x=>String(x.id_agent)===String(t.tier_id)&&Number(x.type_agent)===99&&x.date_agent>=first&&x.date_agent<=last)
-   .forEach(x=>{DB.paie.push({cle:seq++,annee:a,mois:m,date_p:x.date_agent,idp_tier:t.tier_id,rubrique:5,sens:-1,nj:0,prix:Number(x.mt_agent)||0});});
+   .forEach(x=>{DB.paie.push({cle:seq++,annee:a,mois:m,date_p:x.date_agent,idp_tier:t.tier_id,rubrique:6,sens:-1,nj:1,prix:Number(x.mt_agent)||0});});
   const mk=manquePeriode(t.tier_id,a,m);
-  if(mk.total>0)DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:7,sens:-1,nj:mk.dates.length,prix:mk.total});
+  if(mk.total>0)DB.paie.push({cle:seq++,annee:a,mois:m,date_p:last,idp_tier:t.tier_id,rubrique:8,sens:-1,nj:mk.dates.length,prix:mk.total});
  });
  save();render();toast("Période "+m+"/"+a+" actualisée (salaires, avances, manques)","ok");}
 /* ---- Valider la période : lignes Net de la période + création des lignes de la période suivante ---- */
@@ -2134,8 +2158,8 @@ function validerPeriode(){
   const lines=paieLines(sel.paieAnnee,sel.paieMois,t.tier_id).filter(l=>Number(l.rubrique)!==9);
   if(!lines.length)return;
   DB.paie=DB.paie.filter(l=>!(String(l.annee)===String(sel.paieAnnee)&&String(l.mois)===String(sel.paieMois)&&String(l.idp_tier)===String(t.tier_id)&&Number(l.rubrique)===9));
-  const net=lines.reduce((s,l)=>s+(RUB_SENS[l.rubrique]||1)*Number(l.prix),0);
-  DB.paie.push({cle:seq++,annee:sel.paieAnnee,mois:sel.paieMois,date_p:lastCur,idp_tier:t.tier_id,rubrique:9,sens:1,nj:0,prix:net});
+  const net=lines.reduce((s,l)=>s+(RUB_SENS[l.rubrique]||1)*(Number(l.nj)||1)*Number(l.prix),0);
+  DB.paie.push({cle:seq++,annee:sel.paieAnnee,mois:sel.paieMois,date_p:lastCur,idp_tier:t.tier_id,rubrique:9,sens:1,nj:1,prix:net});
  });
  const firstDay="20"+np.annee+"-"+np.mois+"-01";
  personnelList().forEach(t=>{
@@ -2144,67 +2168,97 @@ function validerPeriode(){
  });
  sel.paieAnnee=np.annee;sel.paieMois=np.mois;
  save();render();toast("Période "+cur+" validée — nouvelle période : "+np.mois+"/"+np.annee,"ok");}
-/* ---- ligne manuelle (prime, prêt, remboursement…) ---- */
+/* ---- ligne manuelle (rubriques 2–8, espèce → saisie auto caisse) ---- */
 function openPaieLineModal(tid){
  openModal(`<h2>Ajouter une ligne — ${tierNom(tid)}</h2>
  <input type="hidden" id="plTid" value="${tid}">
  <div class="row">
-  <div class="field"><label>Rubrique</label><select id="plRub">
-   ${Object.keys(RUBRIQUES).filter(r=>Number(r)!==9).map(r=>`<option value="${r}">${r} — ${RUBRIQUES[r]}</option>`).join("")}
+  <div class="field"><label>Rubrique</label><select id="plRub" onchange="updatePlTotal()">
+   ${Object.keys(RUBRIQUES).filter(r=>Number(r)>=2&&Number(r)<=8).map(r=>`<option value="${r}">${r} — ${RUBRIQUES[r]}</option>`).join("")}
   </select></div>
   <div class="field"><label>Date</label><input id="plDate" type="date" value="${todayISO()}"></div>
-  <div class="field"><label>NJ / Qté</label><input id="plNj" type="number" step="0.5" min="0" value="0" style="width:90px"></div>
-  <div class="field"><label>Prix (DA)</label><input id="plPrix" type="number" min="0" value="0" style="width:110px"></div>
+  <div class="field"><label>NJ / Qté</label><input id="plNj" type="number" step="0.5" min="0" value="1" style="width:90px" oninput="updatePlTotal()"></div>
+  <div class="field"><label>Prix unitaire (DA)</label><input id="plPrix" type="number" min="0" value="0" style="width:110px" oninput="updatePlTotal()"></div>
+  <div class="field"><label>Total (DA)</label><input id="plTotal" type="number" disabled style="width:120px;background:var(--card2);color:var(--accent);font-weight:700"></div>
  </div>
- <p class="subtle" style="margin-top:8px">Sens appliqué automatiquement : Prêt_Rembour (4), Avance (5) et Manque (7) = −1 retenue ; les autres = +1 gain. Plusieurs lignes possibles sur une même période (date_p distincte).</p>
+ <p class="subtle" style="margin-top:8px">💡 <b>Sens auto :</b> Absence(2), Prêt_Rembour(5), Avance(6), Avance_Rembour(7), Manque(8)=−1 retenue ; Prime(3), Prêt(4)=+1 gain.<br>💵 <b>Espèce :</b> saisie automatique en caisse. Si NJ=0 → 1. Total=NJ×Prix unitaire.</p>
  <div style="text-align:right;margin-top:16px">
   <button class="btn" onclick="closeModal()">Annuler</button>
-  <button class="btn accent" onclick="savePaieLine()">✔ Enregistrer</button></div>`);}
+  <button class="btn accent" onclick="savePaieLine()">✔ Enregistrer + 💵 Caisse</button></div>`);
+ setTimeout(()=>updatePlTotal(),50);}
+function updatePlTotal(){
+ const nj=Number(document.getElementById('plNj')?.value)||1;
+ const px=Number(document.getElementById('plPrix')?.value)||0;
+ const el=document.getElementById('plTotal');
+ if(el)el.value=(nj*px).toFixed(2);}
 function savePaieLine(){
  const tid=Number($("plTid").value),rub=Number($("plRub").value);
- const nj=Number($("plNj").value)||0,prix=Number($("plPrix").value)||0;
- if(prix<=0){toast("Prix invalide","err");return;}
- DB.paie.push({cle:nextPaieCle(),annee:sel.paieAnnee,mois:sel.paieMois,date_p:$("plDate").value||todayISO(),idp_tier:tid,rubrique:rub,sens:RUB_SENS[rub]||1,nj:nj,prix:prix});
- save();closeModal();render();toast("Ligne de paie ajoutée","ok");}
+ const njRaw=Number($("plNj").value);
+ const nj=(njRaw<=0||isNaN(njRaw))?1:njRaw;
+ const prixUnit=Number($("plPrix").value)||0;
+ if(prixUnit<=0){toast("Prix unitaire invalide","err");return;}
+ const total=nj*prixUnit;
+ const dateL=$("plDate").value||todayISO();
+ if(dateL!==todayISO()){if(!confirm("⚠️ La date saisie n'est pas aujourd'hui. Confirmer quand même ?"))return;}
+ const cle=nextPaieCle();
+ DB.paie.push({cle:cle,annee:sel.paieAnnee,mois:sel.paieMois,date_p:dateL,idp_tier:tid,rubrique:rub,sens:RUB_SENS[rub]||1,nj:nj,prix:prixUnit,treso_id:null});
+ const caisseDir=RUB_CAISSE_SENS[rub]||"S";
+ const libTreso="Paie — "+RUBRIQUES[rub]+" — "+tierNom(tid);
+ const tresoId=uid();
+ DB.tresorerie.push({id:tresoId,compte:"caisse",sens:caisseDir,libelle:libTreso,montant:total,obs:"Automatique paie",date:dateL,source:"paie",paie_cle:cle});
+ const ligPaie=DB.paie.find(l=>l.cle===cle);
+ if(ligPaie)ligPaie.treso_id=tresoId;
+ save();closeModal();render();toast("Ligne paie + 💵 caisse ("+RUBRIQUES[rub]+" "+fmt(total)+" DA) enregistrées","ok");}
 function delPaieLine(cle){
- if(!confirm("Supprimer cette ligne de paie ?"))return;
+ const ligne=DB.paie.find(l=>String(l.cle)===String(cle));
+ const hasLink=ligne&&ligne.treso_id;
+ const msg=hasLink?"Supprimer cette ligne de paie et l'entrée caisse liée ("+fmt((ligne.nj||1)*ligne.prix)+" DA) ?":"Supprimer cette ligne de paie ?";
+ if(!confirm(msg))return;
+ if(hasLink){DB.tresorerie=DB.tresorerie.filter(t=>t.id!==ligne.treso_id);}
  DB.paie=DB.paie.filter(l=>String(l.cle)!==String(cle));
- save();render();toast("Ligne supprimée","ok");}
+ save();render();toast("Ligne paie supprimée"+(hasLink?" + entrée caisse liée retirée":""),"ok");}
 /* ---- Vue Paie ---- */
 function vPaie(){
  const a=String(sel.paieAnnee),m=String(sel.paieMois);
  const annees=[...new Set([a,...DB.paie.map(l=>String(l.annee))])].sort();
  let totalNet=0,totalSal=0,totalRet=0;
+ const todayStr=todayISO();
  const html=personnelList().map(t=>{
   const lines=paieLines(a,m,t.tier_id).sort((x,y)=>Number(x.rubrique)-Number(y.rubrique)||String(x.date_p||"").localeCompare(String(y.date_p||"")));
-  const net=lines.filter(l=>Number(l.rubrique)!==9).reduce((s,l)=>s+(RUB_SENS[l.rubrique]||1)*Number(l.prix),0);
+  const net=lines.filter(l=>Number(l.rubrique)!==9).reduce((s,l)=>s+(RUB_SENS[l.rubrique]||1)*(Number(l.nj)||1)*Number(l.prix),0);
   totalNet+=net;
-  totalSal+=lines.filter(l=>Number(l.rubrique)===1).reduce((s,l)=>s+Number(l.prix),0);
-  totalRet+=lines.filter(l=>(RUB_SENS[l.rubrique]||1)===-1).reduce((s,l)=>s+Number(l.prix),0);
+  totalSal+=lines.filter(l=>Number(l.rubrique)===1).reduce((s,l)=>s+(Number(l.nj)||1)*Number(l.prix),0);
+  totalRet+=lines.filter(l=>(RUB_SENS[l.rubrique]||1)===-1).reduce((s,l)=>s+(Number(l.nj)||1)*Number(l.prix),0);
   return `<div class="card"><div class="row between">
    <h2 style="margin:0">👤 ${tierNom(t.tier_id)} <span class="subtle">${isPompiste(t)?"Pompiste · ord "+t.ord:"Personnel"}${Number(t.pu)?" · PU "+fmt(t.pu)+" DA":""}</span></h2>
    <div style="display:flex;align-items:center;gap:10px">Net : <b style="color:${net>=0?"var(--green)":"var(--red)"};font-size:17px">${fmt(net)} DA</b>
    <button class="btn sm" onclick="openPaieLineModal(${t.tier_id})">＋ Ligne</button></div></div>
-   ${lines.length?`<table style="margin-top:10px"><tr><th>Rubrique</th><th>Sens</th><th>Date</th><th class="num">NJ/Qté</th><th class="num">Prix (DA)</th><th class="num">Signé</th><th></th></tr>
-   ${lines.map(l=>{const sens=RUB_SENS[l.rubrique]||1;return`<tr><td>${l.rubrique} — ${RUBRIQUES[l.rubrique]||"?"}</td>
+   ${lines.length?`<table style="margin-top:10px"><tr><th>Rubrique</th><th>Sens</th><th>Date</th><th class="num">NJ/Qté</th><th class="num">PU (DA)</th><th class="num">Total</th><th class="num">Signé</th><th></th></tr>
+   ${lines.map(l=>{const sens=RUB_SENS[l.rubrique]||1;const nj=Number(l.nj)||1;const tot=nj*Number(l.prix);const isAuto=[1,2,8].includes(Number(l.rubrique));const canDel=!isAuto&&l.date_p===todayStr;const hasLink=l.treso_id;return`<tr>
+    <td>${l.rubrique} — ${RUBRIQUES[l.rubrique]||"?"}${hasLink?` <span title="Lié à la caisse" style="color:var(--accent);font-size:11px">💵</span>`:""}</td>
     <td>${sens===1?'<span class="pill ok">+ Gain</span>':'<span class="pill warn">− Retenue</span>'}</td>
-    <td>${frDate(l.date_p)}</td><td class="num">${fmtQ(l.nj)}</td><td class="num">${fmt(l.prix)}</td>
-    <td class="num" style="color:${sens===1?"var(--green)":"var(--red)"}">${sens===1?"+":"−"} ${fmt(l.prix)}</td>
-    <td><button class="tag-del" onclick="delPaieLine('${l.cle}')">✕</button></td></tr>`;}).join("")}</table>`
+    <td>${frDate(l.date_p)}</td>
+    <td class="num">${fmtQ(nj)}</td>
+    <td class="num">${fmt(Number(l.prix))}</td>
+    <td class="num" style="font-weight:700">${fmt(tot)}</td>
+    <td class="num" style="color:${sens===1?"var(--green)":"var(--red)"};font-weight:700">${sens===1?"+":"−"} ${fmt(tot)}</td>
+    <td>${canDel?`<button class="tag-del" title="Supprimer (+ caisse liée)" onclick="delPaieLine('${l.cle}')">✕</button>`:isAuto?`<span class='subtle' title='Calculé auto'>🔒</span>`:`<span class='subtle' title='Modif. uniquement aujourd&apos;hui'>📅</span>`}</td>
+   </tr>`;}).join("")}</table>`
    :`<p class="subtle" style="margin-top:8px">Aucune ligne pour ${m}/${a} — cliquez sur « Actualiser ».</p>`}
   </div>`;}).join("");
  return `
  <div class="card"><div class="row between">
    <div class="row">
-    <div class="field"><label>Année</label><select onchange="sel.paieAnnee=this.value;render()">${annees.map(x=>`<option value="${x}" ${String(x)===a?"selected":""}>20${x}</option>`).join("")}</select></div>
+    <div class="field"><label>Année</label><select onchange="sel.paieAnnee=this.value;render()">${annees.map(x=>`<option value="${x}" ${String(x)===a?"selected":""}>${x.length===2?"20"+x:x}</option>`).join("")}</select></div>
     <div class="field"><label>Mois</label><select onchange="sel.paieMois=this.value;render()">${["01","02","03","04","05","06","07","08","09","10","11","12"].map(x=>`<option value="${x}" ${x===m?"selected":""}>${x}</option>`).join("")}</select></div>
    </div>
    <div class="row">
     <button class="btn blue" onclick="actualiserPaie()">⟳ Actualiser</button>
     <button class="btn accent" onclick="validerPeriode()">✔ Valider la période</button>
    </div></div>
-  <p class="subtle" style="margin-top:8px">⟳ <b>Actualiser</b> : recalcule les Salaires — pompistes : jours travaillés (table indexs) × 3 000 DA (Gasoil/Essence) ou × 2 400 DA (GPL) ; autres personnels : PU fixe (tiers.pu). Récupère aussi les avancess (agent_detail type 99) et les Manques (différence caisse &gt; 0) de la période. Les primes/prêts saisis manuellement sont conservés.<br>
-  ✔ <b>Valider la période</b> : calcule les lignes <b>Net</b> (rubrique 9) de la période en cours, puis crée les lignes Salaire de la période suivante.</p>
+  <p class="subtle" style="margin-top:8px">⟳ <b>Actualiser</b> : recalcule Salaires(1), Avances(6 depuis agent_detail type 99), Manques(8). Rubriques 3–7 manuelles conservées.<br>
+  ✔ <b>Valider la période</b> : calcule Net(9) + crée Salaires période suivante.<br>
+  💵 Rubriques 2–8 manuelles = saisie auto caisse. 🔒=calculé auto. 📅=modifiable aujourd'hui seulement.</p>
  </div>
  <div class="grid-stats">
   <div class="stat gold"><div class="v">${fmt(totalSal)}</div><div class="l">Salaires — ${m}/${a}</div></div>
@@ -2337,6 +2391,7 @@ function toast(msg,type){
   navigator.serviceWorker.register("sw.js").catch(e=>console.error("Service worker non enregistré",e));}
  $("view").innerHTML='<div class="empty"><div class="big">⏳</div>Connexion à Supabase…</div>';
  await loadDB();
+ migrerRubriques(); /* migration automatique ancienne numerotation vers nouvelle */
  render();})();
 </script>
 </body>
