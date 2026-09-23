@@ -775,37 +775,52 @@
     }
 
     @media print {
+      @page { size: A4; margin: 7mm 8mm; }
 
-      .sidebar,
-      .top-right,
-      .btn,
-      .tag-del {
-        display: none !important
-      }
-
+      .sidebar, .top-right, .btn, .tag-del, .no-print { display: none !important }
       .content {
         overflow: visible;
-        padding: 0
+        padding: 0;
+        column-count: 2;
+        column-gap: 10px;
       }
 
-      .topbar {
-        display: none !important
-      }
+      .topbar { display: none !important }
+
+      body { font-size: 10px }
 
       .card {
         break-inside: avoid;
+        -webkit-column-break-inside: avoid;
         border: 1px solid #ccc;
         background: #fff;
         color: #000;
-        border-radius: 4px;
-        margin-bottom: 10px;
-        padding: 12px
+        border-radius: 3px;
+        margin-bottom: 6px;
+        padding: 6px 8px
       }
 
       .card h2 {
         color: #000;
-        font-size: 13px
+        font-size: 11px;
+        margin-bottom: 6px
       }
+
+      .card h3 {
+        font-size: 10px;
+        margin: 6px 0 4px
+      }
+
+      .grid-stats, .grid2 { display: block }
+      .stat {
+        display: inline-block;
+        width: 48%;
+        margin: 0 1% 4px 0;
+        padding: 4px 6px;
+        vertical-align: top
+      }
+      .stat .v { font-size: 13px }
+      .stat .l { font-size: 9px }
 
       table {
         width: 100%;
@@ -815,8 +830,8 @@
       th,
       td {
         border-bottom: 1px solid #ddd;
-        padding: 5px 6px;
-        font-size: 12px
+        padding: 2px 3px;
+        font-size: 9px
       }
 
       th {
@@ -1641,7 +1656,6 @@
         + '<table><tr><th>Date</th><th>Article</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Mt</th></tr>'
         + ventesHtml + '</table></div>';
     }
-
     // lubSearchOpen removed
     function selectLubArt(id, name) {
       state.lubArt = id;
@@ -2074,7 +2088,7 @@
       const soldeBanque = banqueSolde();
 
       return `
- <div class="row between" style="margin-bottom:16px;align-items:center;background:var(--card);padding:14px 18px;border-radius:var(--radius);border:1px solid var(--line)">
+ <div class="row between no-print" style="margin-bottom:16px;align-items:center;background:var(--card);padding:14px 18px;border-radius:var(--radius);border:1px solid var(--line)">
   <div style="display:flex;align-items:center;gap:12px">
    <span style="font-size:24px">📊</span>
    <h1 style="font-size:18px;font-weight:700;margin:0;color:var(--ink)">Tableau de bord</h1>
@@ -2253,7 +2267,8 @@
  </div>
 
  </div>`;
-    }/* ================= VUE : ACHATS ================= */
+    }
+    /* ================= VUE : ACHATS ================= */
     function setFactType(t) { factType = t; factLines = []; render(); }
     function updateFactQteMemo() {
       const selEl = $("factProduit"); if (!selEl) return;
