@@ -2941,8 +2941,8 @@
     const RUBRIQUES = { 1: "Salaire", 2: "Absence", 3: "Prime", 4: "Prêt", 5: "Prêt_Rembour", 6: "Avance", 7: "Avance_Rembour", 8: "Manque", 9: "Net", 10: "Paiement", 11: "Report" };
     /* sens : 2/5/7/8/10=-1 retenue ; autres=+1 */
     const RUB_SENS = { 1: 1, 2: -1, 3: 1, 4: 1, 5: -1, 6: -1, 7: -1, 8: -1, 9: 1, 10: -1, 11: 1 };
-    /* Sens dans la caisse pour saisie automatique (S=décaissement sortie, E=encaissement entrée) */
-    const RUB_CAISSE_SENS = { 2: "S", 3: "S", 4: "S", 5: "E", 6: "S", 7: "E", 8: "E", 10: "S" };
+    /* Sens dans la caisse pour saisie automatique (S=décaissement sortie, E=encaissement entrée) — seules les rubriques 4 (Prêt) et 6 (Avance) touchent la caisse */
+    const RUB_CAISSE_SENS = { 4: "S", 6: "S" };
     const TARIF_GE = 3000, TARIF_GPL = 2400; /* journaliers pompistes : Gasoil/Essence et GPL */
     function perDates(annee, mois) { const y = 2000 + Number(annee), m = Number(mois); const dim = new Date(y, m, 0).getDate(); const out = []; for (let d = 1; d <= dim; d++)out.push(y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0")); return out; }
     function nextPeriod(annee, mois) { let a = Number(annee), m = Number(mois) + 1; if (m > 12) { m = 1; a = (a + 1) % 100; } return { annee: String(a).padStart(2, "0"), mois: String(m).padStart(2, "0") }; }
@@ -2959,8 +2959,15 @@
     }
     function nextPaieCle() { return DB.paie.reduce((s, l) => Math.max(s, Number(l.cle) || 0), 0) + 1; }
     function paieLines(annee, mois, tierId) { return DB.paie.filter(l => String(l.annee) === String(annee) && String(l.mois) === String(mois) && (!tierId || String(l.idp_tier) === String(tierId))); }
-    function netPaie(annee, mois, tid) { return paieLines(annee, mois, tid).filter(l => ![9, 10, 11].includes(Number(l.rubrique))).reduce((s, l) => s + (RUB_SENS[l.rubrique] || 1) * (Number(l.nj) || 1) * Number(l.prix), 0); }
+    /* Le Prêt (rubrique 4) n'est pas additionné au Net : c'est une avance de fonds, remboursée séparément via la rubrique 5 */
+    function netPaie(annee, mois, tid) { return paieLines(annee, mois, tid).filter(l => ![4, 9, 10, 11].includes(Number(l.rubrique))).reduce((s, l) => s + (RUB_SENS[l.rubrique] || 1) * (Number(l.nj) || 1) * Number(l.prix), 0); }
     function isPompiste(t) { const o = Number(t.ord) || 0; return o >= 1 && o <= 6; }
+    /* ---- Solde du Prêt (rubrique 4) restant à rembourser (rubrique 5), toutes périodes confondues ---- */
+    function pretSolde(tid) {
+      const pret = DB.paie.filter(l => String(l.idp_tier) === String(tid) && Number(l.rubrique) === 4).reduce((s, l) => s + (Number(l.nj) || 1) * Number(l.prix), 0);
+      const remb = DB.paie.filter(l => String(l.idp_tier) === String(tid) && Number(l.rubrique) === 5).reduce((s, l) => s + (Number(l.nj) || 1) * Number(l.prix), 0);
+      return pret - remb;
+    }
     /* Nombre de jours travaillés par un pompiste sur la période, issu de la table indexs */
     function pompisteDays(tid, annee, mois) {
       const geCodes = ["P01", "P02", "P03", "P04", "P05", "P06", "P07", "P08"], gplCodes = ["P09", "P10", "P11", "P12"];
@@ -3024,7 +3031,7 @@
       const lastCur = perDates(sel.paieAnnee, sel.paieMois).pop();
       const firstDay = "20" + np.annee + "-" + np.mois + "-01";
       personnelList().forEach(t => {
-        const lines = paieLines(sel.paieAnnee, sel.paieMois, t.tier_id).filter(l => ![9, 10, 11].includes(Number(l.rubrique)));
+        const lines = paieLines(sel.paieAnnee, sel.paieMois, t.tier_id).filter(l => ![4, 9, 10, 11].includes(Number(l.rubrique)));
         if (!lines.length) return;
         DB.paie = DB.paie.filter(l => !(String(l.annee) === String(sel.paieAnnee) && String(l.mois) === String(sel.paieMois) && String(l.idp_tier) === String(t.tier_id) && Number(l.rubrique) === 9));
         const net = lines.reduce((s, l) => s + (RUB_SENS[l.rubrique] || 1) * (Number(l.nj) || 1) * Number(l.prix), 0);
@@ -3057,10 +3064,11 @@
   <div class="field"><label>Prix unitaire (DA)</label><input id="plPrix" type="number" min="0" value="0" style="width:110px" oninput="updatePlTotal()"></div>
   <div class="field"><label>Total (DA)</label><input id="plTotal" type="number" disabled style="width:120px;background:var(--card2);color:var(--accent);font-weight:700"></div>
  </div>
- <p class="subtle" style="margin-top:8px">💡 <b>Sens auto :</b> Absence(2, non-pompistes, PU auto), Prêt_Rembour(5), Avance(6), Avance_Rembour(7)=−1 retenue ; Prime(3), Prêt(4)=+1 gain.<br>💵 Rubriques 2–7 = saisie automatique en caisse. Si NJ=0 → 1. Total=NJ×Prix unitaire.</p>
+ <div id="plPretInfo" class="subtle" style="margin-top:8px;padding:8px 10px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:8px;display:none"></div>
+ <p class="subtle" style="margin-top:8px">💡 <b>Sens auto :</b> Absence(2, non-pompistes, PU auto), Prêt_Rembour(5), Avance(6), Avance_Rembour(7)=−1 retenue ; Prime(3), Prêt(4)=+1 gain.<br>💵 Seules les rubriques 4 (Prêt) et 6 (Avance) = saisie automatique en caisse.<br>ℹ️ Le Prêt (4) n'est pas additionné au Net — il se rembourse via des tranches en Prêt_Rembour (5), sur plusieurs mois si besoin.</p>
  <div style="text-align:right;margin-top:16px">
   <button class="btn" onclick="closeModal()">Annuler</button>
-  <button class="btn accent" onclick="savePaieLine()">✔ Enregistrer + 💵 Caisse</button></div>`);
+  <button class="btn accent" id="plSaveBtn" onclick="savePaieLine()">✔ Enregistrer</button></div>`);
       setTimeout(() => { onPlRubChange(); }, 50);
     }
     function onPlRubChange() {
@@ -3068,6 +3076,19 @@
       const puEl = document.getElementById("plPrix");
       const puDef = Number(document.getElementById("plPuDef")?.value) || 0;
       if (puEl && rub === 2 && puDef > 0 && Number(puEl.value) === 0) puEl.value = puDef;
+      const btn = document.getElementById("plSaveBtn");
+      if (btn) btn.textContent = (rub === 4 || rub === 6) ? "✔ Enregistrer + 💵 Caisse" : "✔ Enregistrer";
+      const infoEl = document.getElementById("plPretInfo");
+      if (infoEl) {
+        if (rub === 5) {
+          const tid = Number(document.getElementById("plTid")?.value);
+          const solde = pretSolde(tid);
+          infoEl.style.display = "block";
+          infoEl.innerHTML = "💰 Prêt en cours : <b>" + fmt(solde) + " DA</b> restant à rembourser avant cette tranche.";
+        } else {
+          infoEl.style.display = "none";
+        }
+      }
       updatePlTotal();
     }
     function updatePlTotal() {
@@ -3086,14 +3107,17 @@
       const dateL = $("plDate").value || todayISO();
       if (dateL !== todayISO()) { if (!confirm("⚠️ La date saisie n'est pas aujourd'hui. Confirmer quand même ?")) return; }
       const cle = nextPaieCle();
-      DB.paie.push({ cle: cle, annee: sel.paieAnnee, mois: sel.paieMois, date_p: dateL, idp_tier: tid, rubrique: rub, sens: RUB_SENS[rub] || 1, nj: nj, prix: prixUnit, treso_id: null });
-      const caisseDir = RUB_CAISSE_SENS[rub] || "S";
-      const libTreso = "Paie — " + RUBRIQUES[rub] + " — " + tierNom(tid);
-      const tresoId = uid();
-      DB.tresorerie.push({ id: tresoId, compte: "caisse", sens: caisseDir, libelle: libTreso, montant: total, obs: "Automatique paie", date: dateL, source: "paie", paie_cle: cle });
-      const ligPaie = DB.paie.find(l => l.cle === cle);
-      if (ligPaie) ligPaie.treso_id = tresoId;
-      save(); closeModal(); render(); toast("Ligne paie + 💵 caisse (" + RUBRIQUES[rub] + " " + fmt(total) + " DA) enregistrées", "ok");
+      const toucheCaisse = (rub === 4 || rub === 6);
+      let tresoId = null;
+      if (toucheCaisse) {
+        const caisseDir = RUB_CAISSE_SENS[rub] || "S";
+        const libTreso = "Paie — " + RUBRIQUES[rub] + " — " + tierNom(tid);
+        tresoId = uid();
+        DB.tresorerie.push({ id: tresoId, compte: "caisse", sens: caisseDir, libelle: libTreso, montant: total, obs: "Automatique paie", date: dateL, source: "paie", paie_cle: cle });
+      }
+      DB.paie.push({ cle: cle, annee: sel.paieAnnee, mois: sel.paieMois, date_p: dateL, idp_tier: tid, rubrique: rub, sens: RUB_SENS[rub] || 1, nj: nj, prix: prixUnit, treso_id: tresoId });
+      save(); closeModal(); render();
+      toast("Ligne paie" + (toucheCaisse ? " + 💵 caisse" : "") + " (" + RUBRIQUES[rub] + " " + fmt(total) + " DA) enregistrée", "ok");
     }
     /* ---- Payer maintenant : règlement partiel ou total du Net, tracé en caisse ---- */
     function payerMaintenant(tid) {
@@ -3120,7 +3144,7 @@
  </div>
  ${l.treso_id ? '<p class="subtle">💵 Entrée caisse liée — sera mise à jour.</p>' : ''}
  <div style="display:flex;justify-content:space-between;margin-top:16px">
-  <button class="btn red" onclick="delPaieLine('${cle}');closeModal()">🗑 Supprimer</button>
+  <button class="btn red" onclick="confirmDelPaieLine('${cle}')">🗑 Supprimer</button>
   <div><button class="btn" onclick="closeModal()">Annuler</button>
    <button class="btn accent" onclick="saveEditPaieLine()">✔ Enregistrer</button></div>
  </div>`);
@@ -3147,14 +3171,30 @@
       }
       save(); closeModal(); render(); toast("Ligne modifiée" + (ligne.treso_id ? " + caisse mise à jour" : ""), "ok");
     }
+    /* ---- Confirmation de suppression d'une ligne de paie (modal, pas le confirm() du navigateur) ---- */
+    function confirmDelPaieLine(cle) {
+      const ligne = DB.paie.find(l => String(l.cle) === String(cle)); if (!ligne) return;
+      const hasLink = !!ligne.treso_id;
+      const tot = (Number(ligne.nj) || 1) * Number(ligne.prix);
+      openModal(`<h2>⚠️ Confirmer la suppression</h2>
+  <p style="margin:14px 0 6px">Êtes-vous sûr de vouloir supprimer cette ligne de paie ?</p>
+  <div style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-bottom:18px">
+   <div><span class="subtle">Rubrique :</span> <b>${RUBRIQUES[ligne.rubrique] || ligne.rubrique}</b></div>
+   <div><span class="subtle">Agent :</span> <b>${tierNom(ligne.idp_tier)}</b></div>
+   <div><span class="subtle">Mt :</span> <b>${fmt(tot)} DA</b></div>
+   ${hasLink ? `<div style="color:var(--accent);font-size:12.5px;margin-top:6px">💵 L'entrée caisse liée (${fmt(tot)} DA) sera également supprimée.</div>` : ""}
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:10px">
+   <button class="btn" onclick="closeModal()">Annuler</button>
+   <button class="btn red" onclick="delPaieLine('${cle}')">🗑 Supprimer définitivement</button>
+  </div>`);
+    }
     function delPaieLine(cle) {
-      const ligne = DB.paie.find(l => String(l.cle) === String(cle));
-      const hasLink = ligne && ligne.treso_id;
-      const msg = hasLink ? "Supprimer cette ligne de paie et l'entrée caisse liée (" + fmt((ligne.nj || 1) * ligne.prix) + " DA) ?" : "Supprimer cette ligne de paie ?";
-      if (!confirm(msg)) return;
+      const ligne = DB.paie.find(l => String(l.cle) === String(cle)); if (!ligne) return;
+      const hasLink = !!ligne.treso_id;
       if (hasLink) { DB.tresorerie = DB.tresorerie.filter(t => t.id !== ligne.treso_id); }
       DB.paie = DB.paie.filter(l => String(l.cle) !== String(cle));
-      save(); render(); toast("Ligne paie supprimée" + (hasLink ? " + entrée caisse liée retirée" : ""), "ok");
+      save(); closeModal(); render(); toast("Ligne paie supprimée" + (hasLink ? " + entrée caisse liée retirée" : ""), "ok");
     }
     /* ---- Vue Paie ---- */
     function vPaie() {
@@ -3163,13 +3203,14 @@
       let totalNet = 0, totalSal = 0, totalRet = 0;
       const html = personnelList().map(t => {
         const lines = paieLines(a, m, t.tier_id).sort((x, y) => Number(x.rubrique) - Number(y.rubrique) || String(x.date_p || "").localeCompare(String(y.date_p || "")));
-        const net = lines.filter(l => ![9, 10, 11].includes(Number(l.rubrique))).reduce((s, l) => s + (RUB_SENS[l.rubrique] || 1) * (Number(l.nj) || 1) * Number(l.prix), 0);
+        const net = lines.filter(l => ![4, 9, 10, 11].includes(Number(l.rubrique))).reduce((s, l) => s + (RUB_SENS[l.rubrique] || 1) * (Number(l.nj) || 1) * Number(l.prix), 0);
         totalNet += net;
         totalSal += lines.filter(l => Number(l.rubrique) === 1).reduce((s, l) => s + (Number(l.nj) || 1) * Number(l.prix), 0);
         totalRet += lines.filter(l => (RUB_SENS[l.rubrique] || 1) === -1).reduce((s, l) => s + (Number(l.nj) || 1) * Number(l.prix), 0);
         const dejaPaye = lines.filter(l => Number(l.rubrique) === 10).reduce((s, l) => s + (Number(l.nj) || 1) * Number(l.prix), 0);
         const restePayer = Math.max(0, net - dejaPaye);
         const lblPaye = dejaPaye > 0 ? `Déjà payé : <b style="color:var(--green)">${fmt(dejaPaye)} DA</b>&nbsp;|&nbsp;<span style="color:var(--orange);font-weight:700">Reste : ${fmt(restePayer)} DA</span>` : "Mt à payer :";
+        const soldePret = pretSolde(t.tier_id);
         return `<div class="card"><div class="row between">
    <h2 style="margin:0">👤 ${tierNom(t.tier_id)} <span class="subtle">${isPompiste(t) ? "Pompiste · ord " + t.ord : "Personnel"}${Number(t.pu) ? " · PU " + fmt(t.pu) + " DA" : ""}</span></h2>
    <div style="display:flex;align-items:center;gap:10px">Net : <b style="color:${net >= 0 ? "var(--green)" : "var(--red)"};font-size:17px">${fmt(net)} DA</b>
@@ -3194,6 +3235,7 @@
    <button class="btn sm accent" onclick="payerMaintenant(${t.tier_id})">💳 Payer</button>
    <span class="subtle" style="font-size:11px">Net : <b>${fmt(net)} DA</b></span>
   </div>
+  ${soldePret > 0 ? `<div style="margin-top:8px;padding:8px 12px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:8px;font-size:13px;color:var(--accent)">💰 Prêt en cours : <b>${fmt(soldePret)} DA</b> restant à rembourser</div>` : ""}
   </div>`;
       }).join("");
       return `
@@ -3207,8 +3249,9 @@
     <button class="btn accent" onclick="validerPeriode()">✔ Valider la période</button>
    </div></div>
   <p class="subtle" style="margin-top:8px">⟳ <b>Actualiser</b> : recalcule Salaires(1), Avances(6 depuis agent_detail type 99), Manques(8). Rubriques 3–7 manuelles conservées.<br>
-  ✔ <b>Valider la période</b> : calcule Net(9) de la période, puis reporte automatiquement (rubrique 11) tout reliquat non payé (via « 💳 Payer ») sur la période suivante, avant de créer les Salaires de cette période suivante.<br>
-  💵 Rubriques 2–7 manuelles = saisie auto caisse. « 💳 Payer » = règlement (partiel ou total) du Net, également tracé en caisse. 🔒=calculé auto.</p>
+  ✔ <b>Valider la période</b> : calcule Net(9) de la période (hors Prêt(4)), puis reporte automatiquement (rubrique 11) tout reliquat non payé (via « 💳 Payer ») sur la période suivante, avant de créer les Salaires de cette période suivante.<br>
+  💵 Seules les rubriques 4 (Prêt) et 6 (Avance) = saisie auto caisse. « 💳 Payer » = règlement (partiel ou total) du Net, également tracé en caisse. 🔒=calculé auto.<br>
+  💰 Le Prêt (4) n'entre pas dans le Net et se rembourse via des tranches Prêt_Rembour (5) réparties sur plusieurs mois ; le solde restant dû est affiché sous chaque employé concerné.</p>
  </div>
  <div class="grid-stats">
   <div class="stat gold"><div class="v">${fmt(totalSal)}</div><div class="l">Salaires — ${m}/${a}</div></div>
