@@ -1741,6 +1741,7 @@
       {
         sec: "Gestion", items: [
           { id: "achats", ico: "🧾", label: "Achats" },
+          { id: "etats", ico: "📅", label: "État Achats/CA" },
           { id: "fournisseurs", ico: "🚛", label: "Fournisseurs & Soldes" },
           { id: "stock", ico: "📦", label: "Stock & Historique" },
           { id: "tresorerie", ico: "💰", label: "Trésorerie" }]
@@ -1753,9 +1754,9 @@
           { id: "referentiel", ico: "⚙️", label: "Référentiel" }]
       },
       { sec: "Données", items: [{ id: "donnees", ico: "💾", label: "Import / Export" }] }];
-    const TITLES = { dashboard: ["Tableau de bord", ""], journee: ["Journée & Index", "Relevé des compteurs, ventes par pompiste et comptes de caisse"], achats: ["Achats", "Factures carburant et achats divers (lubrifiants, gaz butane)"], fournisseurs: ["Fournisseurs & Soldes", "Suivi des factures à crédit et règlements"], stock: ["Stock & Historique", "État des stocks et historique complet des mouvements"], tresorerie: ["Trésorerie", "Gestion de la caisse et de la banque — encaissements, décaissements, virements"], tiers: ["Tiers", "Pompistes, fournisseurs et clients — rotation via « ord »"], articles: ["Articles", "Carburants, lubrifiants et gaz butane"], categories: ["Catégories", ""], referentiel: ["Référentiel", "Types de règlements et paramètres"], donnees: ["Import / Export", "Sauvegarde et transfert des données"], paie: ["Paie", "Salaires, primes, prêts, avances et manques du personnel"] };
+    const TITLES = { dashboard: ["Tableau de bord", ""], journee: ["Journée & Index", "Relevé des compteurs, ventes par pompiste et comptes de caisse"], achats: ["Achats", "Factures carburant et achats divers (lubrifiants, gaz butane)"], etats: ["État Achats/CA", "Liste et totaux des achats et du chiffre d'affaires entre deux dates (Du / Au)"], fournisseurs: ["Fournisseurs & Soldes", "Suivi des factures à crédit et règlements"], stock: ["Stock & Historique", "État des stocks et historique complet des mouvements"], tresorerie: ["Trésorerie", "Gestion de la caisse et de la banque — encaissements, décaissements, virements"], tiers: ["Tiers", "Pompistes, fournisseurs et clients — rotation via « ord »"], articles: ["Articles", "Carburants, lubrifiants et gaz butane"], categories: ["Catégories", ""], referentiel: ["Référentiel", "Types de règlements et paramètres"], donnees: ["Import / Export", "Sauvegarde et transfert des données"], paie: ["Paie", "Salaires, primes, prêts, avances et manques du personnel"] };
     let view = "dashboard";
-    let sel = { date: null, tierId: null, jourTab: "lub", jdate: null, tresoTab: "caisse", paieAnnee: String(new Date().getFullYear()).slice(-2), paieMois: String(new Date().getMonth() + 1).padStart(2, "0") };
+    let sel = { date: null, tierId: null, jourTab: "lub", jdate: null, tresoTab: "caisse", paieAnnee: String(new Date().getFullYear()).slice(-2), paieMois: String(new Date().getMonth() + 1).padStart(2, "0"), etDu: null, etAu: null };
     let state = { artFilter: "", tierFilter: "", tierTab: "P", histFilter: "", histSens: "", factFilter: "", lubArt: "", lubSearch: "", lubListOpen: false };
     let factLines = [], factType = "CE";
     let factForm = { fourn: "", num: "", date: todayISO(), mode: "credit", cheque: "" };
@@ -1768,7 +1769,7 @@
       $("topRight").innerHTML = view === "dashboard" ? "" : `<span class="chip">📅 ${frDate(todayISO())}</span>
   <span class="chip gold">Caisse <b>${fmt(caisseSolde())} DA</b></span>
   <span class="chip blue">Banque <b>${fmt(banqueSolde())} DA</b></span>`;
-      const V = { dashboard: vJournal, journee: vJournee, achats: vAchats, fournisseurs: vFournisseurs, stock: vStock, tresorerie: vTresorerie, paie: vPaie, tiers: vTiers, articles: vArticles, categories: vCategories, referentiel: vReferentiel, donnees: vDonnees };
+      const V = { dashboard: vJournal, journee: vJournee, achats: vAchats, etats: vEtats, fournisseurs: vFournisseurs, stock: vStock, tresorerie: vTresorerie, paie: vPaie, tiers: vTiers, articles: vArticles, categories: vCategories, referentiel: vReferentiel, donnees: vDonnees };
       $("view").innerHTML = V[view]();
     }
     /* ================= VUE : TABLEAU DE BORD ================= */
@@ -2874,6 +2875,83 @@
   <div class="field" style="margin-bottom:10px;max-width:280px"><label>Recherche (fournisseur, n°, type)</label><input value="${esc(state.factFilter)}" oninput="state.factFilter=this.value;$('factHistWrap').innerHTML=factHistTable()"></div>
   <div id="factHistWrap">${factHistTable()}</div>
  </div>`;
+    }
+    /* ================= VUE : ÉTAT ACHATS / CA (PÉRIODE DU/AU) ================= */
+    function etDates() { const du = sel.etDu, au = sel.etAu; return datesAsc().filter(d => (!du || d >= du) && (!au || d <= au)); }
+    function etCaJour(d) { const g = calcGroup(d); return { carb: g.g.m + g.e.m + g.gpl.m, lub: venteTypeMt(d, 0), gb: venteTypeMt(d, 9) }; }
+    function etFactures() {
+      const du = sel.etDu, au = sel.etAu;
+      return DB.factures.filter(f => (!du || f.date >= du) && (!au || f.date <= au)).slice().sort((a, b) => a.date.localeCompare(b.date) || String(a.id).localeCompare(String(b.id)));
+    }
+    function setEtDu(v) { sel.etDu = v || null; render(); }
+    function setEtAu(v) { sel.etAu = v || null; render(); }
+    function etQuick(kind) {
+      const t = todayISO();
+      if (kind === "today") { sel.etDu = t; sel.etAu = t; }
+      else if (kind === "month") { sel.etDu = t.slice(0, 8) + "01"; sel.etAu = t; }
+      else if (kind === "year") { sel.etDu = t.slice(0, 4) + "-01-01"; sel.etAu = t; }
+      else { sel.etDu = null; sel.etAu = null; }
+      render();
+    }
+    function vEtats() {
+      const ds = etDates();
+      const fs = etFactures();
+      let caCarb = 0, caLub = 0, caGb = 0;
+      const jours = ds.map(d => { const j = etCaJour(d); caCarb += j.carb; caLub += j.lub; caGb += j.gb; return { d, ...j }; });
+      const caTotal = caCarb + caLub + caGb;
+      let achCarb = 0, achDiv = 0, achRegle = 0;
+      fs.forEach(f => { if (f.type === "carburant") achCarb += Number(f.montant); else achDiv += Number(f.montant); achRegle += Number(f.regle) || 0; });
+      const achTotal = achCarb + achDiv;
+      const periodeLbl = (sel.etDu ? frDate(sel.etDu) : "Début") + " → " + (sel.etAu ? frDate(sel.etAu) : "Aujourd'hui");
+      return `
+ <div class="card">
+  <h2>📅 Sélection de la période</h2>
+  <div class="row">
+   <div class="field"><label>Du</label><input type="date" value="${sel.etDu || ""}" onchange="setEtDu(this.value)"></div>
+   <div class="field"><label>Au</label><input type="date" value="${sel.etAu || ""}" onchange="setEtAu(this.value)"></div>
+   <div class="field"><label>Raccourcis</label>
+    <div class="row" style="gap:6px">
+     <button class="btn" onclick="etQuick('today')">Aujourd'hui</button>
+     <button class="btn" onclick="etQuick('month')">Ce mois-ci</button>
+     <button class="btn" onclick="etQuick('year')">Cette année</button>
+     <button class="btn" onclick="etQuick('all')">Tout</button>
+    </div>
+   </div>
+   <div class="field"><label>&nbsp;</label><button class="btn accent" onclick="doExportEtatXlsx()">⬇️ Exporter (Excel)</button></div>
+  </div>
+  <p class="subtle" style="margin-top:8px">Période : <b>${periodeLbl}</b></p>
+ </div>
+ <div class="grid-stats" style="margin-top:16px">
+  <div class="stat gold"><div class="v">${fmt(caTotal)}</div><div class="l">Chiffre d'affaires — Total période</div></div>
+  <div class="stat"><div class="v">${fmt(caCarb)}</div><div class="l">CA Carburant</div></div>
+  <div class="stat"><div class="v">${fmt(caLub + caGb)}</div><div class="l">CA Lubrifiants + Gaz butane</div></div>
+  <div class="stat red"><div class="v">${fmt(achTotal)}</div><div class="l">Achats — Total période</div></div>
+  <div class="stat"><div class="v">${fmt(achCarb)}</div><div class="l">Achats Carburant</div></div>
+  <div class="stat"><div class="v">${fmt(achDiv)}</div><div class="l">Achats Divers (lub./gaz)</div></div>
+ </div>
+ <div class="card" style="margin-top:16px"><h2>💰 Chiffre d'affaires — Détail par jour</h2>
+  ${jours.length ? `<div style="overflow-x:auto"><table class="sortable" data-sk="etCa"><thead><tr><th>Date</th><th class="num">Carburant</th><th class="num">Lubrifiants</th><th class="num">Gaz butane</th><th class="num">Total</th></tr></thead><tbody>
+   ${jours.map(j => `<tr><td>${frDate(j.d)}</td><td class="num">${fmt(j.carb)}</td><td class="num">${fmt(j.lub)}</td><td class="num">${fmt(j.gb)}</td><td class="num"><b>${fmt(j.carb + j.lub + j.gb)}</b></td></tr>`).join("")}
+   <tr style="border-top:2px solid var(--line);font-weight:800"><td>TOTAL</td><td class="num">${fmt(caCarb)}</td><td class="num">${fmt(caLub)}</td><td class="num">${fmt(caGb)}</td><td class="num">${fmt(caTotal)}</td></tr>
+  </tbody></table></div>` : `<div class="empty"><div class="big">📭</div>Aucune journée sur cette période.</div>`}
+ </div>
+ <div class="card" style="margin-top:16px"><h2>🧾 Achats — Liste des factures</h2>
+  ${fs.length ? `<div style="overflow-x:auto"><table class="sortable" data-sk="etAch"><thead><tr><th>Date</th><th>Type</th><th>Fournisseur</th><th>N°</th><th class="num">Montant</th><th class="num">Réglé</th><th class="num">Reste</th></tr></thead><tbody>
+   ${fs.map(f => `<tr><td>${frDate(f.date)}</td><td>${f.type === "carburant" ? "⛽ Carburant" : "📦 Divers"}</td><td>${tierNom(f.fournisseurId)}</td><td>${esc(f.numero || "—")}</td><td class="num">${fmt(f.montant)}</td><td class="num">${fmt(f.regle)}</td><td class="num" style="color:var(--red)">${fmt(Number(f.montant) - Number(f.regle))}</td></tr>`).join("")}
+   <tr style="border-top:2px solid var(--line);font-weight:800"><td colspan="4">TOTAL</td><td class="num">${fmt(achTotal)}</td><td class="num">${fmt(achRegle)}</td><td class="num">${fmt(achTotal - achRegle)}</td></tr>
+  </tbody></table></div>` : `<div class="empty"><div class="big">📭</div>Aucun achat sur cette période.</div>`}
+ </div>`;
+    }
+    function doExportEtatXlsx() {
+      const ds = etDates(), fs = etFactures();
+      const wb = XLSX.utils.book_new();
+      const caRows = ds.map(d => { const j = etCaJour(d); return { date: d, carburant: Math.round(j.carb), lubrifiants: Math.round(j.lub), gaz_butane: Math.round(j.gb), total: Math.round(j.carb + j.lub + j.gb) }; });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(caRows.length ? caRows : [{}]), "Chiffre_affaires");
+      const achRows = fs.map(f => ({ date: f.date, type: f.type, fournisseur: tierNom(f.fournisseurId).replace(/<[^>]*>/g, ""), numero: f.numero || "", montant: Math.round(Number(f.montant)), regle: Math.round(Number(f.regle) || 0), reste: Math.round(Number(f.montant) - (Number(f.regle) || 0)) }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(achRows.length ? achRows : [{}]), "Achats");
+      const lbl = (sel.etDu || "debut") + "_au_" + (sel.etAu || todayISO());
+      XLSX.writeFile(wb, "etat-achats-ca-" + lbl + ".xlsx");
+      toast("État exporté (Excel)", "ok");
     }
     /* ================= VUE : FOURNISSEURS & BONS ================= */
     function bonsRecus() { return DB.agent_detail.filter(a => Number(a.type_agent) === 3).reduce((s, a) => s + Number(a.mt_agent || 0), 0); }
