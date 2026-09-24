@@ -1283,7 +1283,12 @@
     function caisseDuJour(d) {
       const led = getLedger("caisse").filter(l => l.date === d);
       let espece = 0, sorties = 0, paiements = 0;
-      led.forEach(l => { if (l.source === "agent" && l.sens === "E") espece += l.montant; if (l.source === "agent" && l.sens === "S") sorties += l.montant; if ((l.source === "facture" || l.source === "treso") && l.sens === "S") paiements += l.montant; if (l.source === "treso" && l.sens === "E") espece += l.montant; });
+      led.forEach(l => {
+        if (l.source === "agent" && l.sens === "E") espece += l.montant;
+        else if (l.source === "agent" && l.sens === "S") sorties += l.montant;
+        else if (l.sens === "S") paiements += l.montant;
+        else if (l.sens === "E") espece += l.montant;
+      });
       return { espece, sorties, paiements, net: espece - sorties - paiements };
     }
     function caisseSoldeAvant(date) { const led = getLedger("caisse"); const last = led.filter(l => l.date < date).pop(); return last ? last.solde : (Number(DB.meta.caisseInit) || 0); }
@@ -2117,8 +2122,8 @@
       const soldeFin = soldePrec + cj.net;
       // détail décaissements
       const parType = {}; DB.agent_detail.filter(x => x.date_agent === d && Number(x.type_agent) !== 1).forEach(x => { parType[x.type_agent] = (parType[x.type_agent] || 0) + Number(x.mt_agent); });
-      const paiementsDetails = getLedger("caisse").filter(l => l.date === d && (l.source === "facture" || l.source === "treso") && l.sens === "S");
-      const autresEncDetails = getLedger("caisse").filter(l => l.date === d && l.source === "treso" && l.sens === "E");
+      const paiementsDetails = getLedger("caisse").filter(l => l.date === d && l.source !== "agent" && l.sens === "S");
+      const autresEncDetails = getLedger("caisse").filter(l => l.date === d && l.source !== "agent" && l.sens === "E");
       const autresEnc = autresEncDetails.reduce((s, l) => s + l.montant, 0);
 
       /* ---- Suivi banque du jour ---- */
