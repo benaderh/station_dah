@@ -777,6 +777,12 @@
     @media print {
       @page { size: A4; margin: 7mm 8mm; }
 
+      :root {
+        --muted: #333;
+        --line: #999;
+        --accent2: #0e7490;
+      }
+
       .sidebar, .top-right, .btn, .tag-del, .no-print { display: none !important }
       .content {
         overflow: visible;
@@ -841,11 +847,16 @@
         table-layout: fixed
       }
 
+      thead tr, tr[style*="background:rgba(255,255,255"] {
+        background: #e9e9e9 !important;
+      }
+
       th,
       td {
-        border-bottom: 1px solid #ddd;
+        border-bottom: 1px solid #999;
         padding: 2px 3px;
-        font-size: 9px;
+        font-size: 9.5px;
+        font-weight: 500;
         overflow: hidden;
         text-overflow: ellipsis;
         word-break: break-word
@@ -2171,7 +2182,7 @@
     <div class="stat gold"><div class="v">${fmt(soldeFin)}</div><div class="l">Caisse (Fin de journée)</div></div>
     <div class="stat blue"><div class="v">${fmt(soldeBanque)}</div><div class="l">Banque (Cumulé)</div></div>
     <div class="stat green"><div class="v">${fmt(tmCarb)}</div><div class="l">Marge Carburant</div></div>
-    <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)<br><span style="font-size:14px;font-weight:bold;opacity:0.85">G/E: ${fmt(resteValeurGE)} | GPL: ${fmt(resteValeurGPL)}</span></div></div>
+    <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)<br><span style="font-weight:bold;opacity:0.85">G/E: ${fmt(resteValeurGE)} | GPL: ${fmt(resteValeurGPL)}</span></div></div>
     <div class="stat green"><div class="v">${fmt(tmCarb + tmDiv)}</div><div class="l">Marge Globale</div></div>
    </div>
 
