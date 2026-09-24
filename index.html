@@ -3034,7 +3034,8 @@
       const dates = perDates(a, m), first = dates[0], last = dates[dates.length - 1];
       const dim = dates.length;
       /* Supprime les lignes auto 1/2/6/8 avant de les recalculer ; les rubriques 10 (paiement) et 11 (report) sont préservées */
-      DB.paie = DB.paie.filter(l => !(String(l.annee) === String(a) && String(l.mois) === String(m) && [1, 2, 6, 8].includes(Number(l.rubrique))));
+    /*DB.paie = DB.paie.filter(l => !(String(l.annee) === String(a) && String(l.mois) === String(m) && [1, 2, 6, 8].includes(Number(l.rubrique))));*/
+      DB.paie = DB.paie.filter(l => !(String(l.annee) === String(a) && String(l.mois) === String(m) && [1, 2, 6, 8].includes(Number(l.rubrique)) && !(Number(l.rubrique) === 6 && l.treso_id)));
       let seq = nextPaieCle();
       personnelList().forEach(t => {
         if (isPompiste(t)) {
