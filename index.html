@@ -415,6 +415,8 @@
       gap: 12px
     }
 
+    .stat-col { display: contents }
+
     .stat {
       background: var(--card2);
       border: 1px solid var(--line);
@@ -830,13 +832,22 @@
         margin: 6px 0 4px
       }
 
-      .grid-stats, .grid2 { display: block }
+      .grid2 { display: block }
+      .grid-stats {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .stat-col {
+        display: block;
+        flex: 1 1 50%;
+        min-width: 0;
+      }
       .stat {
-        display: inline-block;
-        width: 48%;
-        margin: 0 1% 4px 0;
-        padding: 4px 6px;
-        vertical-align: top
+        display: block;
+        width: 100%;
+        margin: 0 0 4px 0;
+        padding: 4px 6px
       }
       .stat .v { font-size: 13px }
       .stat .l { font-size: 9px }
@@ -2179,11 +2190,15 @@
   <div class="print-col-left">
 
    <div class="grid-stats" style="margin-bottom:16px">
-    <div class="stat gold"><div class="v">${fmt(soldeFin)}</div><div class="l">Caisse (Fin de journée)</div></div>
-    <div class="stat blue"><div class="v">${fmt(soldeBanque)}</div><div class="l">Banque (Cumulé)</div></div>
-    <div class="stat green"><div class="v">${fmt(tmCarb)}</div><div class="l">Marge Carburant</div></div>
-    <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)<br><span style="font-weight:bold;opacity:0.85">G/E: ${fmt(resteValeurGE)} | GPL: ${fmt(resteValeurGPL)}</span></div></div>
-    <div class="stat green"><div class="v">${fmt(tmCarb + tmDiv)}</div><div class="l">Marge Globale</div></div>
+    <div class="stat-col">
+     <div class="stat gold"><div class="v">${fmt(soldeFin)}</div><div class="l">Caisse (Fin de journée)</div></div>
+     <div class="stat green"><div class="v">${fmt(tmCarb)}</div><div class="l">Marge Carburant</div></div>
+     <div class="stat green"><div class="v">${fmt(tmCarb + tmDiv)}</div><div class="l">Marge Globale</div></div>
+    </div>
+    <div class="stat-col">
+     <div class="stat blue"><div class="v">${fmt(soldeBanque)}</div><div class="l">Banque (Cumulé)</div></div>
+     <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)<br><span style="font-weight:bold;opacity:0.85">G/E: ${fmt(resteValeurGE)} | GPL: ${fmt(resteValeurGPL)}</span></div></div>
+    </div>
    </div>
 
    <!-- CARBURANT -->
