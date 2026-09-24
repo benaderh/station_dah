@@ -1,39 +1,65 @@
-const CACHE_NAME="stationpro-shell-v2";
-const SHELL_FILES=["./index.html","./manifest.json","./icon.svg"];
+/* Station Pro — service worker : démarrage hors ligne
+   - Met en cache la page, le manifest et les 2 bibliothèques CDN (Supabase JS, xlsx).
+   - Ne touche JAMAIS aux requêtes vers *.supabase.co (les données passent par l'app : file d'attente).
+   - Page : réseau d'abord (4 s max) puis cache → toujours la dernière version quand il y a du réseau.
+   Pour forcer la mise à jour du cache après une modification de ce fichier : changer CACHE. */
+const CACHE = "stationpro-shell-v2";
+const SHELL = ["./", "./index.html", "./manifest.json", "./icon_index.svg"];
+const CDN = [
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+];
 
-self.addEventListener("install",e=>{
- e.waitUntil(
-  caches.open(CACHE_NAME).then(cache=>cache.addAll(SHELL_FILES)).then(()=>self.skipWaiting())
- );
+self.addEventListener("install", e => {
+  e.waitUntil((async () => {
+    const c = await caches.open(CACHE);
+    await Promise.all([
+      ...SHELL.map(u => c.add(u).catch(() => { })),
+      ...CDN.map(u => fetch(u, { mode: "no-cors" }).then(r => c.put(u, r)).catch(() => { }))
+    ]);
+    await self.skipWaiting();
+  })());
 });
 
-self.addEventListener("activate",e=>{
- e.waitUntil(
-  caches.keys().then(keys=>Promise.all(
-   keys.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k))
-  )).then(()=>self.clients.claim())
- );
+self.addEventListener("activate", e => {
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k.startsWith("stationpro-") && k !== CACHE).map(k => caches.delete(k)));
+    await self.clients.claim();
+  })());
 });
 
-self.addEventListener("fetch",e=>{
- const url=new URL(e.request.url);
- /* Uniquement l'app elle-même (même origine, GET) passe par le cache.
-    Tout le reste (appels Supabase, autres domaines) va directement au
-    réseau, sans interception — les données restent toujours en direct. */
- if(e.request.method!=="GET"||url.origin!==self.location.origin)return;
+async function pageNetworkFirst(req) {
+  const c = await caches.open(CACHE);
+  try {
+    const res = await Promise.race([
+      fetch(req),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 4000))
+    ]);
+    if (res && res.ok) c.put("./index.html", res.clone());
+    return res;
+  } catch (e) {
+    return (await c.match(req, { ignoreSearch: true })) || (await c.match("./index.html")) || (await c.match("./")) || Response.error();
+  }
+}
 
- e.respondWith(
-  caches.match(e.request).then(cached=>{
-   const network=fetch(e.request).then(resp=>{
-    if(resp&&resp.ok){
-     const copy=resp.clone();
-     caches.open(CACHE_NAME).then(cache=>cache.put(e.request,copy));
-    }
-    return resp;
-   }).catch(()=>cached);
-   /* affiche le cache tout de suite si dispo (rapide, marche hors-ligne),
-      met à jour le cache en arrière-plan dès que le réseau répond */
-   return cached||network;
-  })
- );
+async function staleWhileRevalidate(req) {
+  const c = await caches.open(CACHE);
+  const cached = await c.match(req);
+  const net = fetch(req).then(res => {
+    if (res && (res.ok || res.type === "opaque")) c.put(req, res.clone());
+    return res;
+  }).catch(() => null);
+  return cached || (await net) || Response.error();
+}
+
+self.addEventListener("fetch", e => {
+  const req = e.request;
+  if (req.method !== "GET") return;
+  const url = new URL(req.url);
+  if (url.hostname.endsWith(".supabase.co")) return; /* API Supabase : jamais interceptée */
+  const isCDN = CDN.includes(req.url);
+  if (!isCDN && url.origin !== self.location.origin) return;
+  if (req.mode === "navigate") { e.respondWith(pageNetworkFirst(req)); return; }
+  e.respondWith(staleWhileRevalidate(req));
 });

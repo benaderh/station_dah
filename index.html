@@ -134,6 +134,32 @@
       text-align: center
     }
 
+    #netPill {
+      display: none;
+      position: fixed;
+      left: 10px;
+      bottom: 10px;
+      z-index: 150;
+      font-size: 11.5px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--card2);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      cursor: pointer
+    }
+
+    #netPill.off {
+      color: #fff;
+      background: #7f1d1d;
+      border-color: var(--red)
+    }
+
+    #netBadge.off {
+      color: var(--red);
+      font-weight: bold
+    }
+
     .side-foot {
       margin-top: auto;
       padding: 14px;
@@ -780,6 +806,10 @@
     }
 
     @media(max-width:768px) {
+      #netPill {
+        display: block
+      }
+
       .sidebar {
         display: none !important
       }
@@ -803,6 +833,10 @@
     }
 
     @media print {
+      #netPill {
+        display: none !important
+      }
+
       @page { size: A4; margin: 7mm 8mm; }
 
       :root {
@@ -922,7 +956,7 @@
     <aside class="sidebar">
       <div class="logo">⛽ Station<b>Pro</b></div>
       <div id="nav"></div>
-      <div class="side-foot">HB Soft · v2.0<br>Supabase · <span id="pendingBadge"></span></div>
+      <div class="side-foot">HB Soft · v2.0<br>Supabase · <span id="netBadge"></span><br><span id="pendingBadge"></span><br><span id="conflictBadge" style="cursor:pointer;color:var(--accent)" onclick="openConflicts()"></span></div>
     </aside>
     <div class="main">
       <header class="topbar">
@@ -935,6 +969,7 @@
       <div class="content" id="view"></div>
     </div>
   </div>
+  <div id="netPill" onclick="if(conflicts.length)openConflicts()"></div>
   <div id="modal-root"></div>
   <div id="toast-root"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">}
@@ -984,16 +1019,20 @@
         meta: { clientsDiversId: 24, caisseInit: 0, banqueInit: 0, bonsInit: 0, fournisseurCarburantId: 21, qteMemoire: { Gasoil: 20000, Essence: 7000, GPL: 8000 } }
       };
     }
-    /* ================= PERSISTANCE (Supabase, source unique) =================
-       Plus de copie locale complète (IndexedDB) : au démarrage et à chaque retour
-       réseau, on lit directement depuis Supabase. DB reste un objet en mémoire
-       pour que toute la logique métier (find/filter/map) ne change pas.
-       Seule la file d'attente ci-dessous persiste localement (localStorage) —
-       volontairement minuscule : juste les enregistrements pas encore envoyés,
-       jamais l'historique complet. */
+    /* ================= PERSISTANCE (Supabase + hors ligne + 2 postes) =================
+       • Local d'abord : chaque modification est enregistrée localement (file d'attente
+         localStorage + copie complète IndexedDB) puis envoyée à Supabase dès que possible.
+       • Démarrage hors ligne : l'app repart de la copie locale.
+       • Plusieurs postes (bureau / maison) : à chaque démarrage, reconnexion ou retour sur
+         l'onglet, on lit Supabase et on FUSIONNE enregistrement par enregistrement, à 3 voies :
+         « base » (Supabase tel que ce poste l'a vu à la dernière synchro) / local / Supabase.
+         Seul l'un a changé → on prend celui-là ; les deux ont changé → fusion champ par champ ;
+         même champ modifié des deux côtés (ou modif vs suppression) → un choix par défaut est
+         appliqué et l'autre version est gardée dans la liste « Conflits » à valider. */
     const SUPABASE_URL = "https://twxpixyjuacreatxncfo.supabase.co";
     const SUPABASE_KEY = "sb_publishable_VdDiO_xSqIvBbWak_wPASw__zsfWGby";
-    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+      : { from() { throw new Error("bibliothèque Supabase non chargée (hors ligne)"); } };
     const TABLES = ["tresorerie", "categories", "articles", "tiers", "mouvements", "mouv_detail", "agent_detail", "indexs", "factures", "paie", "agent"];
     const ID_FIELD = { tresorerie: "id", categories: "cat_id", articles: "art_id", tiers: "tier_id", mouvements: "mouvement_id", mouv_detail: "mouv_detail_id", agent_detail: "cle_id", indexs: "index_id", factures: "id", paie: "cle", agent: "agent_id" };
     function extractDate(rec) { return rec.date || rec.date_m || rec.date_p || rec.date_agent || rec.index_date || null; }
@@ -1008,37 +1047,112 @@
       if (!DB.tresorerie) DB.tresorerie = [];
       if (!DB.paie) DB.paie = [];
     }
-    async function loadDB() {
+    /* ---- utilitaires ---- */
+    function withTimeout(p, ms) {
+      return new Promise((res, rej) => {
+        const t = setTimeout(() => rej(new Error("délai dépassé (timeout)")), ms);
+        p.then(v => { clearTimeout(t); res(v); }, e => { clearTimeout(t); rej(e); });
+      });
+    }
+    function isNetErr(e) { return /fetch|network|load failed|timeout|délai|abort|hors ligne/i.test(String((e && e.message) || e)); }
+    /* JSON canonique (clés triées) : Supabase (jsonb) ne renvoie pas les clés dans l'ordre d'origine */
+    function canon(v) {
+      if (Array.isArray(v)) return "[" + v.map(canon).join(",") + "]";
+      if (v && typeof v === "object") return "{" + Object.keys(v).sort().map(k => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}";
+      return JSON.stringify(v === undefined ? null : v);
+    }
+    /* identifiant numérique unique entre postes (heure en ms, strictement croissant) */
+    let _lastNumId = 0;
+    function newNumId() { let n = Date.now(); if (n <= _lastNumId) n = _lastNumId + 1; _lastNumId = n; return n; }
+    function nextNumId(arr, field) { return Math.max(newNumId(), arr.reduce((m, r) => Math.max(m, Number(r[field]) || 0), 0) + 1); }
+
+    let netOnline = navigator.onLine !== false, pinging = false, firstRunWait = false;
+    let saveSeq = 0, syncing = false, syncBlocked = "", syncWanted = false, lastSyncTry = 0, lastSyncOk = 0;
+    /* base = état de Supabase tel que CE poste l'a vu à la dernière synchro (point de comparaison de la fusion) */
+    let base = null;
+    let conflicts = [];
+    const CONFLICTS_KEY = "stationPro_conflicts";
+    function loadConflicts() { try { conflicts = JSON.parse(localStorage.getItem(CONFLICTS_KEY)) || []; } catch (e) { conflicts = []; } }
+    function persistConflicts() { localStorage.setItem(CONFLICTS_KEY, JSON.stringify(conflicts)); updateNetBadge(); }
+    function canonMaps(src) {
+      const m = {};
+      TABLES.forEach(t => { m[t] = new Map((src[t] || []).map(r => [String(r[ID_FIELD[t]]), canon(r)])); });
+      m.meta = new Map([["singleton", canon(src.meta)]]);
+      return m;
+    }
+
+    /* ---- copie locale (IndexedDB) : DB + base, écrites ensemble ---- */
+    const SNAP_DB = "stationPro_offline", SNAP_STORE = "kv", SNAP_KEY = "snapshot";
+    function idbOpen() {
+      return new Promise((res, rej) => {
+        const r = indexedDB.open(SNAP_DB, 1);
+        r.onupgradeneeded = () => r.result.createObjectStore(SNAP_STORE);
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      });
+    }
+    async function snapRead() {
       try {
-        const newDB = defaultDB();
-        for (const t of TABLES) {
-          const { data, error } = await sb.from(t).select("id,data");
-          if (error) throw error;
-          if (data && data.length) {
-            newDB[t] = data.map(r => r.data);
-            lastSynced[t] = new Map(data.map(r => [String(r.id), JSON.stringify(r.data)]));
-          } else {
-            /* table vide côté Supabase : on y pousse les valeurs par défaut de l'app */
-            for (const rec of newDB[t]) {
-              await sb.from(t).upsert({ id: String(rec[ID_FIELD[t]]), data: rec, rec_date: extractDate(rec) });
-            }
-            lastSynced[t] = new Map(newDB[t].map(rec => [String(rec[ID_FIELD[t]]), JSON.stringify(rec)]));
+        const idb = await idbOpen();
+        const snap = await new Promise((res, rej) => {
+          const q = idb.transaction(SNAP_STORE, "readonly").objectStore(SNAP_STORE).get(SNAP_KEY);
+          q.onsuccess = () => res(q.result || null);
+          q.onerror = () => rej(q.error);
+        });
+        idb.close();
+        return snap;
+      } catch (e) { console.error("Lecture de la copie locale impossible", e); return null; }
+    }
+    async function snapWrite() {
+      if (!dbReady) return;
+      try {
+        const idb = await idbOpen();
+        await new Promise((res, rej) => {
+          const tx = idb.transaction(SNAP_STORE, "readwrite");
+          tx.objectStore(SNAP_STORE).put({ DB, base, savedAt: Date.now() }, SNAP_KEY);
+          tx.oncomplete = res; tx.onerror = tx.onabort = () => rej(tx.error);
+        });
+        idb.close();
+      } catch (e) { console.error("Écriture de la copie locale impossible", e); }
+    }
+    let snapTimer = null;
+    function scheduleSnapshot() { if (!dbReady) return; clearTimeout(snapTimer); snapTimer = setTimeout(snapWrite, 400); }
+
+    /* ---- lecture complète de Supabase (sans effet de bord local ; lève une erreur si échec) ---- */
+    async function fetchServerDB() {
+      const newDB = defaultDB(), synced = {};
+      for (const t of TABLES) {
+        const { data, error } = await sb.from(t).select("id,data");
+        if (error) throw error;
+        if (data && data.length) {
+          newDB[t] = data.map(r => r.data);
+          synced[t] = new Map(data.map(r => [String(r.id), JSON.stringify(r.data)]));
+        } else {
+          /* garde-fou : table vide côté Supabase alors que ce poste en connaît (droits modifiés ? réinitialisation sur l'autre poste ?) */
+          if (base && base[t] && base[t].size > 0 &&
+            !confirm("La table « " + t + " » est vide sur Supabase alors que ce poste en connaît " + base[t].size + " enregistrements.\n\nOK = suivre Supabase (vider aussi ici)\nAnnuler = ne pas synchroniser pour l'instant")) {
+            throw Object.assign(new Error("table « " + t + " » vide sur Supabase"), { guard: true });
           }
+          /* table vide côté Supabase : on y pousse les valeurs par défaut de l'app */
+          for (const rec of newDB[t]) {
+            await sb.from(t).upsert({ id: String(rec[ID_FIELD[t]]), data: rec, rec_date: extractDate(rec) });
+          }
+          synced[t] = new Map(newDB[t].map(rec => [String(rec[ID_FIELD[t]]), JSON.stringify(rec)]));
         }
-        const { data: metaRow } = await sb.from("meta").select("data").eq("id", "singleton").maybeSingle();
-        if (metaRow) newDB.meta = metaRow.data;
-        else await sb.from("meta").upsert({ id: "singleton", data: newDB.meta });
-        DB = newDB;
-        lastSynced.meta = JSON.stringify(DB.meta);
-      } catch (e) {
-        console.error("Erreur de connexion Supabase", e);
-        toast("Connexion à Supabase impossible (réseau ?) — " + e.message, "err");
-        DB = defaultDB();
       }
-      patchDefaults();
-      loadQueue();
-      /* réapplique les changements pas encore confirmés sur Supabase, pour que
-         tu les revoies dans l'app même après un rechargement en pleine coupure */
+      const { data: metaRow, error: metaErr } = await sb.from("meta").select("data").eq("id", "singleton").maybeSingle();
+      if (metaErr) throw metaErr;
+      if (metaRow) newDB.meta = metaRow.data;
+      else await sb.from("meta").upsert({ id: "singleton", data: newDB.meta });
+      synced.meta = JSON.stringify(newDB.meta);
+      return { newDB, synced };
+    }
+    function rebuildLastSynced() {
+      TABLES.forEach(t => { lastSynced[t] = new Map((DB[t] || []).map(rec => [String(rec[ID_FIELD[t]]), JSON.stringify(rec)])); });
+      lastSynced.meta = JSON.stringify(DB.meta);
+    }
+    /* réapplique les changements pas encore confirmés sur Supabase */
+    function reapplyQueue() {
       for (const op of pendingQueue) {
         if (op.table === "meta") { if (op.action === "upsert") DB.meta = op.record; continue; }
         const idField = ID_FIELD[op.table]; if (!idField) continue;
@@ -1047,20 +1161,206 @@
         if (op.action === "delete") { if (idx >= 0) arr.splice(idx, 1); }
         else { if (idx >= 0) arr[idx] = op.record; else arr.push(op.record); }
       }
-      flushQueue();
+    }
+    /* poste sans point de comparaison : Supabase l'emporte, sauf les changements en file */
+    function adoptServer(S) {
+      DB = S.newDB; lastSynced = S.synced; base = canonMaps(S.newDB);
+      patchDefaults(); reapplyQueue();
+    }
+
+    /* ---- fusion à 3 voies : base / local / Supabase ---- */
+    function pickFields(o, f) { const r = {}; f.forEach(k => { r[k] = o[k] === undefined ? null : o[k]; }); return r; }
+    function resolveBoth(table, id, l, s, b, entries) {
+      if (l && !s) { entries.push({ table, id, kind: "srvdel", fields: [], rec: l }); return l; }   /* modifié ici, supprimé ailleurs : on garde (recréé) */
+      if (!l && s) { entries.push({ table, id, kind: "locdel", fields: [], rec: s }); return s; }   /* supprimé ici, modifié ailleurs : on garde (restauré) */
+      const bo = b ? JSON.parse(b) : {};
+      const merged = {}, bad = [];
+      for (const k of new Set([...Object.keys(l), ...Object.keys(s), ...Object.keys(bo)])) {
+        const lv = canon(l[k]), sv = canon(s[k]), bv = canon(bo[k]);
+        let v;
+        if (lv === sv) v = l[k];
+        else if (lv === bv) v = s[k];      /* seul Supabase a changé ce champ */
+        else if (sv === bv) v = l[k];      /* seul ce poste a changé ce champ */
+        else { v = s[k]; bad.push(k); }    /* les deux : Supabase par défaut, ma version gardée dans la liste */
+        if (v !== undefined) merged[k] = v;
+      }
+      if (bad.length) entries.push({ table, id, kind: "edit", fields: bad, local: pickFields(l, bad), server: pickFields(s, bad) });
+      return merged;
+    }
+    function mergeIntoLocal(S) {
+      const Sm = canonMaps(S.newDB), entries = [];
+      let changed = false;
+      const mergeMaps = (name, lMap, sMap, bMap) => {
+        const res = new Map();
+        for (const id of new Set([...lMap.keys(), ...sMap.keys()])) {
+          const l = lMap.get(id), s = sMap.get(id), b = bMap.get(id);
+          const lc = l === undefined ? undefined : canon(l), sc = s === undefined ? undefined : canon(s);
+          let pick;
+          if (lc === sc) pick = l;                                   /* déjà identiques */
+          else if (lc === b) { pick = s; changed = true; }           /* ce poste n'a rien changé : on prend Supabase (modif, ajout ou suppression faite ailleurs) */
+          else if (sc === b) pick = l;                               /* Supabase n'a rien changé : on garde ma modification (à envoyer) */
+          else { pick = resolveBoth(name, id, l, s, b, entries); if (canon(pick) !== lc) changed = true; }
+          if (pick !== undefined) res.set(id, pick);
+        }
+        return res;
+      };
+      const toMap = (arr, f) => new Map((arr || []).map(r => [String(r[f]), r]));
+      for (const t of TABLES) DB[t] = [...mergeMaps(t, toMap(DB[t], ID_FIELD[t]), toMap(S.newDB[t], ID_FIELD[t]), base[t] || new Map()).values()];
+      const mm = mergeMaps("meta", new Map([["singleton", DB.meta]]), new Map([["singleton", S.newDB.meta]]), base.meta || new Map());
+      DB.meta = mm.get("singleton") || DB.meta;
+      base = Sm;
+      patchDefaults();
+      /* la file d'attente = tout ce qui diffère encore de Supabase */
+      pendingQueue = [];
+      for (const t of TABLES) {
+        const idf = ID_FIELD[t], seen = new Set();
+        for (const r of DB[t]) { const id = String(r[idf]); seen.add(id); if (Sm[t].get(id) !== canon(r)) pendingQueue.push({ table: t, id, action: "upsert", record: r }); }
+        for (const id of Sm[t].keys()) if (!seen.has(id)) pendingQueue.push({ table: t, id, action: "delete", record: null });
+      }
+      if (Sm.meta.get("singleton") !== canon(DB.meta)) pendingQueue.push({ table: "meta", id: "singleton", action: "upsert", record: DB.meta });
+      persistQueue(); rebuildLastSynced();
+      if (entries.length) { conflicts.push(...entries); persistConflicts(); }
+      return { changed, entries };
+    }
+
+    /* ---- liste des conflits à valider ---- */
+    function openConflicts() {
+      if (!conflicts.length) { closeModal(); return; }
+      const T = { edit: "Modifié sur les deux postes", srvdel: "Modifié ici, supprimé sur Supabase", locdel: "Supprimé ici, modifié sur Supabase" };
+      const KEEP = { edit: "Garder la version Supabase", srvdel: "Garder (recréé sur Supabase)", locdel: "Garder (restauré)" };
+      const ALT = { edit: "Utiliser ma version locale", srvdel: "Supprimer", locdel: "Supprimer quand même" };
+      const val = v => esc(JSON.stringify(v === undefined ? null : v));
+      const rows = conflicts.map((c, i) => {
+        const detail = c.kind === "edit"
+          ? `<table style="width:100%;font-size:12px;margin:6px 0"><tr><th style="text-align:left">Champ</th><th style="text-align:left">Ce poste</th><th style="text-align:left">Supabase</th></tr>${c.fields.map(k => `<tr><td>${esc(k)}</td><td>${val(c.local[k])}</td><td>${val(c.server[k])}</td></tr>`).join("")}</table>`
+          : `<div class="subtle" style="font-size:12px;margin:6px 0;word-break:break-all">${esc(JSON.stringify(c.rec || {}).slice(0, 300))}</div>`;
+        return `<div style="background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px"><b>${esc(c.table)} · ${esc(c.id)}</b> — <span class="subtle">${T[c.kind]}</span>${detail}<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="resolveConflict(${i},false)">${KEEP[c.kind]}</button><button class="btn sm accent" onclick="resolveConflict(${i},true)">${ALT[c.kind]}</button></div></div>`;
+      }).join("");
+      openModal(`<h2 style="margin-bottom:6px">⚠ Conflits de synchronisation (${conflicts.length})</h2><p class="subtle" style="margin-bottom:12px">Le même enregistrement a été modifié sur deux postes. Rien n'est perdu : un choix par défaut a déjà été appliqué, vous pouvez le changer ici.</p>${rows}<div style="text-align:right"><button class="btn" onclick="closeModal()">Fermer</button></div>`);
+    }
+    function resolveConflict(i, alt) {
+      const c = conflicts[i]; if (!c) return;
+      if (alt) {
+        let done = false;
+        if (c.table === "meta") { if (c.kind === "edit") { Object.assign(DB.meta, c.local); done = true; } }
+        else {
+          const arr = DB[c.table], idf = ID_FIELD[c.table], idx = arr.findIndex(r => String(r[idf]) === String(c.id));
+          if (c.kind === "edit") { if (idx >= 0) { Object.assign(arr[idx], c.local); done = true; } }
+          else if (idx >= 0) { arr.splice(idx, 1); done = true; }
+        }
+        if (done) { save(); render(); }
+      }
+      conflicts.splice(i, 1); persistConflicts(); openConflicts();
+    }
+
+    /* ---- chargement au démarrage : retourne true si l'app peut démarrer ---- */
+    async function loadDB() {
+      loadQueue(); loadConflicts();
+      const snap = await snapRead();
+      base = snap && snap.base ? snap.base : null;
+      let S = null;
+      try { S = await withTimeout(fetchServerDB(), snap ? 8000 : 20000); }
+      catch (e) { console.error("Supabase injoignable au démarrage", e); if (e && e.guard) syncBlocked = e.message; }
+      if (S) {
+        if (snap && snap.DB && base) {
+          DB = Object.assign(defaultDB(), snap.DB);
+          reapplyQueue();
+          const r = mergeIntoLocal(S);
+          if (r.entries.length) toast(r.entries.length + " conflit(s) de synchronisation à vérifier", "err");
+        } else adoptServer(S);
+        lastSyncTry = lastSyncOk = Date.now();
+        setNet(true);
+      } else if (snap && snap.DB) {
+        DB = Object.assign(defaultDB(), snap.DB);
+        patchDefaults(); reapplyQueue(); rebuildLastSynced();
+        setNet(false); syncWanted = true;
+        toast("Mode hors ligne — copie locale du " + (snap.savedAt ? new Date(snap.savedAt).toLocaleString("fr-FR") : "?"), "err");
+      } else {
+        setNet(false);
+        return false; /* ni réseau ni copie locale : on ne démarre PAS sur une base vide (elle écraserait Supabase) */
+      }
       dbReady = true;
+      updateNetBadge();
+      snapWrite();
+      flushQueue();
+      return true;
+    }
+
+    /* ---- observation de la connexion : en ligne / hors ligne ---- */
+    function updateNetBadge() {
+      const n = pendingQueue.length;
+      const state = netOnline ? (flushing || syncing ? "🟢 Synchronisation…" : "🟢 En ligne") : "🔴 Hors ligne";
+      const pend = n ? (netOnline && !flushing ? "🔄 " : "⏳ ") + n + " en attente" : "";
+      const warn = (syncBlocked ? "⚠ synchro suspendue" : "") + (conflicts.length ? (syncBlocked ? " · " : "") + "⚠ " + conflicts.length + " conflit(s) à vérifier" : "");
+      const nb = $("netBadge"), pb = $("pendingBadge"), cb = $("conflictBadge"), pill = $("netPill");
+      if (nb) { nb.textContent = state; nb.className = netOnline ? "on" : "off"; }
+      if (pb) pb.textContent = pend;
+      if (cb) cb.textContent = warn;
+      if (pill) { pill.textContent = state + (pend ? " · " + pend : "") + (warn ? " · " + warn : ""); pill.className = netOnline ? "on" : "off"; }
+    }
+    function setNet(on) {
+      const was = netOnline; netOnline = on; updateNetBadge();
+      if (on === was) return;
+      if (firstRunWait) {
+        if (on) { const last = +sessionStorage.getItem("sp_reload") || 0; if (Date.now() - last > 60000) { sessionStorage.setItem("sp_reload", Date.now()); location.reload(); } }
+        return;
+      }
+      if (!dbReady) return;
+      if (on) { toast("Connexion rétablie — synchronisation…", "ok"); syncWanted = true; syncNow(); }
+      else toast("Hors ligne — vos modifications sont gardées en file d'attente", "err");
+    }
+    async function pingServer() {
+      if (pinging) return netOnline;
+      pinging = true;
+      try {
+        const r = await withTimeout(sb.from("meta").select("id").eq("id", "singleton").maybeSingle(), 6000);
+        setNet(!(r.error && isNetErr(r.error)));
+      } catch (e) { setNet(false); }
+      finally { pinging = false; }
+      return netOnline;
+    }
+    /* Synchro complète : lit Supabase, fusionne, puis envoie la file. Jamais pendant un envoi ni une saisie. */
+    async function syncNow() {
+      if (syncing || flushing || !dbReady || !netOnline || firstRunWait) return;
+      const ae = document.activeElement;
+      if ($("modal-root").innerHTML.trim() || (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))) return; /* réessai au prochain battement */
+      syncing = true; lastSyncTry = Date.now(); updateNetBadge();
+      try {
+        const S = await withTimeout(fetchServerDB(), 30000);
+        let changed = true, entries = [];
+        if (base) { const r = mergeIntoLocal(S); changed = r.changed; entries = r.entries; }
+        else adoptServer(S);
+        syncBlocked = ""; syncWanted = false; lastSyncOk = Date.now();
+        scheduleSnapshot();
+        if (changed) { render(); toast("Données synchronisées avec Supabase", "ok"); }
+        if (entries.length) {
+          toast(entries.length + " conflit(s) de synchronisation à vérifier", "err");
+          if (!$("modal-root").innerHTML.trim()) openConflicts();
+        }
+      } catch (e) {
+        console.error("Synchronisation impossible", e);
+        if (e && e.guard) { syncBlocked = e.message; syncWanted = false; toast("Synchronisation suspendue : " + e.message, "err"); }
+        else if (isNetErr(e)) setNet(false);
+      } finally { syncing = false; updateNetBadge(); }
+      flushQueue();
     }
     /* ---- file d'attente locale (juste les changements pas encore envoyés) ---- */
     const QUEUE_KEY = "stationPro_pendingSync";
     let pendingQueue = [], flushing = false;
-    function loadQueue() { try { pendingQueue = JSON.parse(localStorage.getItem(QUEUE_KEY)) || []; } catch (e) { pendingQueue = []; } updatePendingBadge(); }
-    function persistQueue() { localStorage.setItem(QUEUE_KEY, JSON.stringify(pendingQueue)); updatePendingBadge(); }
-    function updatePendingBadge() { const el = $("pendingBadge"); if (el) el.textContent = pendingQueue.length ? "🔄 " + pendingQueue.length + " en attente" : ""; }
+    function loadQueue() { try { pendingQueue = JSON.parse(localStorage.getItem(QUEUE_KEY)) || []; } catch (e) { pendingQueue = []; } updateNetBadge(); }
+    function persistQueue() { localStorage.setItem(QUEUE_KEY, JSON.stringify(pendingQueue)); updateNetBadge(); }
     function queueOp(table, id, action, record) {
       pendingQueue = pendingQueue.filter(op => !(op.table === table && op.id === id));
       pendingQueue.push({ table, id, action, record: record || null });
     }
+    function baseSet(op) {
+      if (!base) return;
+      if (op.table === "meta") base.meta.set("singleton", canon(op.record));
+      else if (op.action === "delete") base[op.table].delete(op.id);
+      else base[op.table].set(op.id, canon(op.record));
+    }
     function save() {
+      saveSeq++;
       for (const t of TABLES) {
         const idField = ID_FIELD[t], currMap = new Map();
         for (const rec of DB[t]) {
@@ -1073,13 +1373,14 @@
       }
       const metaJson = JSON.stringify(DB.meta);
       if (lastSynced.meta !== metaJson) { queueOp("meta", "singleton", "upsert", DB.meta); lastSynced.meta = metaJson; }
-      persistQueue();
+      persistQueue();     /* d'abord la file (localStorage, synchrone)… */
+      scheduleSnapshot(); /* …puis la copie locale complète (IndexedDB, différée) */
       flushQueue();
     }
     async function flushQueue() {
-      if (flushing || !pendingQueue.length) return;
-      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-      flushing = true;
+      if (flushing || syncing || syncBlocked || !pendingQueue.length || navigator.onLine === false) return;
+      flushing = true; updateNetBadge();
+      let sent = false;
       while (pendingQueue.length) {
         const op = pendingQueue[0];
         try {
@@ -1093,16 +1394,33 @@
             if (error) throw error;
           }
           pendingQueue.shift();
+          baseSet(op);
           persistQueue();
+          if (!sent) { sent = true; setNet(true); }
         } catch (e) {
           console.error("Erreur de synchronisation", op, e);
+          if (isNetErr(e)) setNet(false);
           break;/* réseau probablement coupé en cours de route : on retentera plus tard */
         }
       }
-      flushing = false;
+      flushing = false; updateNetBadge();
+      if (sent) scheduleSnapshot();
     }
-    window.addEventListener("online", flushQueue);
-    setInterval(flushQueue, 15000);
+    window.addEventListener("online", pingServer);
+    window.addEventListener("offline", () => setNet(false));
+    document.addEventListener("visibilitychange", async () => {
+      if (document.hidden) return;
+      if (await pingServer()) { if (Date.now() - lastSyncOk > 120000) syncWanted = true; if (syncWanted) syncNow(); else flushQueue(); }
+    });
+    setInterval(async () => {
+      if (!(await pingServer())) return;
+      if (syncWanted || Date.now() - lastSyncTry > 600000) syncNow(); else flushQueue();
+    }, 15000);
+    /* fermeture de l'onglet avec des modifications pas encore envoyées à Supabase : le navigateur demande confirmation
+       (le texte du message est imposé par le navigateur) */
+    window.addEventListener("beforeunload", e => {
+      if (pendingQueue.length) { e.preventDefault(); e.returnValue = ""; return ""; }
+    });
     /* ================= HELPERS ================= */
     const $ = id => document.getElementById(id);
     const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -1254,7 +1572,7 @@
     function getOrCreateOp(d, tid) {
       let op = getOp(d, tid);
       if (!op) {
-        const nid = DB.mouvements.reduce((s, m) => Math.max(s, Number(m.operation_id) || 0), 0) + 1;
+        const nid = nextNumId(DB.mouvements, "operation_id");
         op = { mouvement_id: nid, operation_id: nid, date_m: d, sens: "S", mode_paiement: "Espèce", id_tier: tid, remise: 0, montant_paye: 0, obs: "", type_m: "" };
         DB.mouvements.push(op);
       }
@@ -2361,7 +2679,7 @@
       const fdate = factForm.date || $("factDate").value || todayISO();
       const fnum = factForm.num || $("factNum").value;
       const fcheque = $("factCheque") ? $("factCheque").value.trim() : "";
-      const opsens = DB.mouvements.reduce((s, m) => Math.max(s, Number(m.operation_id) || 0), 0) + 1;
+      const opsens = nextNumId(DB.mouvements, "operation_id");
       const nm = normMode(mode);
       const f = {
         id: uid(), type: "carburant", fournisseurId: fid, numero: fnum, date: fdate,
@@ -2385,7 +2703,7 @@
       const mode = $("divMode").value, date = $("divDate").value || todayISO();
       const a = article(artId); a.qs = (Number(a.qs) || 0) + qte;
       const montant = qte * pu;
-      const opsens = DB.mouvements.reduce((s, m) => Math.max(s, Number(m.operation_id) || 0), 0) + 1;
+      const opsens = nextNumId(DB.mouvements, "operation_id");
       const nm = normMode(mode);
       DB.factures.push({
         id: uid(), type: "divers", fournisseurId: fourn, numero: "", date: date, mode: nm,
@@ -2782,7 +3100,7 @@
       }
       if (id) { const t = tier(id); Object.assign(t, data); toast("Tiers modifié", "ok"); }
       else {
-        const nid = DB.tiers.reduce((s, x) => Math.max(s, Number(x.tier_id) || 0), 0) + 1;
+        const nid = nextNumId(DB.tiers, "tier_id");
         DB.tiers.push(Object.assign({ tier_id: nid, type: type, aff: 1, stat: 1, pos: 1, entre: "", sortie: "", pu: 0, ord: null }, data));
         toast("Tiers ajouté", "ok");
       }
@@ -2850,7 +3168,7 @@
       };
       if (id) { Object.assign(article(id), data); toast("Article modifié", "ok"); }
       else {
-        const nid = DB.articles.reduce((s, x) => Math.max(s, Number(x.art_id) || 0), 0) + 1;
+        const nid = nextNumId(DB.articles, "art_id");
         DB.articles.push(Object.assign({ art_id: nid, actif: 1 }, data)); toast("Article ajouté", "ok");
       }
       save(); closeModal(); render();
@@ -2879,7 +3197,7 @@
     function addCategorie() {
       const n = $("newCat").value.trim();
       if (!n) { toast("Nom obligatoire", "err"); return; }
-      const nid = DB.categories.reduce((s, c) => Math.max(s, Number(c.cat_id) || 0), 0) + 1;
+      const nid = nextNumId(DB.categories, "cat_id");
       DB.categories.push({ cat_id: nid, cat: n });
       save(); render(); toast("Catégorie ajoutée", "ok");
     }
@@ -3034,7 +3352,7 @@
           return (Number(a.tier_id) || 0) - (Number(b.tier_id) || 0); /* reste : tri par tier_id */
         });
     }
-    function nextPaieCle() { return DB.paie.reduce((s, l) => Math.max(s, Number(l.cle) || 0), 0) + 1; }
+    function nextPaieCle() { return nextNumId(DB.paie, "cle"); }
     function paieLines(annee, mois, tierId) { return DB.paie.filter(l => String(l.annee) === String(annee) && String(l.mois) === String(mois) && (!tierId || String(l.idp_tier) === String(tierId))); }
     /* Le Prêt (rubrique 4) n'est pas additionné au Net : c'est une avance de fonds, remboursée séparément via la rubrique 5 */
     function netPaie(annee, mois, tid) { return paieLines(annee, mois, tid).filter(l => ![4, 9, 10, 11].includes(Number(l.rubrique))).reduce((s, l) => s + (RUB_SENS[l.rubrique] || 1) * (Number(l.nj) || 1) * Number(l.prix), 0); }
@@ -3551,9 +3869,15 @@
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("sw.js").catch(e => console.error("Service worker non enregistré", e));
       }
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
       $("view").innerHTML = '<div class="empty"><div class="big">⏳</div>Connexion à Supabase…</div>';
-      await loadDB();
+      if (!(await loadDB())) {
+        firstRunWait = true;
+        $("view").innerHTML = '<div class="empty"><div class="big">📡</div>Première ouverture : une connexion à Supabase est nécessaire pour télécharger les données.<br>Nouvelle tentative automatique dès que le réseau revient.<br><br><button class="btn accent" onclick="location.reload()">Réessayer maintenant</button></div>';
+        return;
+      }
       render();
+      if (conflicts.length) openConflicts();
     })();
   </script>
 </body>
