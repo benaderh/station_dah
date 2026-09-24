@@ -357,6 +357,32 @@
       font-weight: 700
     }
 
+    /* tri des colonnes */
+    table.sortable th[data-col] {
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap
+    }
+
+    table.sortable th[data-col]:hover {
+      color: var(--ink)
+    }
+
+    table.sortable th .si {
+      display: inline-block;
+      margin-left: 5px;
+      font-size: 9px;
+      opacity: .35
+    }
+
+    table.sortable th.sorted {
+      color: var(--accent)
+    }
+
+    table.sortable th.sorted .si {
+      opacity: 1
+    }
+
     tr:last-child td {
       border-bottom: none
     }
@@ -955,7 +981,7 @@
           { agent_id: 9, agent_type: 9, agent_libelle: "Autres", actif: "Oui" },
           { agent_id: 10, agent_type: 10, agent_libelle: "Butane", actif: "Non" },
           { agent_id: 11, agent_type: 11, agent_libelle: "Lubrifiants", actif: "Non" }],
-        meta: { clientsDiversId: 24, caisseInit: 0, banqueInit: 0, fournisseurCarburantId: 21, qteMemoire: { Gasoil: 20000, Essence: 7000, GPL: 8000 } }
+        meta: { clientsDiversId: 24, caisseInit: 0, banqueInit: 0, bonsInit: 0, fournisseurCarburantId: 21, qteMemoire: { Gasoil: 20000, Essence: 7000, GPL: 8000 } }
       };
     }
     /* ================= PERSISTANCE (Supabase, source unique) =================
@@ -1081,6 +1107,15 @@
     const $ = id => document.getElementById(id);
     const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     const fmt = n => Math.round(Number(n) || 0).toLocaleString("fr-FR");
+    /* Nombre entier, espace entre les milliers, sans virgule (ex: 1 250 000) */
+    const fmtMil = n => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    function fmtMilInput(el) {
+      const before = el.value.slice(0, el.selectionStart).replace(/\D/g, "").length;
+      const dg = el.value.replace(/\D/g, ""); el.value = dg ? fmtMil(dg) : "";
+      let i = 0, n = 0;
+      if (before > 0) { for (i = 0; i < el.value.length; i++) { if (/\d/.test(el.value[i])) n++; if (n === before) { i++; break; } } }
+      try { el.setSelectionRange(i, i); } catch (e) { }
+    }
     const fmtQ = n => { const v = Number(n) || 0; return v === Math.round(v) ? v.toLocaleString("fr-FR") : v.toLocaleString("fr-FR", { maximumFractionDigits: 3 }); };
     function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
     function todayISO() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
@@ -2368,7 +2403,7 @@
     function factHistTable() {
       const q = state.factFilter.toLowerCase();
       const fs = DB.factures.filter(f => { const s = (tierNom(f.fournisseurId) + " " + (f.numero || "") + " " + f.type).toLowerCase(); return s.includes(q); }).slice().reverse();
-      return `<table><thead><tr><th>Date</th><th>Type</th><th>Fournisseur</th><th>N°</th><th>Chèque</th><th>Qtés</th><th class="num">Montant</th><th class="num">Réglé</th><th class="num">Reste</th><th>Mode</th></tr></thead><tbody>
+      return `<table class="sortable" data-sk="fact"><thead><tr><th>Date</th><th>Type</th><th>Fournisseur</th><th>N°</th><th>Chèque</th><th>Qtés</th><th class="num">Montant</th><th class="num">Réglé</th><th class="num">Reste</th><th>Mode</th></tr></thead><tbody>
  ${fs.map(f => {
         const cheques = (f.paiements || []).filter(p => p.cheque).map(p => esc(p.cheque)).join(", ") || (f.cheque ? esc(f.cheque) : "—");
         return `<tr ondblclick="openFactureEdit('${f.id}')" style="cursor:pointer" title="Dl_clic pour modifier"><td>${frDate(f.date)}</td><td>${f.type === "carburant" ? "⛽ Carburant" : "📦 Divers"}</td><td>${tierNom(f.fournisseurId)}</td>
@@ -2525,7 +2560,7 @@
     /* ================= VUE : FOURNISSEURS & BONS ================= */
     function bonsRecus() { return DB.agent_detail.filter(a => Number(a.type_agent) === 3).reduce((s, a) => s + Number(a.mt_agent || 0), 0); }
     function bonsUtilises() { return DB.factures.reduce((s, f) => s + (f.paiements || []).filter(p => p.source === "bons").reduce((acc, p) => acc + Number(p.montant || 0), 0), 0); }
-    function bonsSolde() { return bonsRecus() - bonsUtilises(); }
+    function bonsSolde() { return (Number(DB.meta.bonsInit) || 0) + bonsRecus() - bonsUtilises(); }
     function bonsUtilisesTable() {
       const list = [];
       DB.factures.forEach(f => {
@@ -2534,7 +2569,7 @@
         });
       });
       list.sort((a, b) => b.date.localeCompare(a.date));
-      return `<table><tr><th>Date</th><th class="num">Mt Utilisé (DA)</th><th>Facture Associée</th></tr>
+      return `<table class="sortable" data-sk="bons"><tr><th>Date</th><th class="num">Mt Utilisé (DA)</th><th>Facture Associée</th></tr>
  ${list.map(l => `<tr><td>${frDate(l.date)}</td><td class="num">${fmt(l.montant)}</td><td>${esc(l.facture)}</td></tr>`).join("") || `<tr><td colspan="3" class="subtle">Aucun bon utilisé pour le moment.</td></tr>`}</table>`;
     }
     function openRegler(fid) {
@@ -2580,7 +2615,7 @@
   </div>
  </div>
  <div class="card" style="margin-top:16px"><h2>🚛 Soldes par fournisseur <span class="subtle">— surtout carburant</span></h2>
-  <table><tr><th>Fournisseur</th><th class="num">Total facturé</th><th class="num">Réglé</th><th class="num">Reste dû</th><th>Solde</th></tr>
+  <table class="sortable" data-sk="fourn"><tr><th>Fournisseur</th><th class="num">Total facturé</th><th class="num">Réglé</th><th class="num">Reste dû</th><th>Solde</th></tr>
   ${fs.map(f => {
         const s = soldeFourn(f.tier_id); return `<tr><td>${tierNom(f.tier_id)}</td><td class="num">${fmt(s.du)}</td><td class="num">${fmt(s.paye)}</td>
    <td class="num" style="color:${s.reste > 0 ? "var(--red)" : "var(--green)"}">${fmt(s.reste)}</td>
@@ -2611,7 +2646,7 @@
         rows.push({ d: o.d, sens: o.sens, tier: o.tier, art: a, q: Number(md.quantite), pu: Number(md.prix_u) });
       });
       rows.sort((a, b) => b.d.localeCompare(a.d));
-      return `<table><tr><th>Date</th><th>Sens</th><th>Tiers</th><th>Article</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Mt</th></tr>
+      return `<table class="sortable" data-sk="hist"><tr><th>Date</th><th>Sens</th><th>Tiers</th><th>Article</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Mt</th></tr>
  ${rows.slice(0, 300).map(r => `<tr><td>${frDate(r.d)}</td>
   <td>${r.sens === "E" ? '<span class="pill ok">Achat</span>' : '<span class="pill mid">Vente</span>'}</td>
   <td>${tierNom(r.tier)}</td><td>${esc(r.art.article)}</td><td class="num">${fmt(r.q)}</td>
@@ -2642,7 +2677,7 @@
     }
     function stockTable() {
       const arts = DB.articles.filter(a => state.artFilter === "" || a.article.toLowerCase().includes(state.artFilter.toLowerCase()));
-      return `<table><tr><th>Article</th><th>Catégorie</th><th>Type</th><th class="num">Stock réel</th><th class="num">PA</th><th class="num">PV</th><th>État</th></tr>
+      return `<table class="sortable" data-sk="stock"><tr><th>Article</th><th>Catégorie</th><th>Type</th><th class="num">Stock réel</th><th class="num">PA</th><th class="num">PV</th><th>État</th></tr>
  ${arts.map(a => {
         const isCarb = [1, 2, 3].includes(Number(a.type_a));
         const qs = isCarb ? calcStockCarburant(a.type_a) : Number(a.qs);
@@ -2658,7 +2693,7 @@
       const q = state.tierFilter.toLowerCase();
       const ts = DB.tiers.filter(t => t.type === state.tierTab && (t.nom + " " + (t.prenom || "")).toLowerCase().includes(q));
       const isP = state.tierTab === "P";
-      return `<table><tr><th>Nom</th><th>Prénom</th>${isP ? '<th>Ord</th><th class="num">PU journée</th><th>Poste</th><th>Statut</th>' : ""}</tr>
+      return `<table class="sortable" data-sk="tiers-${state.tierTab}"><tr><th>Nom</th><th>Prénom</th>${isP ? '<th>Ord</th><th class="num">PU journée</th><th>Poste</th><th>Statut</th>' : ""}</tr>
  ${ts.map(t => `<tr ondblclick="openTierModal('${state.tierTab}',${t.tier_id})" style="cursor:pointer" title="Dl_clic pour modifier"><td>${esc(t.nom)}</td><td>${esc(t.prenom || "")}</td>
   ${isP ? `<td><b>${t.ord === null || t.ord === '' || t.ord === undefined ? '—' : t.ord}</b></td><td class="num">${fmt(t.pu)}</td><td>${Number(t.pos) === 1 || t.pos === '1' ? '<span class="pill ok">En poste</span>' : '<span class="pill neutral">Sorti</span>'}</td><td>${Number(t.stat) ? '<span class="pill ok">Actif</span>' : '<span class="pill neutral">Inactif</span>'}</td>` : ""}
   <td style="white-space:nowrap"><button class="btn sm" onclick="event.stopPropagation();openTierModal('${state.tierTab}',${t.tier_id})">✏️</button>
@@ -2765,7 +2800,7 @@
     function artTable() {
       const q = state.artFilter.toLowerCase();
       const arts = DB.articles.filter(a => a.article.toLowerCase().includes(q));
-      return `<table><tr><th>Article</th><th>Catégorie</th><th>Type</th><th>Unité</th><th class="num">Stock</th><th class="num">PA</th><th class="num">PV</th><th>Actif</th></tr>
+      return `<table class="sortable" data-sk="art"><tr><th>Article</th><th>Catégorie</th><th>Type</th><th>Unité</th><th class="num">Stock</th><th class="num">PA</th><th class="num">PV</th><th>Actif</th></tr>
  ${arts.map(a => `<tr ondblclick="openArticleModal(${a.art_id})" style="cursor:pointer" title="Dl_clic pour modifier"><td>${esc(a.article)}</td><td>${catName(a.id_cat)}</td>
   <td>${{ 0: "Lubrifiant", 9: "Gaz butane", 1: "Gasoil", 2: "Essence", 3: "GPL" }[a.type_a] || "—"}</td>
   <td>${esc(a.unite)}</td><td class="num">${fmt(a.qs)}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
@@ -2882,6 +2917,7 @@
    <div class="row" style="margin-top:10px">
     <div class="field"><label>Solde caisse initial</label><input id="metaCaisse" type="number" value="${DB.meta.caisseInit}" style="width:130px"></div>
     <div class="field"><label>Solde banque initial</label><input id="metaBanque" type="number" value="${DB.meta.banqueInit}" style="width:130px"></div>
+    <div class="field"><label>Solde Bons Naftal initial</label><input id="metaBons" type="number" value="${DB.meta.bonsInit || 0}" style="width:130px"></div>
    </div>
    <div class="row" style="margin-top:10px">
     <div class="field"><label>Stock initial Gasoil</label><input id="metaStockG" type="number" value="${(DB.meta.stockInitial && DB.meta.stockInitial[1]) || 0}" style="width:130px"></div>
@@ -2910,6 +2946,7 @@
       DB.meta.fournisseurCarburantId = Number($("metaFournCarb").value);
       DB.meta.caisseInit = Number($("metaCaisse").value) || 0;
       DB.meta.banqueInit = Number($("metaBanque").value) || 0;
+      DB.meta.bonsInit = Number($("metaBons") ? $("metaBons").value : 0) || 0;
       DB.meta.stockInitial = DB.meta.stockInitial || {};
       DB.meta.stockInitial[1] = Number($("metaStockG") ? $("metaStockG").value : 0) || 0;
       DB.meta.stockInitial[2] = Number($("metaStockE") ? $("metaStockE").value : 0) || 0;
@@ -2925,7 +2962,7 @@
       const ledger = getLedger(tab).slice().reverse();
       function opTable(ops) {
         if (!ops.length) return `<p class="subtle" style="margin-top:10px">Aucun historique disponible.</p>`;
-        return `<table style="margin-top:10px;font-size:12.5px">
+        return `<table class="sortable" data-sk="treso-${tab}" style="margin-top:10px;font-size:12.5px">
   <tr><th>Date</th><th>Sens</th><th>Source</th><th>Libellé / Obs.</th><th class="num">Mt</th><th class="num">Solde progressif</th></tr>
   ${ops.map(t => `<tr ${t.source === "treso" ? `ondblclick="openEditTresoOp('${t.id}')" style="cursor:pointer" title="Dl_clic pour modifier"` : ""}>
    <td>${frDate(t.date)}</td>
@@ -3163,7 +3200,7 @@
     /* ---- Payer maintenant : règlement partiel ou total du Net, tracé en caisse ---- */
     function payerMaintenant(tid) {
       const el = document.getElementById("mt_paye_" + tid);
-      const montant = Number(el ? el.value : 0);
+      const montant = Number(el ? String(el.value).replace(/\D/g, "") : 0);
       if (montant <= 0) { toast("Montant invalide", "err"); return; }
       const a = sel.paieAnnee, m = sel.paieMois, dateP = todayISO(), cle = nextPaieCle(), tresoId = uid();
       DB.paie.push({ cle: cle, annee: a, mois: m, date_p: dateP, idp_tier: tid, rubrique: 10, sens: -1, nj: 1, prix: montant, treso_id: tresoId });
@@ -3272,7 +3309,7 @@
             : `<p class="subtle" style="margin-top:8px">Aucune ligne pour ${m}/${a} — cliquez sur « Actualiser ».</p>`}
   <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
    <label style="margin:0;font-size:13px;color:var(--muted)">${lblPaye}</label>
-   <input id="mt_paye_${t.tier_id}" type="number" min="0" value="${restePayer}" style="width:120px;padding:6px 10px;background:var(--card2);border:1px solid var(--line);border-radius:8px;color:var(--green);font-weight:700;font-size:14px">
+   <input id="mt_paye_${t.tier_id}" type="text" inputmode="numeric" autocomplete="off" value="${fmtMil(restePayer)}" oninput="fmtMilInput(this)" style="width:140px;text-align:right;padding:6px 10px;background:var(--card2);border:1px solid var(--line);border-radius:8px;color:var(--green);font-weight:700;font-size:14px">
    <button class="btn sm accent" onclick="payerMaintenant(${t.tier_id})">💳 Payer</button>
    <span class="subtle" style="font-size:11px">Net : <b>${fmt(net)} DA</b></span>
   </div>
@@ -3435,6 +3472,81 @@
       $("toast-root").appendChild(t);
       setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .4s"; setTimeout(() => t.remove(), 400); }, 3200);
     }
+
+    /* ================= TRI DES COLONNES (tables .sortable) =================
+       Clic sur un en-tête : croissant → décroissant → ordre d'origine.
+       Détecte automatiquement dates (jj/mm/aaaa), nombres (« 1 250 DA », « - 500 DA ») et texte. */
+    const SORTS = {};
+    function _sv(td) { return (td ? td.textContent : "").replace(/[\s\u00a0\u202f]+/g, " ").trim(); }
+    function _sDate(v) { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v); return m ? Number(m[3] + m[2] + m[1]) : null; }
+    function _sNum(v) {
+      const m = /^([+\-−–]?)\s*(\d[\d ]*(?:[.,]\d+)?)(?:\s*[A-Za-zÀ-ÿ%].*)?$/.exec(v);
+      if (!m) return null;
+      const n = Number(m[2].replace(/ /g, "").replace(",", "."));
+      return isNaN(n) ? null : (m[1] && m[1] !== "+" ? -n : n);
+    }
+    function _sortRows(tb) {
+      const sk = tb.dataset.sk, st = SORTS[sk];
+      const rows = [...tb.querySelectorAll("tr")].filter(r => !r.closest("thead") && r.querySelector("td") && ![...r.cells].some(c => c.colSpan > 1));
+      if (!rows.length) return;
+      rows.forEach((r, i) => { if (r.dataset.i === undefined) r.dataset.i = i; });
+      let sorted;
+      if (!st) { sorted = rows.slice().sort((a, b) => a.dataset.i - b.dataset.i); }
+      else {
+        const vals = rows.map(r => _sv(r.cells[st.col]));
+        const filled = vals.filter(v => v !== "" && v !== "—");
+        const isDate = filled.length && filled.every(v => _sDate(v) !== null);
+        const isNum = !isDate && filled.length && filled.every(v => _sNum(v) !== null);
+        const keyOf = v => (v === "" || v === "—") ? null : isDate ? _sDate(v) : isNum ? _sNum(v) : v;
+        const items = rows.map((r, i) => ({ r, k: keyOf(vals[i]), i }));
+        const dir = st.dir === "desc" ? -1 : 1;
+        items.sort((a, b) => {
+          if (a.k === null && b.k === null) return a.i - b.i;
+          if (a.k === null) return 1;
+          if (b.k === null) return -1;
+          const c = (isDate || isNum) ? a.k - b.k : String(a.k).localeCompare(String(b.k), "fr", { numeric: true, sensitivity: "base" });
+          return c ? c * dir : a.i - b.i;
+        });
+        sorted = items.map(x => x.r);
+      }
+      const parent = rows[0].parentNode;
+      sorted.forEach(r => parent.appendChild(r));
+    }
+    function _sortHeads(tb) {
+      const st = SORTS[tb.dataset.sk];
+      tb.querySelectorAll("th").forEach(th => {
+        if (!th.textContent.trim()) return;
+        th.dataset.col = th.cellIndex;
+        let si = th.querySelector(".si");
+        if (!si) { si = document.createElement("span"); si.className = "si"; th.appendChild(si); }
+        const on = st && st.col === th.cellIndex;
+        th.classList.toggle("sorted", !!on);
+        si.textContent = on ? (st.dir === "desc" ? "▼" : "▲") : "⇅";
+        th.title = "Cliquer pour trier";
+      });
+    }
+    function _sortInit(root) {
+      root.querySelectorAll("table.sortable:not([data-enh])").forEach(tb => {
+        tb.dataset.enh = "1";
+        _sortHeads(tb);
+        if (SORTS[tb.dataset.sk]) _sortRows(tb);
+      });
+    }
+    (function () {
+      const v = document.getElementById("view");
+      const obs = new MutationObserver(() => { _sortInit(v); obs.takeRecords(); });
+      obs.observe(v, { childList: true, subtree: true });
+      v.addEventListener("click", e => {
+        const th = e.target.closest("th[data-col]");
+        const tb = th && th.closest("table.sortable");
+        if (!tb) return;
+        const col = Number(th.dataset.col), sk = tb.dataset.sk, st = SORTS[sk];
+        if (!st || st.col !== col) SORTS[sk] = { col, dir: "asc" };
+        else if (st.dir === "asc") SORTS[sk] = { col, dir: "desc" };
+        else delete SORTS[sk];
+        _sortRows(tb); _sortHeads(tb); obs.takeRecords();
+      });
+    })();
     (async function start() {
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("sw.js").catch(e => console.error("Service worker non enregistré", e));
