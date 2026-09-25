@@ -2893,16 +2893,114 @@
       else { sel.etDu = null; sel.etAu = null; }
       render();
     }
+    /* ================= ÉTAT ACHATS/CA — PAR DÉSIGNATION (valorisé) ================= */
+    function isoDayBefore(iso) {
+      const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() - 1);
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+    function mvArticlePeriodQty(artId, sens, du, au) {
+      return DB.mouv_detail.filter(md => {
+        if (String(md.id_art) !== String(artId)) return false;
+        const op = DB.mouvements.find(m => String(m.operation_id) === String(md.id_operation));
+        if (!op || op.sens !== sens) return false;
+        if (du && op.date_m < du) return false;
+        if (au && op.date_m > au) return false;
+        return true;
+      }).reduce((s, md) => s + Number(md.quantite), 0);
+    }
+    function mvArticlePeriodVal(artId, sens, du, au) {
+      return DB.mouv_detail.filter(md => {
+        if (String(md.id_art) !== String(artId)) return false;
+        const op = DB.mouvements.find(m => String(m.operation_id) === String(md.id_operation));
+        if (!op || op.sens !== sens) return false;
+        if (du && op.date_m < du) return false;
+        if (au && op.date_m > au) return false;
+        return true;
+      }).reduce((s, md) => s + Number(md.quantite) * Number(md.prix_u), 0);
+    }
+    function mvArticleAfterQty(artId, sens, dateLimit) {
+      // Somme des quantités des mouvements strictement après dateLimit ("" = tous les mouvements, sans borne basse)
+      return DB.mouv_detail.filter(md => {
+        if (String(md.id_art) !== String(artId)) return false;
+        const op = DB.mouvements.find(m => String(m.operation_id) === String(md.id_operation));
+        return op && op.sens === sens && op.date_m > dateLimit;
+      }).reduce((s, md) => s + Number(md.quantite), 0);
+    }
+    // Stock d'un article "divers" (qs) reconstitué à la fin de dateLimit (chaîne ISO ; "" = avant tout mouvement ; null = stock actuel/qs)
+    function stockDiversAt(a, dateLimit) {
+      if (dateLimit === null) return Number(a.qs) || 0;
+      const achatsApres = mvArticleAfterQty(a.art_id, "E", dateLimit);
+      const ventesApres = mvArticleAfterQty(a.art_id, "S", dateLimit);
+      return (Number(a.qs) || 0) - achatsApres + ventesApres;
+    }
+    function etCarbRow(typeA, label) {
+      const a = DB.articles.find(x => Number(x.type_a) === typeA);
+      const pa = a ? Number(a.pa || 0) : 0, pv = a ? Number(a.pv || 0) : 0;
+      const du = sel.etDu, au = sel.etAu;
+      const qDepart = calcStockCarburant(typeA, du ? isoDayBefore(du) : "");
+      const qFinal = calcStockCarburant(typeA, au || todayISO());
+      const achatsQty = a ? mvArticlePeriodQty(a.art_id, "E", du, au) : 0;
+      let ventesQty = 0;
+      etDates().forEach(d => {
+        const g = calcGroup(d);
+        ventesQty += typeA === 1 ? g.g.q : typeA === 2 ? g.e.q : g.gpl.q;
+      });
+      return {
+        label: label || (a ? a.article : ""),
+        stockDepartVal: qDepart * pa,
+        achatsVal: achatsQty * pa,
+        ventesVal: ventesQty * pv,
+        stockFinalVal: qFinal * pa,
+        marge: ventesQty * (pv - pa)
+      };
+    }
+    function etDiversRow(typeA, label) {
+      const du = sel.etDu, au = sel.etAu;
+      const arts = typeA === 0 ? DB.articles.filter(x => Number(x.type_a) === 0 && Number(x.actif)) : [DB.articles.find(x => Number(x.type_a) === 9)].filter(Boolean);
+      let stockDepartVal = 0, stockFinalVal = 0, achatsVal = 0, ventesVal = 0, marge = 0;
+      arts.forEach(a => {
+        const pa = Number(a.pa || 0);
+        const dq = stockDiversAt(a, du ? isoDayBefore(du) : "");
+        const fq = stockDiversAt(a, au || null);
+        stockDepartVal += dq * pa;
+        stockFinalVal += fq * pa;
+        achatsVal += mvArticlePeriodVal(a.art_id, "E", du, au);
+        const vq = mvArticlePeriodQty(a.art_id, "S", du, au);
+        const vv = mvArticlePeriodVal(a.art_id, "S", du, au);
+        ventesVal += vv;
+        marge += vv - vq * pa;
+      });
+      return { label, stockDepartVal, achatsVal, ventesVal, stockFinalVal, marge };
+    }
+    function etSumRows(rows) {
+      return rows.reduce((s, r) => ({
+        stockDepartVal: s.stockDepartVal + r.stockDepartVal,
+        achatsVal: s.achatsVal + r.achatsVal,
+        ventesVal: s.ventesVal + r.ventesVal,
+        stockFinalVal: s.stockFinalVal + r.stockFinalVal,
+        marge: s.marge + r.marge
+      }), { stockDepartVal: 0, achatsVal: 0, ventesVal: 0, stockFinalVal: 0, marge: 0 });
+    }
+    function etBuildRows() {
+      const rowEssence = etCarbRow(2, "Essence"), rowGasoil = etCarbRow(1, "Gasoil"), rowGpl = etCarbRow(3, "GPL");
+      const rowSTotal = { label: "S/Total", ...etSumRows([rowEssence, rowGasoil, rowGpl]) };
+      const rowGaz = etDiversRow(9, "Gaz Butane");
+      const rowLub = etDiversRow(0, "Lubrifiant");
+      const rowCafe = { label: "Café", stockDepartVal: 0, achatsVal: 0, ventesVal: 0, stockFinalVal: 0, marge: 0 };
+      const rowTotal = { label: "Total", ...etSumRows([rowSTotal, rowGaz, rowLub, rowCafe]) };
+      // CA = Ventes de la période (Carburant uniquement) + Marge (Gaz Butane), sans Lubrifiants
+      const caGlobal = rowSTotal.ventesVal + rowGaz.marge;
+      return { rowEssence, rowGasoil, rowGpl, rowSTotal, rowGaz, rowLub, rowCafe, rowTotal, caGlobal };
+    }
     function vEtats() {
-      const ds = etDates();
       const fs = etFactures();
-      let caCarb = 0, caLub = 0, caGb = 0;
-      const jours = ds.map(d => { const j = etCaJour(d); caCarb += j.carb; caLub += j.lub; caGb += j.gb; return { d, ...j }; });
-      const caTotal = caCarb + caLub + caGb;
+      const { rowEssence, rowGasoil, rowGpl, rowSTotal, rowGaz, rowLub, rowCafe, rowTotal, caGlobal } = etBuildRows();
       let achCarb = 0, achDiv = 0, achRegle = 0;
       fs.forEach(f => { if (f.type === "carburant") achCarb += Number(f.montant); else achDiv += Number(f.montant); achRegle += Number(f.regle) || 0; });
       const achTotal = achCarb + achDiv;
       const periodeLbl = (sel.etDu ? frDate(sel.etDu) : "Début") + " → " + (sel.etAu ? frDate(sel.etAu) : "Aujourd'hui");
+      const etRows = [rowEssence, rowGasoil, rowGpl, rowSTotal, rowGaz, rowLub, rowCafe, rowTotal];
+      const etRow = r => `<tr${r.label === "S/Total" || r.label === "Total" ? ' style="border-top:2px solid var(--line);font-weight:800"' : ""}><td>${esc(r.label)}</td><td>${periodeLbl}</td><td class="num">${fmt(r.stockDepartVal)}</td><td class="num">${fmt(r.achatsVal)}</td><td class="num">${fmt(r.ventesVal)}</td><td class="num">${fmt(r.stockFinalVal)}</td><td class="num ${r.marge >= 0 ? "diff-pos" : "diff-neg"}">${fmt(r.marge)}</td></tr>`;
       return `
  <div class="card">
   <h2>📅 Sélection de la période</h2>
@@ -2922,18 +3020,17 @@
   <p class="subtle" style="margin-top:8px">Période : <b>${periodeLbl}</b></p>
  </div>
  <div class="grid-stats" style="margin-top:16px">
-  <div class="stat gold"><div class="v">${fmt(caTotal)}</div><div class="l">Chiffre d'affaires — Total période</div></div>
-  <div class="stat"><div class="v">${fmt(caCarb)}</div><div class="l">CA Carburant</div></div>
-  <div class="stat"><div class="v">${fmt(caLub + caGb)}</div><div class="l">CA Lubrifiants + Gaz butane</div></div>
+  <div class="stat gold"><div class="v">${fmt(caGlobal)}</div><div class="l">Chiffre d'affaires — Total période<br><span style="font-weight:400;opacity:.8">(Ventes Carburant + Marge Gaz butane, hors Lubrifiants)</span></div></div>
+  <div class="stat"><div class="v">${fmt(rowSTotal.ventesVal)}</div><div class="l">Ventes Carburant</div></div>
+  <div class="stat"><div class="v">${fmt(rowLub.ventesVal + rowGaz.ventesVal)}</div><div class="l">Ventes Lubrifiants + Gaz butane</div></div>
   <div class="stat red"><div class="v">${fmt(achTotal)}</div><div class="l">Achats — Total période</div></div>
   <div class="stat"><div class="v">${fmt(achCarb)}</div><div class="l">Achats Carburant</div></div>
   <div class="stat"><div class="v">${fmt(achDiv)}</div><div class="l">Achats Divers (lub./gaz)</div></div>
  </div>
- <div class="card" style="margin-top:16px"><h2>💰 Chiffre d'affaires — Détail par jour</h2>
-  ${jours.length ? `<div style="overflow-x:auto"><table class="sortable" data-sk="etCa"><thead><tr><th>Date</th><th class="num">Carburant</th><th class="num">Lubrifiants</th><th class="num">Gaz butane</th><th class="num">Total</th></tr></thead><tbody>
-   ${jours.map(j => `<tr><td>${frDate(j.d)}</td><td class="num">${fmt(j.carb)}</td><td class="num">${fmt(j.lub)}</td><td class="num">${fmt(j.gb)}</td><td class="num"><b>${fmt(j.carb + j.lub + j.gb)}</b></td></tr>`).join("")}
-   <tr style="border-top:2px solid var(--line);font-weight:800"><td>TOTAL</td><td class="num">${fmt(caCarb)}</td><td class="num">${fmt(caLub)}</td><td class="num">${fmt(caGb)}</td><td class="num">${fmt(caTotal)}</td></tr>
-  </tbody></table></div>` : `<div class="empty"><div class="big">📭</div>Aucune journée sur cette période.</div>`}
+ <div class="card" style="margin-top:16px"><h2>📊 État Achats/CA — par désignation</h2>
+  <div style="overflow-x:auto"><table class="sortable" data-sk="etStock"><thead><tr><th>Désignation</th><th>Date</th><th class="num">Stocks/Départ</th><th class="num">Achats</th><th class="num">Ventes</th><th class="num">Stocks/Final</th><th class="num">Marge</th></tr></thead><tbody>
+   ${etRows.map(etRow).join("")}
+  </tbody></table></div>
  </div>
  <div class="card" style="margin-top:16px"><h2>🧾 Achats — Liste des factures</h2>
   ${fs.length ? `<div style="overflow-x:auto"><table class="sortable" data-sk="etAch"><thead><tr><th>Date</th><th>Type</th><th>Fournisseur</th><th>N°</th><th class="num">Montant</th><th class="num">Réglé</th><th class="num">Reste</th></tr></thead><tbody>
@@ -2943,10 +3040,13 @@
  </div>`;
     }
     function doExportEtatXlsx() {
-      const ds = etDates(), fs = etFactures();
+      const fs = etFactures();
       const wb = XLSX.utils.book_new();
-      const caRows = ds.map(d => { const j = etCaJour(d); return { date: d, carburant: Math.round(j.carb), lubrifiants: Math.round(j.lub), gaz_butane: Math.round(j.gb), total: Math.round(j.carb + j.lub + j.gb) }; });
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(caRows.length ? caRows : [{}]), "Chiffre_affaires");
+      const { rowEssence, rowGasoil, rowGpl, rowSTotal, rowGaz, rowLub, rowCafe, rowTotal } = etBuildRows();
+      const periodeLbl = (sel.etDu ? frDate(sel.etDu) : "Début") + " → " + (sel.etAu ? frDate(sel.etAu) : "Aujourd'hui");
+      const etRows = [rowEssence, rowGasoil, rowGpl, rowSTotal, rowGaz, rowLub, rowCafe, rowTotal];
+      const stockRows = etRows.map(r => ({ designation: r.label, date: periodeLbl, stocks_depart: Math.round(r.stockDepartVal), achats: Math.round(r.achatsVal), ventes: Math.round(r.ventesVal), stocks_final: Math.round(r.stockFinalVal), marge: Math.round(r.marge) }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(stockRows), "Etat_Achats_CA");
       const achRows = fs.map(f => ({ date: f.date, type: f.type, fournisseur: tierNom(f.fournisseurId).replace(/<[^>]*>/g, ""), numero: f.numero || "", montant: Math.round(Number(f.montant)), regle: Math.round(Number(f.regle) || 0), reste: Math.round(Number(f.montant) - (Number(f.regle) || 0)) }));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(achRows.length ? achRows : [{}]), "Achats");
       const lbl = (sel.etDu || "debut") + "_au_" + (sel.etAu || todayISO());
