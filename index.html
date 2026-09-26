@@ -982,6 +982,19 @@
       { c: "P01", t: "G" }, { c: "P02", t: "G" }, { c: "P03", t: "G" }, { c: "P04", t: "G" },
       { c: "P05", t: "E" }, { c: "P06", t: "E" }, { c: "P07", t: "E" }, { c: "P08", t: "E" },
       { c: "P09", t: "L" }, { c: "P10", t: "L" }, { c: "P11", t: "L" }, { c: "P12", t: "L" }];
+    /* ---- Cuves de stockage Gasoil/Essence ---- */
+    const CUVES = [
+      { id: 1, typeA: 1, label: "Cuve1", pumps: ["P01", "P02"] },
+      { id: 2, typeA: 1, label: "Cuve2", pumps: ["P03", "P04"] },
+      { id: 3, typeA: 2, label: "Cuve3", pumps: ["P05", "P06"] },
+      { id: 4, typeA: 2, label: "Cuve4", pumps: ["P07", "P08"] }];
+    function cuvesOf(typeA) { return CUVES.filter(c => c.typeA === Number(typeA)); }
+    const ECART_CIBLES = [
+      { v: "cuve1", label: "Cuve1 — Gasoil (P01/P02)" },
+      { v: "cuve2", label: "Cuve2 — Gasoil (P03/P04)" },
+      { v: "cuve3", label: "Cuve3 — Essence (P05/P06)" },
+      { v: "cuve4", label: "Cuve4 — Essence (P07/P08)" },
+      { v: "gpl", label: "GPL (camion)" }];
     function defaultDB() {
       return {
         tresorerie: [],
@@ -1003,7 +1016,7 @@
           { tier_id: 21, nom: "Naftal", prenom: "", type: "F", aff: 1, stat: 1, pos: "", entre: "", sortie: "", pu: 0, ord: 0 },
           { tier_id: 22, nom: "Fourn. gaz & lubrifiants", prenom: "", type: "F", aff: 1, stat: 1, pos: "", entre: "", sortie: "", pu: 0, ord: 0 },
           { tier_id: 24, nom: "Clients divers", prenom: "", type: "C", aff: 1, stat: 1, pos: "", entre: "", sortie: "", pu: 0, ord: 0 }],
-        mouvements: [], mouv_detail: [], agent_detail: [], indexs: [], factures: [], paie: [],
+        mouvements: [], mouv_detail: [], agent_detail: [], indexs: [], factures: [], paie: [], ecarts_stock: [],
         agent: [
           { agent_id: 1, agent_type: 1, agent_libelle: "Espèce", actif: "Oui" },
           { agent_id: 2, agent_type: 2, agent_libelle: "Med", actif: "Oui" },
@@ -1033,8 +1046,8 @@
     const SUPABASE_KEY = "sb_publishable_VdDiO_xSqIvBbWak_wPASw__zsfWGby";
     const sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
       : { from() { throw new Error("bibliothèque Supabase non chargée (hors ligne)"); } };
-    const TABLES = ["tresorerie", "categories", "articles", "tiers", "mouvements", "mouv_detail", "agent_detail", "indexs", "factures", "paie", "agent"];
-    const ID_FIELD = { tresorerie: "id", categories: "cat_id", articles: "art_id", tiers: "tier_id", mouvements: "mouvement_id", mouv_detail: "mouv_detail_id", agent_detail: "cle_id", indexs: "index_id", factures: "id", paie: "cle", agent: "agent_id" };
+    const TABLES = ["tresorerie", "categories", "articles", "tiers", "mouvements", "mouv_detail", "agent_detail", "indexs", "factures", "paie", "agent", "ecarts_stock"];
+    const ID_FIELD = { tresorerie: "id", categories: "cat_id", articles: "art_id", tiers: "tier_id", mouvements: "mouvement_id", mouv_detail: "mouv_detail_id", agent_detail: "cle_id", indexs: "index_id", factures: "id", paie: "cle", agent: "agent_id", ecarts_stock: "id" };
     function extractDate(rec) { return rec.date || rec.date_m || rec.date_p || rec.date_agent || rec.index_date || null; }
     let DB = defaultDB();
     let dbReady = false;
@@ -1044,6 +1057,9 @@
       DB.agent = [{ agent_id: 1, agent_type: 1, agent_libelle: "Espèce", actif: "Oui" }, { agent_id: 2, agent_type: 2, agent_libelle: "Med", actif: "Oui" }, { agent_id: 3, agent_type: 3, agent_libelle: "Bons Naftal", actif: "Oui" }, { agent_id: 4, agent_type: 4, agent_libelle: "Bons Autres", actif: "Oui" }, { agent_id: 5, agent_type: 5, agent_libelle: "TPE", actif: "Oui" }, { agent_id: 6, agent_type: 6, agent_libelle: "Groupe Electogène", actif: "Oui" }, { agent_id: 7, agent_type: 7, agent_libelle: "chemsou", actif: "Oui" }, { agent_id: 8, agent_type: 8, agent_libelle: "laamri", actif: "Oui" }, { agent_id: 9, agent_type: 9, agent_libelle: "Autres", actif: "Oui" }, { agent_id: 10, agent_type: 10, agent_libelle: "Butane", actif: "Non" }, { agent_id: 11, agent_type: 11, agent_libelle: "الزيوت", actif: "Non" }];
       if (!DB.meta.fournisseurCarburantId) DB.meta.fournisseurCarburantId = 21;
       if (!DB.meta.qteMemoire) DB.meta.qteMemoire = { Gasoil: 20000, Essence: 7000, GPL: 8000 };
+      if (!DB.meta.caissePhysique) DB.meta.caissePhysique = {};
+      if (!DB.meta.stockInitialCuve) DB.meta.stockInitialCuve = {};
+      if (!DB.ecarts_stock) DB.ecarts_stock = [];
       if (!DB.tresorerie) DB.tresorerie = [];
       if (!DB.paie) DB.paie = [];
     }
@@ -1647,6 +1663,31 @@
     function caisseSoldeAvant(date) { const led = getLedger("caisse"); const last = led.filter(l => l.date < date).pop(); return last ? last.solde : (Number(DB.meta.caisseInit) || 0); }
     function caisseSolde() { const led = getLedger("caisse"); return led.length ? led[led.length - 1].solde : (Number(DB.meta.caisseInit) || 0); }
     function banqueSolde() { const led = getLedger("banque"); return led.length ? led[led.length - 1].solde : (Number(DB.meta.banqueInit) || 0); }
+    /* ---- Caisse physique (comptage / rapprochement) ---- */
+    function cpRow(d, key) {
+      DB.meta.caissePhysique = DB.meta.caissePhysique || {};
+      DB.meta.caissePhysique[d] = DB.meta.caissePhysique[d] || {};
+      DB.meta.caissePhysique[d][key] = DB.meta.caissePhysique[d][key] || { mt: "", obs: "" };
+      return DB.meta.caissePhysique[d][key];
+    }
+    function cpSetMt(d, key, val) { const row = cpRow(d, key); row.mt = val === "" ? "" : (Number(val) || 0); save(); }
+    function cpSetObs(d, key, val) { const row = cpRow(d, key); row.obs = val; save(); }
+    function cpCells(d, key) {
+      const row = cpRow(d, key);
+      return `<td style="padding:3px 4px;text-align:center"><input type="number" class="cp-mt-input" value="${row.mt === "" ? "" : row.mt}" placeholder="0" style="width:92px;background:var(--card2);border:1px solid var(--line);border-radius:6px;color:var(--ink);padding:4px 6px;font-size:12.5px" oninput="cpUpdateTotals()" onchange="cpSetMt('${d}','${esc(key)}',this.value)"></td>`
+        + `<td style="padding:3px 4px"><input type="text" class="cp-obs-input" value="${esc(row.obs)}" placeholder="Obs" style="width:120px;background:var(--card2);border:1px solid var(--line);border-radius:6px;color:var(--ink);padding:4px 6px;font-size:12px" onchange="cpSetObs('${d}','${esc(key)}',this.value)"></td>`;
+    }
+    function cpUpdateTotals() {
+      const inputs = document.querySelectorAll(".cp-mt-input");
+      let total = 0; inputs.forEach(i => total += (Number(i.value) || 0));
+      const totalEl = $("cpTotalVal"), diffEl = $("cpDiffVal");
+      if (totalEl) totalEl.textContent = fmt(total) + " DA";
+      if (diffEl) {
+        const sf = Number(diffEl.dataset.soldefin) || 0, diff = total - sf;
+        diffEl.textContent = (diff > 0 ? "+" : "") + fmt(diff) + " DA";
+        diffEl.style.color = diff === 0 ? "var(--green)" : "var(--red)";
+      }
+    }
     function soldeFourn(fid) {
       let du = 0, paye = 0;
       DB.factures.filter(f => String(f.fournisseurId) === String(fid)).forEach(f => { du += Number(f.montant); paye += Number(f.regle); });
@@ -1702,7 +1743,47 @@
       save(); render(); closeModal(); toast("Opération modifiée", "ok");
     }
     /* ================= STOCK CARBURANT CALCULÉ ================= */
+    function cuveStockInitial(cuveId) {
+      if (DB.meta.stockInitialCuve && DB.meta.stockInitialCuve[cuveId] !== undefined && DB.meta.stockInitialCuve[cuveId] !== null && DB.meta.stockInitialCuve[cuveId] !== "") {
+        return Number(DB.meta.stockInitialCuve[cuveId]) || 0;
+      }
+      const cuve = CUVES.find(c => c.id === cuveId); if (!cuve) return 0;
+      const base = DB.meta.stockInitial ? (Number(DB.meta.stockInitial[cuve.typeA]) || 0) : 0;
+      return base / 2;
+    }
+    function ecartsAppliques(cible, dateLimit) {
+      return DB.ecarts_stock.filter(e => e.cible === cible && (!dateLimit || e.date <= dateLimit)).reduce((s, e) => s + (Number(e.ecart) || 0), 0);
+    }
+    function calcStockCuve(cuveId, dateLimit = null) {
+      const cuve = CUVES.find(c => c.id === cuveId); if (!cuve) return 0;
+      const artObj = DB.articles.find(a => Number(a.type_a) === cuve.typeA); if (!artObj) return 0;
+      const artId = artObj.art_id;
+      let achats = 0;
+      DB.mouv_detail.forEach(md => {
+        if (String(md.id_art) !== String(artId)) return;
+        const op = DB.mouvements.find(m => String(m.operation_id) === String(md.id_operation));
+        if (!op || op.sens !== "E") return;
+        if (dateLimit && op.date_m > dateLimit) return;
+        if (Number(md.cuve) === cuveId) achats += Number(md.quantite);
+        else if (!md.cuve) achats += Number(md.quantite) / 2; // ligne ancienne sans répartition : 50/50
+      });
+      let dates = datesAsc();
+      if (dateLimit) dates = dates.filter(dt => dt <= dateLimit);
+      let vendus = 0;
+      if (dates.length > 0) {
+        const firstDate = dates[0], lastDate = dates[dates.length - 1];
+        cuve.pumps.forEach(code => {
+          const rL = idxRow(lastDate, code), rF = idxRow(firstDate, code);
+          const idxL = rL && rL.index !== null && rL.index !== "" ? Number(rL.index) : 0;
+          const idxF = rF && rF.index !== null && rF.index !== "" ? Number(rF.index) : 0;
+          if (idxL > idxF) vendus += (idxL - idxF);
+        });
+      }
+      return cuveStockInitial(cuveId) + achats - vendus + ecartsAppliques("cuve" + cuveId, dateLimit);
+    }
     function calcStockCarburant(typeA, dateLimit = null) {
+      if (Number(typeA) === 1) return calcStockCuve(1, dateLimit) + calcStockCuve(2, dateLimit);
+      if (Number(typeA) === 2) return calcStockCuve(3, dateLimit) + calcStockCuve(4, dateLimit);
       // Achats : mouvements sens="E" pour cet article
       const artObj = DB.articles.find(a => Number(a.type_a) === Number(typeA));
       if (!artObj) return 0;
@@ -1727,7 +1808,7 @@
         });
       }
       const initial = DB.meta.stockInitial ? (Number(DB.meta.stockInitial[typeA]) || 0) : 0;
-      return initial + achats - vendus;
+      return initial + achats - vendus + ecartsAppliques("gpl", dateLimit);
     }
     /* ================= ÉTAT / NAVIGATION ================= */
     const NAV = [
@@ -2413,7 +2494,12 @@
         const vente = qVendu * Number(a.pv || 0);
         const marge = qVendu * (Number(a.pv || 0) - Number(a.pa || 0));
         const stock = calcStockCarburant(typeA, d);
-        return `<tr><td>${esc(a.article)}</td><td class="num">${fmt(vente)}</td><td class="num ${marge >= 0 ? "diff-pos" : "diff-neg"}">${fmt(marge)}</td><td class="num">${fmtQ(stock)} L</td></tr>`;
+        let cuveTxt = "";
+        if (typeA === 1 || typeA === 2) {
+          const cs = cuvesOf(typeA);
+          cuveTxt = `<div style="font-size:11px;color:var(--muted);margin-top:2px">${cs.map(c => "C" + c.id + ": " + fmtQ(calcStockCuve(c.id, d))).join(" / ")}</div>`;
+        }
+        return `<tr><td>${esc(a.article)}</td><td class="num">${fmt(vente)}</td><td class="num ${marge >= 0 ? "diff-pos" : "diff-neg"}">${fmt(marge)}</td><td class="num">${fmtQ(stock)} L${cuveTxt}</td></tr>`;
       }
       const carbG = calcGroup(d).g, carbE = calcGroup(d).e, carbGPL = calcGroup(d).gpl;
       const aG = DB.articles.find(x => x.type_a === 1), aE = DB.articles.find(x => x.type_a === 2), aL = DB.articles.find(x => x.type_a === 3);
@@ -2479,6 +2565,13 @@
       const paiementsDetails = getLedger("caisse").filter(l => l.date === d && l.source !== "agent" && l.sens === "S");
       const autresEncDetails = getLedger("caisse").filter(l => l.date === d && l.source !== "agent" && l.sens === "E");
       const autresEnc = autresEncDetails.reduce((s, l) => s + l.montant, 0);
+      // détail comptage caisse physique
+      const cpKeys = ["sinit", "carb", "lub", "gaz",
+        ...autresEncDetails.map(l => "enc_" + l.id),
+        ...Object.keys(parType).sort().map(t => "dec_" + t),
+        ...paiementsDetails.map(l => "pay_" + l.id)];
+      const cpTotal = cpKeys.reduce((s, k) => s + (Number(cpRow(d, k).mt) || 0), 0);
+      const cpDiff = cpTotal - soldeFin;
 
       /* ---- Suivi banque du jour ---- */
       const ledBanque = getLedger("banque").filter(l => l.date === d);
@@ -2587,22 +2680,37 @@
    <!-- SUIVI CAISSE -->
    <div class="card" style="margin-bottom:12px">
     <h2 style="margin-top:0;margin-bottom:10px">💵 Suivi de Caisse</h2>
-    <table style="width:100%;max-width:480px">
+    <div style="overflow-x:auto">
+    <table style="width:100%;max-width:700px;border-collapse:collapse">
+     <thead>
+      <tr style="border-bottom:1px solid var(--line)">
+       <th style="text-align:left;padding:5px 4px;font-size:11px;color:var(--muted);font-weight:600">Désignation</th>
+       <th class="num" style="padding:5px 4px;font-size:11px;color:var(--muted);font-weight:600">Mt</th>
+       <th style="padding:5px 4px;font-size:11px;color:var(--muted);font-weight:600;text-align:center">Caisse physique</th>
+       <th style="padding:5px 4px;font-size:11px;color:var(--muted);font-weight:600;text-align:left">Obs</th>
+      </tr>
+     </thead>
+     <tbody>
      <tr>
       <td style="padding:7px 4px">Solde initial (report)</td>
       <td class="num" style="padding:7px 4px;font-weight:700">${fmt(soldePrec)} DA</td>
+      ${cpCells(d, "sinit")}
      </tr>
-     <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Carburant</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(tvCarb)} DA</td></tr>
-     <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Lubrifiants</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowLub.vente)} DA</td></tr>
-     <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Gaz butane</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowGaz.vente)} DA</td></tr>
-     ${autresEncDetails.map(l => `<tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` (${esc(l.obs)})` : ""}</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(l.montant)} DA</td></tr>`).join("")}
-     ${Object.keys(parType).sort().map(t => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${agentLib(t)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(parType[t])} DA</td></tr>`).join("")}
-     ${paiementsDetails.map(l => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${esc(l.libelle)}${l.obs ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td></tr>`).join("")}
+     <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Carburant</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(tvCarb)} DA</td>${cpCells(d, "carb")}</tr>
+     <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Lubrifiants</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowLub.vente)} DA</td>${cpCells(d, "lub")}</tr>
+     <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Gaz butane</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowGaz.vente)} DA</td>${cpCells(d, "gaz")}</tr>
+     ${autresEncDetails.map(l => `<tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` (${esc(l.obs)})` : ""}</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(l.montant)} DA</td>${cpCells(d, "enc_" + l.id)}</tr>`).join("")}
+     ${Object.keys(parType).sort().map(t => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${agentLib(t)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(parType[t])} DA</td>${cpCells(d, "dec_" + t)}</tr>`).join("")}
+     ${paiementsDetails.map(l => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${esc(l.libelle)}${l.obs ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td>${cpCells(d, "pay_" + l.id)}</tr>`).join("")}
      <tr style="border-top:2px solid var(--border)">
       <td style="padding:10px 4px;font-weight:700;font-size:15px">Solde final caisse</td>
       <td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:${soldeFin >= 0 ? "var(--accent)" : "var(--red)"}">${fmt(soldeFin)} DA</td>
+      <td class="num" style="padding:10px 4px;font-weight:700;font-size:14px;color:var(--accent2)"><span id="cpTotalVal">${fmt(cpTotal)} DA</span></td>
+      <td style="padding:10px 4px;font-weight:700;font-size:14px"><span id="cpDiffVal" data-soldefin="${soldeFin}" style="color:${cpDiff === 0 ? "var(--green)" : "var(--red)"}">${cpDiff > 0 ? "+" : ""}${fmt(cpDiff)} DA</span></td>
      </tr>
+     </tbody>
     </table>
+    </div>
    </div>
 
   </div>
@@ -2649,20 +2757,63 @@
     }
     /* ================= VUE : ACHATS ================= */
     function setFactType(t) { factType = t; factLines = []; render(); }
-    function updateFactQteMemo() {
-      const selEl = $("factProduit"); if (!selEl) return;
-      const a = article(selEl.value); if (!a) return;
-      const m = DB.meta.qteMemoire[a.article];
-      const q = $("factQte"); if (q) q.value = (m !== undefined && m !== null) ? m : "";
+    /* ---- Ligne de saisie dynamique : cuves (Gasoil/Essence) ou index (GPL) ---- */
+    function factQteRowHtml(artId) {
+      if (factType === "GPL") {
+        const a = article(artId);
+        const m = a ? DB.meta.qteMemoire[a.article] : "";
+        const memQte = (m !== undefined && m !== null) ? m : "";
+        return `<div class="field"><label>Qté facturée</label><input id="factQte" type="number" min="1" style="width:100px" value="${memQte}"></div>
+   <div class="field"><label>Index avant (index0)</label><input id="factIdx0" type="number" step="0.01" style="width:120px" oninput="updateFactQtePhysique()"></div>
+   <div class="field"><label>Index après (index1)</label><input id="factIdx1" type="number" step="0.01" style="width:120px" oninput="updateFactQtePhysique()"></div>
+   <div class="field"><label>Qté physique (contrôle camion)</label><input id="factQtePhys" type="text" disabled style="width:140px;color:var(--accent2)" value="—"></div>`;
+      }
+      const cs = cuvesOf(article(artId) ? article(artId).type_a : null);
+      if (!cs.length) return `<div class="field"><label>Quantité</label><input id="factQte" type="number" min="1" style="width:100px"></div>`;
+      return cs.map(c => `<div class="field"><label>${esc(c.label)} <span class="subtle" style="font-weight:400">(${c.pumps.join("/")})</span></label><input id="factCuve${c.id}" type="number" min="0" style="width:110px" oninput="updateFactTotalPreview()"></div>`).join("")
+        + `<div class="field"><label>Total ligne</label><input id="factTotalPreview" type="text" disabled style="width:100px" value="0"></div>`;
+    }
+    function onFactProduitChange() {
+      const artId = Number($("factProduit").value);
+      $("factQteRow").innerHTML = factQteRowHtml(artId);
+      if (factType === "GPL") updateFactQtePhysique();
+    }
+    function updateFactTotalPreview() {
+      const el = $("factTotalPreview"); if (!el) return;
+      let total = 0;
+      document.querySelectorAll("[id^=factCuve]").forEach(i => total += Number(i.value) || 0);
+      el.value = fmt(total);
+    }
+    function updateFactQtePhysique() {
+      const i0El = $("factIdx0"), i1El = $("factIdx1"), el = $("factQtePhys");
+      if (!el) return;
+      if (!i0El || !i1El || i0El.value === "" || i1El.value === "") { el.value = "—"; return; }
+      const qp = (Number(i1El.value) - Number(i0El.value)) * 200;
+      el.value = fmt(qp) + " L";
     }
     function addFactLigne() {
       const selEl = $("factProduit"); if (!selEl) return;
-      const artId = Number(selEl.value), qte = Number($("factQte").value);
-      if (qte <= 0) { toast("Quantité invalide", "err"); return; }
-      const a = article(artId);
-      factLines.push({ artId: artId, qte: qte, pu: Number(a.pa) || 0 });
-      DB.meta.qteMemoire = DB.meta.qteMemoire || {};
-      DB.meta.qteMemoire[a.article] = qte;
+      const artId = Number(selEl.value);
+      const a = article(artId); if (!a) return;
+      let line;
+      if (factType === "GPL") {
+        const qte = Number($("factQte").value);
+        if (qte <= 0) { toast("Quantité invalide", "err"); return; }
+        const idx0 = $("factIdx0") && $("factIdx0").value !== "" ? Number($("factIdx0").value) : null;
+        const idx1 = $("factIdx1") && $("factIdx1").value !== "" ? Number($("factIdx1").value) : null;
+        line = { artId: artId, qte: qte, pu: Number(a.pa) || 0, index0: idx0, index1: idx1 };
+        DB.meta.qteMemoire = DB.meta.qteMemoire || {};
+        DB.meta.qteMemoire[a.article] = qte;
+      } else {
+        const cs = cuvesOf(a.type_a);
+        if (cs.length !== 2) { toast("Produit sans cuves configurées", "err"); return; }
+        const q1 = Number($("factCuve" + cs[0].id) ? $("factCuve" + cs[0].id).value : 0) || 0;
+        const q2 = Number($("factCuve" + cs[1].id) ? $("factCuve" + cs[1].id).value : 0) || 0;
+        const qte = q1 + q2;
+        if (qte <= 0) { toast("Quantité invalide", "err"); return; }
+        line = { artId: artId, qte: qte, pu: Number(a.pa) || 0, cuves: { [cs[0].id]: q1, [cs[1].id]: q2 } };
+      }
+      factLines.push(line);
       factForm.fourn = $("factFourn") ? $("factFourn").value : factForm.fourn;
       factForm.num = $("factNum") ? $("factNum").value : factForm.num;
       factForm.date = $("factDate") ? $("factDate").value : factForm.date;
@@ -2690,7 +2841,14 @@
       DB.factures.push(f);
       DB.mouvements.push({ mouvement_id: opsens, operation_id: opsens, date_m: f.date, sens: "E", mode_paiement: nm, id_tier: fid, remise: 0, montant_paye: montant, obs: "Facture carburant " + (f.numero || ""), type_m: "AC" });
       factLines.forEach(l => {
-        DB.mouv_detail.push({ mouv_detail_id: uid(), id_operation: opsens, id_art: l.artId, quantite: l.qte, prix_u: l.pu, prix_v: 0, qte_r: 0 });
+        if (l.cuves) {
+          Object.keys(l.cuves).forEach(cid => {
+            const q = Number(l.cuves[cid]);
+            if (q > 0) DB.mouv_detail.push({ mouv_detail_id: uid(), id_operation: opsens, id_art: l.artId, quantite: q, prix_u: l.pu, prix_v: 0, qte_r: 0, cuve: Number(cid) });
+          });
+        } else {
+          DB.mouv_detail.push({ mouv_detail_id: uid(), id_operation: opsens, id_art: l.artId, quantite: l.qte, prix_u: l.pu, prix_v: 0, qte_r: 0, index0: l.index0 !== undefined ? l.index0 : null, index1: l.index1 !== undefined ? l.index1 : null });
+        }
         const a = article(l.artId); if (a) a.qs = (Number(a.qs) || 0) + l.qte;
       });
       factLines = [];
@@ -2731,28 +2889,93 @@
   <td>${f.mode === "credit" ? '<span class="pill warn">Crédit</span>' : '<span class="pill ok">Cash</span>'}</td></tr>`;
       }).join("") || `<tr><td colspan="10" class="subtle">Aucune facture.</td></tr>`}</tbody></table>`;
     }
+    /* ---- Écarts de stock (régularisation exceptionnelle) ---- */
+    function ecartsTable() {
+      const rows = (DB.ecarts_stock || []).slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      if (!rows.length) return `<p class="subtle" style="margin-top:8px">Aucune régularisation enregistrée.</p>`;
+      return `<table style="margin-top:10px"><tr><th>Cible</th><th>Période</th><th class="num">Écart</th><th>Justification</th><th>Saisi le</th><th></th></tr>
+   ${rows.map(e => `<tr><td>${esc((ECART_CIBLES.find(c => c.v === e.cible) || {}).label || e.cible)}</td>
+     <td style="font-size:12px">${frDate(e.date_debut)} → ${frDate(e.date_fin)}</td>
+     <td class="num" style="color:${Number(e.ecart) >= 0 ? "var(--green)" : "var(--red)"}">${Number(e.ecart) >= 0 ? "+" : ""}${fmt(e.ecart)} L</td>
+     <td style="font-size:12px;max-width:240px">${esc(e.justification)}</td>
+     <td style="font-size:11px;color:var(--muted)">${frDate(e.date_saisie)}</td>
+     <td><button class="tag-del" onclick="if(confirm('Supprimer cette régularisation ?')){delEcart('${e.id}')}">✕</button></td></tr>`).join("")}
+  </table>`;
+    }
+    function openEcartsForm() {
+      openModal(`<h2>⚖️ Écart de stock — Régularisation exceptionnelle</h2>
+ <p class="subtle" style="margin-bottom:10px">Corrige un écart constaté entre le stock théorique (calculé) et le stock physique réel (cuves Gasoil/Essence ou GPL) sur une période donnée. L'écart saisi est appliqué automatiquement au calcul du stock à partir de la date de fin choisie.</p>
+ <div class="row">
+  <div class="field"><label>Cible</label><select id="ecCible">${ECART_CIBLES.map(c => `<option value="${c.v}">${esc(c.label)}</option>`).join("")}</select></div>
+  <div class="field"><label>Période du</label><input id="ecDu" type="date" value="${todayISO()}"></div>
+  <div class="field"><label>au</label><input id="ecAu" type="date" value="${todayISO()}"></div>
+  <div class="field"><label>Écart constaté (+/− L)</label><input id="ecMt" type="number" step="0.01" style="width:130px" placeholder="ex: -45"></div>
+ </div>
+ <div class="field" style="margin-top:8px"><label>Justification (obligatoire)</label><textarea id="ecJust" rows="3" style="width:100%"></textarea></div>
+ <div style="text-align:right;margin-top:12px">
+  <button class="btn" onclick="closeModal()">Fermer</button>
+  <button class="btn accent" onclick="saveEcart()">✔ Enregistrer la régularisation</button>
+ </div>
+ <h3 style="margin-top:16px">Historique des régularisations</h3>
+ <div id="ecartsHistWrap">${ecartsTable()}</div>`);
+    }
+    function saveEcart() {
+      const cible = $("ecCible").value, du = $("ecDu").value, au = $("ecAu").value;
+      const ecart = Number($("ecMt").value), just = $("ecJust").value.trim();
+      if (!du || !au) { toast("Période invalide", "err"); return; }
+      if (!ecart) { toast("Saisissez un écart non nul", "err"); return; }
+      if (!just) { toast("Justification obligatoire", "err"); return; }
+      DB.ecarts_stock = DB.ecarts_stock || [];
+      DB.ecarts_stock.push({ id: uid(), cible: cible, date_debut: du, date_fin: au, date: au, ecart: ecart, justification: just, date_saisie: todayISO() });
+      save();
+      $("ecMt").value = ""; $("ecJust").value = "";
+      const w = $("ecartsHistWrap"); if (w) w.innerHTML = ecartsTable();
+      toast("Régularisation enregistrée", "ok");
+    }
+    function delEcart(id) {
+      DB.ecarts_stock = (DB.ecarts_stock || []).filter(e => e.id !== id);
+      save();
+      const w = $("ecartsHistWrap"); if (w) w.innerHTML = ecartsTable();
+      toast("Régularisation supprimée", "ok");
+    }
     /* ---- édition d'une facture (double-clic) ---- */
     let editFactLines = [];
     function factEditProds(f) { return f.type === "carburant" ? DB.articles.filter(a => [1, 2, 3].includes(Number(a.type_a))) : DB.articles.filter(a => [0, 9].includes(Number(a.type_a))); }
     function editLinesTable() {
       const tot = editFactLines.reduce((s, l) => s + Number(l.qte) * Number(l.pu), 0);
-      return `<table><tr><th>Article</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Mt</th></tr>
+      return `<table><tr><th>Article</th><th>Détail / Cuves</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Mt</th></tr>
  ${editFactLines.map((l, i) => {
-        const a = article(l.artId); return `<tr>
+        const a = article(l.artId); const typeA = a ? Number(a.type_a) : null;
+        let detailCell;
+        if (l.cuves) {
+          const cs = cuvesOf(typeA);
+          detailCell = cs.map(c => `<span class="subtle" style="font-size:11px">${c.label}</span> <input type="number" min="0" value="${l.cuves[c.id] || 0}" style="width:70px" onchange="editFactLines[${i}].cuves[${c.id}]=Number(this.value)||0;editFactLines[${i}].qte=Object.values(editFactLines[${i}].cuves).reduce((s,v)=>s+Number(v),0);$('editLinesWrap').innerHTML=editLinesTable()">`).join(" &nbsp; ");
+        } else if (typeA === 1 || typeA === 2) {
+          detailCell = `<button class="btn sm" onclick="const cs=cuvesOf(${typeA});const q=Number(editFactLines[${i}].qte)||0;editFactLines[${i}].cuves={[cs[0].id]:q/2,[cs[1].id]:q/2};$('editLinesWrap').innerHTML=editLinesTable()">🔧 Répartir en cuves</button>`;
+        } else if (typeA === 3) {
+          detailCell = `<span class="subtle" style="font-size:11px">idx0</span> <input type="number" step="0.01" value="${l.index0 ?? ""}" style="width:75px" onchange="editFactLines[${i}].index0=this.value===''?null:Number(this.value);$('editLinesWrap').innerHTML=editLinesTable()">
+   <span class="subtle" style="font-size:11px">idx1</span> <input type="number" step="0.01" value="${l.index1 ?? ""}" style="width:75px" onchange="editFactLines[${i}].index1=this.value===''?null:Number(this.value);$('editLinesWrap').innerHTML=editLinesTable()">
+   ${(l.index0 !== undefined && l.index0 !== null && l.index1 !== undefined && l.index1 !== null) ? `<div style="font-size:11px;color:var(--accent2)">Phys: ${fmt((Number(l.index1) - Number(l.index0)) * 200)} L</div>` : ""}`;
+        } else { detailCell = "—"; }
+        return `<tr>
   <td>${a ? esc(a.article) : "—"}</td>
-  <td class="num"><input type="number" value="${l.qte}" style="width:90px" onchange="editFactLines[${i}].qte=Number(this.value)||0;$('editLinesWrap').innerHTML=editLinesTable()"></td>
-  <td class="num"><input type="number" value="${l.pu}" style="width:90px" onchange="editFactLines[${i}].pu=Number(this.value)||0;$('editLinesWrap').innerHTML=editLinesTable()"></td>
+  <td>${detailCell}</td>
+  <td class="num"><input type="number" value="${l.qte}" style="width:80px" ${l.cuves ? "disabled" : ""} onchange="editFactLines[${i}].qte=Number(this.value)||0;$('editLinesWrap').innerHTML=editLinesTable()"></td>
+  <td class="num"><input type="number" value="${l.pu}" style="width:80px" onchange="editFactLines[${i}].pu=Number(this.value)||0;$('editLinesWrap').innerHTML=editLinesTable()"></td>
   <td class="num">${fmt(l.qte * l.pu)}</td>
   <td><button class="tag-del" onclick="editFactLines.splice(${i},1);$('editLinesWrap').innerHTML=editLinesTable()">✕</button></td></tr>`;
-      }).join("") || `<tr><td colspan="5" class="subtle">Aucune ligne.</td></tr>`}
- <tr><td colspan="3"><b>Total</b></td><td class="num"><b>${fmt(tot)} DA</b></td><td></td></tr></table>`;
+      }).join("") || `<tr><td colspan="6" class="subtle">Aucune ligne.</td></tr>`}
+ <tr><td colspan="4"><b>Total</b></td><td class="num"><b>${fmt(tot)} DA</b></td><td></td></tr></table>`;
     }
     function addEditLine(fid) {
       const f = DB.factures.find(x => x.id === fid); if (!f) return;
       const artId = Number($("editProduit").value), qte = Number($("editQte").value);
       if (qte <= 0) { toast("Quantité invalide", "err"); return; }
-      const a = article(artId);
-      editFactLines.push({ artId: artId, qte: qte, pu: Number(a.pv) || Number(a.pa) || 0 });
+      const a = article(artId); const typeA = a ? Number(a.type_a) : null;
+      const line = { artId: artId, qte: qte, pu: Number(a.pv) || Number(a.pa) || 0 };
+      if (typeA === 1 || typeA === 2) { const cs = cuvesOf(typeA); line.cuves = { [cs[0].id]: qte / 2, [cs[1].id]: qte / 2 }; }
+      else if (typeA === 3) { line.index0 = null; line.index1 = null; }
+      editFactLines.push(line);
       $("editLinesWrap").innerHTML = editLinesTable();
     }
     function openFactureEdit(fid) {
@@ -2796,7 +3019,16 @@
       editFactLines.forEach(l => { const a = article(l.artId); if (a) a.qs = (Number(a.qs) || 0) + Number(l.qte); });
       if (f.operation_id) {
         DB.mouv_detail = DB.mouv_detail.filter(md => String(md.id_operation) !== String(f.operation_id));
-        editFactLines.forEach(l => DB.mouv_detail.push({ mouv_detail_id: uid(), id_operation: f.operation_id, id_art: l.artId, quantite: l.qte, prix_u: l.pu, prix_v: 0, qte_r: 0 }));
+        editFactLines.forEach(l => {
+          if (l.cuves) {
+            Object.keys(l.cuves).forEach(cid => {
+              const q = Number(l.cuves[cid]);
+              if (q > 0) DB.mouv_detail.push({ mouv_detail_id: uid(), id_operation: f.operation_id, id_art: l.artId, quantite: q, prix_u: l.pu, prix_v: 0, qte_r: 0, cuve: Number(cid) });
+            });
+          } else {
+            DB.mouv_detail.push({ mouv_detail_id: uid(), id_operation: f.operation_id, id_art: l.artId, quantite: l.qte, prix_u: l.pu, prix_v: 0, qte_r: 0, index0: l.index0 !== undefined ? l.index0 : null, index1: l.index1 !== undefined ? l.index1 : null });
+          }
+        });
         const mv = DB.mouvements.find(m => String(m.operation_id) === String(f.operation_id));
         if (mv) { mv.date_m = newDate; mv.id_tier = newFourn; mv.mode_paiement = newMode; }
         refreshOpMt(f.operation_id);
@@ -2830,9 +3062,9 @@
       const tot = factLines.reduce((s, l) => s + l.qte * l.pu, 0);
       if (!factForm.fourn) factForm.fourn = DB.meta.fournisseurCarburantId;
       const firstProd = prods[0];
-      const memQte = firstProd ? (DB.meta.qteMemoire[firstProd.article] !== undefined ? DB.meta.qteMemoire[firstProd.article] : "") : "";
       return `
- <div class="card"><h2>⛽ Facture / bon de livraison — Carburant</h2>
+ <div class="card"><h2 style="display:flex;align-items:center;justify-content:space-between;gap:10px">⛽ Facture / bon de livraison — Carburant
+   <button class="btn sm" onclick="openEcartsForm()">⚖️ Écarts de stock (régularisation)</button></h2>
   <div class="row">
    <div class="field"><label>Type de facture</label><select onchange="setFactType(this.value)">
     <option value="CE" ${factType === "CE" ? "selected" : ""}>Gasoil / Essence</option>
@@ -2850,14 +3082,20 @@
   <div id="factBonsInfo" style="display:${factForm.mode === 'B' ? 'block' : 'none'};margin-top:10px;padding:8px;background:rgba(245,158,11,0.1);border-radius:6px;color:var(--accent);font-size:13px">Solde Bons Naftal disponibles : <b>${fmt(bonsSolde())} DA</b></div>
   <h3>Lignes de la facture</h3>
   <div class="row">
-   <div class="field"><label>Produit</label><select id="factProduit" onchange="updateFactQteMemo()">${prods.map(a => `<option value="${a.art_id}">${esc(a.article)}</option>`).join("")}</select></div>
-   <div class="field"><label>Quantité</label><input id="factQte" type="number" min="1" style="width:100px" value="${memQte}"></div>
+   <div class="field"><label>Produit</label><select id="factProduit" onchange="onFactProduitChange()">${prods.map(a => `<option value="${a.art_id}">${esc(a.article)}</option>`).join("")}</select></div>
+   <div id="factQteRow" style="display:contents">${factQteRowHtml(firstProd ? firstProd.art_id : null)}</div>
    <button class="btn" onclick="addFactLigne()">＋ Ligne</button>
   </div>
-  <div class="qmem">${prods.map(a => { const m = DB.meta.qteMemoire[a.article]; return m ? `<button type="button" onclick="$('factProduit').value='${a.art_id}';$('factQte').value=${m}">${esc(a.article)} : ${fmt(m)}</button>` : ""; }).join("")}</div>
-  ${factLines.length ? `<table style="margin-top:10px"><tr><th>Produit</th><th class="num">Qté</th><th class="num">PA</th><th class="num">Mt</th></tr>
-   ${factLines.map((l, i) => { const a = article(l.artId); return `<tr><td>${a ? esc(a.article) : "—"}</td><td class="num">${fmt(l.qte)}</td><td class="num">${fmt(l.pu)}</td><td class="num">${fmt(l.qte * l.pu)}</td><td><button class="tag-del" onclick="rmFactLigne(${i})">✕</button></td></tr>`; }).join("")}
-   <tr><td colspan="3"><b>Total</b></td><td class="num"><b>${fmt(tot)} DA</b></td><td></td></tr></table>` : ""}
+  ${factType === "GPL" ? `<div class="qmem">${prods.map(a => { const m = DB.meta.qteMemoire[a.article]; return m ? `<button type="button" onclick="$('factProduit').value='${a.art_id}';onFactProduitChange();$('factQte').value=${m}">${esc(a.article)} : ${fmt(m)}</button>` : ""; }).join("")}</div>` : ""}
+  ${factLines.length ? `<table style="margin-top:10px"><tr><th>Produit</th><th>Détail</th><th class="num">Qté</th><th class="num">PA</th><th class="num">Mt</th></tr>
+   ${factLines.map((l, i) => {
+        const a = article(l.artId);
+        let detail = "—";
+        if (l.cuves) detail = Object.keys(l.cuves).map(cid => "C" + cid + ": " + fmt(l.cuves[cid])).join(" / ");
+        else if (l.index0 !== undefined && l.index0 !== null && l.index1 !== undefined && l.index1 !== null) detail = "idx " + fmt(l.index0) + "→" + fmt(l.index1) + " (phys: " + fmt((Number(l.index1) - Number(l.index0)) * 200) + " L)";
+        return `<tr><td>${a ? esc(a.article) : "—"}</td><td style="font-size:11.5px;color:var(--muted)">${detail}</td><td class="num">${fmt(l.qte)}</td><td class="num">${fmt(l.pu)}</td><td class="num">${fmt(l.qte * l.pu)}</td><td><button class="tag-del" onclick="rmFactLigne(${i})">✕</button></td></tr>`;
+      }).join("")}
+   <tr><td colspan="4"><b>Total</b></td><td class="num"><b>${fmt(tot)} DA</b></td><td></td></tr></table>` : ""}
   <div style="text-align:right;margin-top:10px"><button class="btn accent" onclick="validerFacture()">✔ Enregistrer la facture</button></div>
  </div>
  <div class="card"><h2>📦 Achat lubrifiant / gaz butane</h2>
@@ -3420,6 +3658,13 @@
     <div class="field"><label>Stock initial Essence</label><input id="metaStockE" type="number" value="${(DB.meta.stockInitial && DB.meta.stockInitial[2]) || 0}" style="width:130px"></div>
     <div class="field"><label>Stock initial GPL</label><input id="metaStockL" type="number" value="${(DB.meta.stockInitial && DB.meta.stockInitial[3]) || 0}" style="width:130px"></div>
    </div>
+   <div class="row" style="margin-top:10px">
+    <div class="field"><label>Stock initial Cuve1 (Gasoil)</label><input id="metaStockC1" type="number" value="${cuveStockInitial(1)}" style="width:130px"></div>
+    <div class="field"><label>Stock initial Cuve2 (Gasoil)</label><input id="metaStockC2" type="number" value="${cuveStockInitial(2)}" style="width:130px"></div>
+    <div class="field"><label>Stock initial Cuve3 (Essence)</label><input id="metaStockC3" type="number" value="${cuveStockInitial(3)}" style="width:130px"></div>
+    <div class="field"><label>Stock initial Cuve4 (Essence)</label><input id="metaStockC4" type="number" value="${cuveStockInitial(4)}" style="width:130px"></div>
+   </div>
+   <p class="subtle" style="margin-top:4px">Par défaut, chaque cuve démarre à la moitié du stock initial de son carburant (répartition 50/50). Ajustez ici si la répartition réelle diffère.</p>
    <div style="margin-top:12px"><button class="btn accent" onclick="saveMeta()">✔ Enregistrer</button></div>
    <h3>Rotation des pompistes</h3>
    <p class="subtle">Groupe Gasoil/Essence : ordre 1→3→5→1 · Groupe GPL : 2→4→6→2. Géré automatiquement à la création de chaque journée (code VBA <i>NouvelAgent</i>).</p>
@@ -3447,6 +3692,11 @@
       DB.meta.stockInitial[1] = Number($("metaStockG") ? $("metaStockG").value : 0) || 0;
       DB.meta.stockInitial[2] = Number($("metaStockE") ? $("metaStockE").value : 0) || 0;
       DB.meta.stockInitial[3] = Number($("metaStockL") ? $("metaStockL").value : 0) || 0;
+      DB.meta.stockInitialCuve = DB.meta.stockInitialCuve || {};
+      DB.meta.stockInitialCuve[1] = Number($("metaStockC1") ? $("metaStockC1").value : 0) || 0;
+      DB.meta.stockInitialCuve[2] = Number($("metaStockC2") ? $("metaStockC2").value : 0) || 0;
+      DB.meta.stockInitialCuve[3] = Number($("metaStockC3") ? $("metaStockC3").value : 0) || 0;
+      DB.meta.stockInitialCuve[4] = Number($("metaStockC4") ? $("metaStockC4").value : 0) || 0;
       if (!factForm.fourn || factForm.fourn === factForm._prevDefault) factForm.fourn = DB.meta.fournisseurCarburantId;
       factForm._prevDefault = DB.meta.fournisseurCarburantId;
       save(); toast("Paramètres enregistrés", "ok");
@@ -3837,7 +4087,7 @@
 
     /* ================= VUE : DONNÉES (EXPORT / IMPORT EXCEL) ================= */
     /* Tables exportées, une feuille par table. meta est traité à part (clé/valeur). */
-    const XLSX_TABLES = ["categories", "articles", "tiers", "mouvements", "mouv_detail", "agent_detail", "indexs", "factures", "agent", "tresorerie", "paie"];
+    const XLSX_TABLES = ["categories", "articles", "tiers", "mouvements", "mouv_detail", "agent_detail", "indexs", "factures", "agent", "tresorerie", "paie", "ecarts_stock"];
     function vDonnees() {
       const kb = Math.round(JSON.stringify(DB).length / 1024);
       return `
@@ -3948,6 +4198,9 @@
           DB = newDB;
           if (!DB.meta.fournisseurCarburantId) DB.meta.fournisseurCarburantId = 21;
           if (!DB.meta.qteMemoire) DB.meta.qteMemoire = { Gasoil: 20000, Essence: 7000, GPL: 8000 };
+          if (!DB.meta.caissePhysique) DB.meta.caissePhysique = {};
+          if (!DB.meta.stockInitialCuve) DB.meta.stockInitialCuve = {};
+          if (!DB.ecarts_stock) DB.ecarts_stock = [];
           save(); render(); toast("Import Excel réussi", "ok");
         } catch (e) { toast("Fichier Excel invalide : " + e.message, "err"); }
       };
