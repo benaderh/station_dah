@@ -1888,15 +1888,18 @@
       const stockE = calcStockCarburant(2, last);
       const stockL = calcStockCarburant(3, last);
 
-      // Règlements carburant en attente banque selon date
-      const facNonBanque = DB.factures.filter(f => {
+      // Règlements carburant en attente banque selon date (hors factures réglées par Chèque ; GPL d'abord — date décroissante, puis le reste — date croissante)
+      const facNonBanqueAll = DB.factures.filter(f => {
         if (f.type !== "carburant" || (last && f.date > last)) return false;
-        let qteGE = 0, qteGPL = 0; (f.lignes || []).forEach(l => { const art = Number(l.artId); if (art === 1 || art === 2) qteGE += Number(l.qte); else if (art === 3) qteGPL += Number(l.qte); });
+        if (normMode(f.mode) === "C") return false;
         const regleAALaDate = (f.paiements || []).filter(p => !last || p.date <= last).reduce((s, p) => s + Number(p.montant), 0);
         const reste = Number(f.montant) - regleAALaDate;
         const hasBons = (f.paiements || []).filter(p => !last || p.date <= last).some(p => p.source === "bons");
         return reste > 0 || hasBons;
-      }).sort((a, b) => b.date.localeCompare(a.date));
+      });
+      const facNonBanqueGPL = facNonBanqueAll.filter(f => (f.lignes || []).some(l => Number(l.artId) === 3)).sort((a, b) => b.date.localeCompare(a.date));
+      const facNonBanqueReste = facNonBanqueAll.filter(f => !(f.lignes || []).some(l => Number(l.artId) === 3)).sort((a, b) => b.date.localeCompare(a.date));
+      const facNonBanque = [...facNonBanqueGPL, ...facNonBanqueReste];
 
       return `
  <div class="grid-stats">
@@ -1933,18 +1936,11 @@
      <th class="num" style="text-align:center;padding:8px;border-right:1px solid var(--line)">Qté</th>
       <th class="num" style="padding:8px;border-right:1px solid var(--line)">Mt</th>
           <th style="text-align:center;padding:8px;border-right:1px solid var(--line)">N° Chèque</th>
-     <th class="num" style="padding:8px;color:var(--red);border-right:1px solid var(--line)">Reste dû</th>
     </tr></thead>
     <tbody>
-     ${facNonBanque.map(f => {
+     ${(() => {
+          const facRow = f => {
             const qteStr = (f.lignes || []).map(l => { const a = DB.articles.find(x => String(x.art_id) === String(l.artId)); return a ? esc(a.article) + ": " + fmtQ(l.qte) : ""; }).filter(Boolean).join("<br>");
-            const regleAALaDate = (f.paiements || []).filter(p => !last || p.date <= last).reduce((s, p) => s + Number(p.montant), 0);
-            const reste = Number(f.montant) - regleAALaDate;
-            const modes = (f.paiements || []).filter(p => !last || p.date <= last).map(p => {
-              if (p.source === "bons") return `<span style="background:rgba(251,191,36,0.15);color:#fbbf24;padding:2px 6px;border-radius:4px;font-size:12px">Bons Naftal</span>`;
-              if (p.source === "banque") return `<span style="background:rgba(99,179,237,0.15);color:#63b3ed;padding:2px 6px;border-radius:4px;font-size:12px">Banque</span>`;
-              return `<span style="background:rgba(72,187,120,0.15);color:#48bb78;padding:2px 6px;border-radius:4px;font-size:12px">Caisse</span>`;
-            }).join(" ");
             const cheques = (f.paiements || []).filter(p => (!last || p.date <= last) && p.cheque).map(p => esc(p.cheque)).join(", ") || (f.cheque ? esc(f.cheque) : "—");
             return `<tr>
       <td style="text-align:center;padding:6px 8px;border-left:1px solid var(--line);border-right:1px solid var(--line)">${esc(f.numero || "—")}</td>
@@ -1953,9 +1949,14 @@
       <td style="text-align:center;padding:6px 8px;font-size:12px;white-space:nowrap;border-right:1px solid var(--line)">${qteStr}</td>
        <td class="num" style="padding:6px 4px;border-right:1px solid var(--line)">${fmt(f.montant)}</td>
       <td style="text-align:center;padding:6px 4px;font-size:12px;color:var(--accent2);border-right:1px solid var(--line)">${cheques}</td>
-      <td class="num" style="padding:6px 4px;color:var(--red);font-weight:700;border-right:1px solid var(--line)">${reste > 0 ? fmt(reste) : "✔"}</td>
      </tr>`;
-          }).join("")}
+          };
+          const grpRow = (label, color, bg) => `<tr><td colspan="6" style="padding:6px 8px;font-weight:700;color:${color};background:${bg}">${label}</td></tr>`;
+          let html = "";
+          if (facNonBanqueGPL.length) { html += grpRow("🟩 GPL", "var(--accent2)", "rgba(34,211,238,0.08)"); html += facNonBanqueGPL.map(facRow).join(""); }
+          if (facNonBanqueReste.length) { html += grpRow("🟫 Gasoil / Essence", "var(--accent)", "rgba(245,158,11,0.08)"); html += facNonBanqueReste.map(facRow).join(""); }
+          return html;
+        })()}
     </tbody>
    </table>
   </div>`
@@ -2527,15 +2528,18 @@
       const tvDiv = rowGaz.vente + rowLub.vente;
       const tmDiv = rowGaz.marge + rowLub.marge;
 
-      /* ---- Règlements carburant non validés banque ---- */
-      const facNonBanque = DB.factures.filter(f => {
+      /* ---- Règlements carburant non validés banque (hors Chèque ; GPL d'abord — date décroissante, puis le reste — date croissante) ---- */
+      const facNonBanqueAll = DB.factures.filter(f => {
         if (f.type !== "carburant" || f.date > d) return false;
-        let qteGE = 0, qteGPL = 0; (f.lignes || []).forEach(l => { const art = Number(l.artId); if (art === 1 || art === 2) qteGE += Number(l.qte); else if (art === 3) qteGPL += Number(l.qte); });
+        if (normMode(f.mode) === "C") return false;
         const regleAALaDate = (f.paiements || []).filter(p => p.date <= d).reduce((s, p) => s + Number(p.montant), 0);
         const reste = Number(f.montant) - regleAALaDate;
         const hasBons = (f.paiements || []).filter(p => p.date <= d).some(p => p.source === "bons");
         return reste > 0 || hasBons;
-      }).sort((a, b) => b.date.localeCompare(a.date));
+      });
+      const facNonBanqueGPL = facNonBanqueAll.filter(f => (f.lignes || []).some(l => Number(l.artId) === 3)).sort((a, b) => b.date.localeCompare(a.date));
+      const facNonBanqueReste = facNonBanqueAll.filter(f => !(f.lignes || []).some(l => Number(l.artId) === 3)).sort((a, b) => b.date.localeCompare(a.date));
+      const facNonBanque = [...facNonBanqueGPL, ...facNonBanqueReste];
       let resteQteGE = 0, resteQteGPL = 0, resteValeurGE = 0, resteValeurGPL = 0;
       const resteCarburant = facNonBanque.reduce((s, f) => {
         const regleAALaDate = (f.paiements || []).filter(p => p.date <= d).reduce((s, p) => s + Number(p.montant), 0);
@@ -2579,50 +2583,27 @@
       const bDecaisse = ledBanque.filter(l => l.sens === "S").reduce((s, l) => s + l.montant, 0);
       const soldeBanque = banqueSolde();
 
-      /* ---- Règlements carburant en attente : lignes séparées GPL / Gasoil-Essence ---- */
-      function facRowsFor(f) {
-        let qteGE = 0, mtGE = 0, qteGPL = 0, mtGPL = 0;
-        (f.lignes || []).forEach(l => {
-          const art = Number(l.artId);
-          const val = Number(l.qte) * Number(l.pu || 0);
-          if (art === 1 || art === 2) { qteGE += Number(l.qte); mtGE += val; }
-          else if (art === 3) { qteGPL += Number(l.qte); mtGPL += val; }
-        });
+      /* ---- Règlements carburant en attente : une ligne par facture (comme Tableau de bord / Achats) ---- */
+      function facRowLine(f) {
+        const qteStr = (f.lignes || []).map(l => { const a = DB.articles.find(x => String(x.art_id) === String(l.artId)); return a ? esc(a.article) + ": " + fmtQ(l.qte) : ""; }).filter(Boolean).join("<br>");
         const regleAALaDate = (f.paiements || []).filter(p => p.date <= d).reduce((s, p) => s + Number(p.montant), 0);
         const reste = Number(f.montant) - regleAALaDate;
-        const totMt = mtGE + mtGPL || 1;
-        const resteGE = reste * (mtGE / totMt);
-        const resteGPL = reste * (mtGPL / totMt);
         const cheques = (f.paiements || []).filter(p => p.date <= d && p.cheque).map(p => esc(p.cheque)).join(", ") || (f.cheque ? esc(f.cheque) : "—");
-        return { qteGE, mtGE, resteGE, qteGPL, mtGPL, resteGPL, cheques };
+        return { row: `<tr style="border-bottom:1px solid var(--line)">
+      <td style="text-align:center;padding:6px 8px;border-left:1px solid var(--line);border-right:1px solid var(--line)">${esc(f.numero || "—")}</td>
+      <td style="padding:6px 8px;font-size:12px;border-right:1px solid var(--line)">${tierNom(f.fournisseurId)}</td>
+      <td style="text-align:center;padding:6px 8px;border-right:1px solid var(--line)">${frDate(f.date)}</td>
+      <td style="text-align:center;padding:6px 8px;font-size:12px;white-space:nowrap;border-right:1px solid var(--line)">${qteStr}</td>
+      <td class="num" style="padding:6px 4px;border-right:1px solid var(--line)">${fmt(f.montant)}</td>
+      <td style="text-align:center;padding:6px 4px;font-size:12px;color:var(--accent2);border-right:1px solid var(--line)">${cheques}</td>
+     </tr>`, mt: Number(f.montant), reste };
       }
-      const facRowsGE = [], facRowsGPL = [];
-      facNonBanque.forEach(f => {
-        const r = facRowsFor(f);
-        if (r.qteGE > 0) facRowsGE.push({ date: f.date, qte: r.qteGE, mt: r.mtGE, cheques: r.cheques, reste: r.resteGE });
-        if (r.qteGPL > 0) facRowsGPL.push({ date: f.date, qte: r.qteGPL, mt: r.mtGPL, cheques: r.cheques, reste: r.resteGPL });
-      });
-      const sumRows = rows => rows.reduce((s, r) => ({ qte: s.qte + r.qte, mt: s.mt + r.mt, reste: s.reste + r.reste }), { qte: 0, mt: 0, reste: 0 });
-      const totGE = sumRows(facRowsGE), totGPL = sumRows(facRowsGPL);
-      const totTous = { qte: totGE.qte + totGPL.qte, mt: totGE.mt + totGPL.mt, reste: totGE.reste + totGPL.reste };
-      function facRowLine(r) {
-        return `<tr style="border-bottom:1px solid var(--line)">
-      <td style="text-align:center;padding:6px 8px;border-left:1px solid var(--line);border-right:1px solid var(--line)">${frDate(r.date)}</td>
-      <td class="num" style="padding:6px 8px;border-right:1px solid var(--line)">${fmtQ(r.qte)}</td>
-      <td class="num" style="padding:6px 4px;border-right:1px solid var(--line)">${fmt(r.mt)}</td>
-      <td style="text-align:center;padding:6px 4px;font-size:12px;color:var(--accent2);border-right:1px solid var(--line)">${r.cheques}</td>
-      <td class="num" style="padding:6px 4px;color:var(--red);font-weight:700;border-right:1px solid var(--line)">${r.reste > 0 ? fmt(r.reste) : "✔"}</td>
-     </tr>`;
-      }
-      function facSubtotalLine(label, t) {
-        return `<tr style="background:rgba(255,255,255,0.05);font-weight:700">
-      <td style="padding:6px 8px;border-left:1px solid var(--line);border-right:1px solid var(--line)">${label}</td>
-      <td class="num" style="padding:6px 8px;border-right:1px solid var(--line)">${fmtQ(t.qte)}</td>
-      <td class="num" style="padding:6px 4px;border-right:1px solid var(--line)">${fmt(t.mt)}</td>
-      <td style="border-right:1px solid var(--line)"></td>
-      <td class="num" style="padding:6px 4px;color:var(--red);border-right:1px solid var(--line)">${fmt(t.reste)}</td>
-     </tr>`;
-      }
+      const facRows = facNonBanque.map(facRowLine);
+      const totTous = facRows.reduce((s, r) => ({ mt: s.mt + r.mt, reste: s.reste + r.reste }), { mt: 0, reste: 0 });
+      const facGrpRow = (label, color, bg) => `<tr><td colspan="6" style="padding:6px 8px;font-weight:700;color:${color};background:${bg}">${label}</td></tr>`;
+      let facRowsHtml = "";
+      if (facNonBanqueGPL.length) { facRowsHtml += facGrpRow("🟩 GPL", "var(--accent2)", "rgba(34,211,238,0.08)"); facRowsHtml += facNonBanqueGPL.map(f => facRowLine(f).row).join(""); }
+      if (facNonBanqueReste.length) { facRowsHtml += facGrpRow("🟫 Gasoil / Essence", "var(--accent)", "rgba(245,158,11,0.08)"); facRowsHtml += facNonBanqueReste.map(f => facRowLine(f).row).join(""); }
 
       return `
  <div class="row between no-print" style="margin-bottom:16px;align-items:center;background:var(--card);padding:14px 18px;border-radius:var(--radius);border:1px solid var(--line)">
@@ -2720,33 +2701,26 @@
    <div class="card" style="margin-bottom:12px">
     <h2 style="margin-top:0;margin-bottom:10px">📋 Suivi règlements carburant — En attente banque</h2>
     ${facNonBanque.length ? `
-     <table style="width:100%;table-layout:fixed">
-      <colgroup>
-       <col style="width:20%"><col style="width:12%"><col style="width:22%"><col style="width:26%"><col style="width:20%">
-      </colgroup>
+     <div style="overflow-x:auto">
+     <table style="width:100%;min-width:620px">
       <thead><tr style="background:rgba(255,255,255,0.04)">
-       <th style="text-align:center;padding:8px;border-left:1px solid var(--line);border-right:1px solid var(--line)">Date</th>
-       <th class="num" style="padding:8px;border-right:1px solid var(--line)">Qté</th>
+       <th style="text-align:center;padding:8px;border-left:1px solid var(--line);border-right:1px solid var(--line)">Facture</th>
+       <th style="text-align:center;padding:8px;border-right:1px solid var(--line)">Fournisseur</th>
+       <th style="text-align:center;padding:8px;border-right:1px solid var(--line)">Date</th>
+       <th class="num" style="text-align:center;padding:8px;border-right:1px solid var(--line)">Qté</th>
        <th class="num" style="padding:8px;border-right:1px solid var(--line)">Mt</th>
        <th style="text-align:center;padding:8px;border-right:1px solid var(--line)">N° Chèque</th>
-       <th class="num" style="padding:8px;color:var(--red);border-right:1px solid var(--line)">Reste dû</th>
       </tr></thead>
       <tbody>
-       <tr><td colspan="5" style="padding:6px 8px;font-weight:700;color:var(--accent2);background:rgba(34,211,238,0.08)">🟩 GPL</td></tr>
-       ${facRowsGPL.length ? facRowsGPL.map(facRowLine).join("") : `<tr><td colspan="5" class="subtle" style="padding:6px 8px">Aucune facture GPL en attente.</td></tr>`}
-       ${facSubtotalLine("Sous-total GPL", totGPL)}
-       <tr><td colspan="5" style="padding:6px 8px;font-weight:700;color:var(--accent);background:rgba(245,158,11,0.08)">🟫 Gasoil / Essence</td></tr>
-       ${facRowsGE.length ? facRowsGE.map(facRowLine).join("") : `<tr><td colspan="5" class="subtle" style="padding:6px 8px">Aucune facture Gasoil/Essence en attente.</td></tr>`}
-       ${facSubtotalLine("Sous-total Gasoil/Essence", totGE)}
+       ${facRows.length ? facRowsHtml : `<tr><td colspan="6" class="subtle" style="padding:6px 8px">Aucune facture carburant en attente.</td></tr>`}
        <tr style="border-top:2px solid var(--border);font-weight:800;font-size:14px">
-        <td style="padding:8px">TOTAL GÉNÉRAL</td>
-        <td class="num" style="padding:8px">${fmtQ(totTous.qte)}</td>
+        <td colspan="4" style="padding:8px">TOTAL GÉNÉRAL</td>
         <td class="num" style="padding:8px">${fmt(totTous.mt)}</td>
         <td></td>
-        <td class="num" style="padding:8px;color:var(--red)">${fmt(totTous.reste)}</td>
        </tr>
       </tbody>
-     </table>`
+     </table>
+     </div>`
           : `<p class="subtle" style="padding:8px 0">✅ Aucune facture carburant en attente de validation bancaire.</p>`}
    </div>
 
