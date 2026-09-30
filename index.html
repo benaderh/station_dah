@@ -1983,6 +1983,8 @@
       const codes = [...new Set(releveList.map(r => r.pistolet))];
       return codes.map(c => ({ code: c, sortant: releveList.find(r => r.pistolet === c && r.role === "sortant"), entrant: releveList.find(r => r.pistolet === c && r.role === "entrant") }));
     }
+    /* masque la liste des relevés chargés (rien n'est validé ni supprimé sur Supabase) */
+    function fermerReleve() { releveList = []; render(); }
     async function validateAllReleve(type = "ALL") {
       const groups = releveGrouped();
       let n = 0;
@@ -2040,6 +2042,7 @@
      <button class="btn accent" onclick="validateAllReleve('GE')">✓ Valider G/E</button>
      <button class="btn accent" onclick="validateAllReleve('GPL')">✓ Valider GPL</button>
      <button class="btn" style="opacity:0.8" onclick="validateAllReleve('ALL')">Valider Tout (${frDate(sel.date)})</button>
+     <button class="btn" onclick="fermerReleve()">✕ Fermer</button>
     </div>`
           : `<p class="subtle" style="margin-top:6px">Aucun relevé chargé — clique « Charger » pour vérifier auprès de Supabase.</p>`}
  </div>
