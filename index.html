@@ -1060,6 +1060,7 @@
       if (!DB.meta.caissePhysique) DB.meta.caissePhysique = {};
       if (!DB.meta.stockInitialCuve) DB.meta.stockInitialCuve = {};
       if (!DB.ecarts_stock) DB.ecarts_stock = [];
+      if (!DB.categories.some(c => Number(c.cat_id) === 4)) DB.categories.push({ cat_id: 4, cat: "Café" });
       if (!DB.tresorerie) DB.tresorerie = [];
       if (!DB.paie) DB.paie = [];
     }
@@ -1138,7 +1139,15 @@
     async function fetchServerDB() {
       const newDB = defaultDB(), synced = {};
       for (const t of TABLES) {
-        const { data, error } = await sb.from(t).select("id,data");
+        /* pagination : Supabase limite chaque requête à 1000 lignes (indexs = 12 lignes/jour) */
+        let data = [], from = 0, error = null;
+        for (;;) {
+          const res = await sb.from(t).select("id,data").order("id", { ascending: true }).range(from, from + 999);
+          if (res.error) { error = res.error; break; }
+          data = data.concat(res.data || []);
+          if (!res.data || res.data.length < 1000) break;
+          from += 1000;
+        }
         if (error) throw error;
         if (data && data.length) {
           newDB[t] = data.map(r => r.data);
@@ -1670,16 +1679,19 @@
       DB.meta.caissePhysique[d][key] = DB.meta.caissePhysique[d][key] || { mt: "", obs: "" };
       return DB.meta.caissePhysique[d][key];
     }
-    function cpSetMt(d, key, val) { const row = cpRow(d, key); row.mt = val === "" ? "" : (Number(val) || 0); save(); }
+    /* Montants caisse physique : entier, espace entre les milliers (ex: 1 250 000) */
+    function cpParse(v) { const t = String(v === null || v === undefined ? "" : v); const neg = /^\s*-/.test(t); const n = Number(t.replace(/\D/g, "")) || 0; return neg ? -n : n; }
+    function cpFmtInput(el) { const t = el.value, neg = /^\s*-/.test(t), dg = t.replace(/\D/g, ""); el.value = (neg ? "-" : "") + dg.replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
+    function cpSetMt(d, key, val) { const row = cpRow(d, key); row.mt = String(val).trim() === "" ? "" : cpParse(val); save(); }
     function cpSetObs(d, key, val) { const row = cpRow(d, key); row.obs = val; save(); }
     function cpCells(d, key) {
       const row = cpRow(d, key);
-      return `<td style="padding:3px 4px;text-align:center"><input type="number" class="cp-mt-input" value="${row.mt === "" ? "" : row.mt}" placeholder="0" style="width:92px;background:var(--card2);border:1px solid var(--line);border-radius:6px;color:var(--ink);padding:4px 6px;font-size:12.5px" oninput="cpUpdateTotals()" onchange="cpSetMt('${d}','${esc(key)}',this.value)"></td>`
+      return `<td style="padding:3px 4px;text-align:center"><input type="text" inputmode="numeric" class="cp-mt-input" value="${row.mt === "" ? "" : fmtMil(row.mt)}" placeholder="0" style="width:92px;background:var(--card2);border:1px solid var(--line);border-radius:6px;color:var(--ink);padding:4px 6px;font-size:12.5px;text-align:right" oninput="cpFmtInput(this);cpUpdateTotals()" onchange="cpSetMt('${d}','${esc(key)}',this.value)"></td>`
         + `<td style="padding:3px 4px"><input type="text" class="cp-obs-input" value="${esc(row.obs)}" placeholder="Obs" style="width:120px;background:var(--card2);border:1px solid var(--line);border-radius:6px;color:var(--ink);padding:4px 6px;font-size:12px" onchange="cpSetObs('${d}','${esc(key)}',this.value)"></td>`;
     }
     function cpUpdateTotals() {
       const inputs = document.querySelectorAll(".cp-mt-input");
-      let total = 0; inputs.forEach(i => total += (Number(i.value) || 0));
+      let total = 0; inputs.forEach(i => total += cpParse(i.value));
       const totalEl = $("cpTotalVal"), diffEl = $("cpDiffVal");
       if (totalEl) totalEl.textContent = fmt(total) + " DA";
       if (diffEl) {
@@ -1767,18 +1779,19 @@
         if (Number(md.cuve) === cuveId) achats += Number(md.quantite);
         else if (!md.cuve) achats += Number(md.quantite) / 2; // ligne ancienne sans répartition : 50/50
       });
-      let dates = datesAsc();
-      if (dateLimit) dates = dates.filter(dt => dt <= dateLimit);
+      /* Ventes = (dernier index renseigné − premier index renseigné) de chaque pompe de la cuve (P01+P02, P03+P04…) ; les index vides (jour ouvert mais pas saisi) sont ignorés */
       let vendus = 0;
-      if (dates.length > 0) {
-        const firstDate = dates[0], lastDate = dates[dates.length - 1];
-        cuve.pumps.forEach(code => {
-          const rL = idxRow(lastDate, code), rF = idxRow(firstDate, code);
-          const idxL = rL && rL.index !== null && rL.index !== "" ? Number(rL.index) : 0;
-          const idxF = rF && rF.index !== null && rF.index !== "" ? Number(rF.index) : 0;
-          if (idxL > idxF) vendus += (idxL - idxF);
-        });
-      }
+      const best = {};
+      cuve.pumps.forEach(c => { best[c] = { f: null, l: null }; });
+      DB.indexs.forEach(r => {
+        const b = best[r.index_name]; if (!b) return;
+        if (dateLimit && r.index_date > dateLimit) return;
+        if (r.index === null || r.index === undefined || r.index === "" || isNaN(Number(r.index))) return;
+        const v = Number(r.index);
+        if (!b.f || r.index_date < b.f.d) b.f = { d: r.index_date, v: v };
+        if (!b.l || r.index_date > b.l.d) b.l = { d: r.index_date, v: v };
+      });
+      cuve.pumps.forEach(c => { const b = best[c]; if (b.f && b.l && b.l.d > b.f.d && b.l.v > b.f.v) vendus += (b.l.v - b.f.v); });
       return cuveStockInitial(cuveId) + achats - vendus + ecartsAppliques("cuve" + cuveId, dateLimit);
     }
     function calcStockCarburant(typeA, dateLimit = null) {
@@ -1822,6 +1835,7 @@
       {
         sec: "Gestion", items: [
           { id: "achats", ico: "🧾", label: "Achats" },
+          { id: "cafe", ico: "☕", label: "Café" },
           { id: "etats", ico: "📅", label: "État Achats/CA" },
           { id: "fournisseurs", ico: "🚛", label: "Fournisseurs & Soldes" },
           { id: "stock", ico: "📦", label: "Stock & Historique" },
@@ -1835,7 +1849,7 @@
           { id: "referentiel", ico: "⚙️", label: "Référentiel" }]
       },
       { sec: "Données", items: [{ id: "donnees", ico: "💾", label: "Import / Export" }] }];
-    const TITLES = { dashboard: ["Tableau de bord", ""], journee: ["Journée & Index", "Relevé des compteurs, ventes par pompiste et comptes de caisse"], achats: ["Achats", "Factures carburant et achats divers (lubrifiants, gaz butane)"], etats: ["État Achats/CA", "Liste et totaux des achats et du chiffre d'affaires entre deux dates (Du / Au)"], fournisseurs: ["Fournisseurs & Soldes", "Suivi des factures à crédit et règlements"], stock: ["Stock & Historique", "État des stocks et historique complet des mouvements"], tresorerie: ["Trésorerie", "Gestion de la caisse et de la banque — encaissements, décaissements, virements"], tiers: ["Tiers", "Pompistes, fournisseurs et clients — rotation via « ord »"], articles: ["Articles", "Carburants, lubrifiants et gaz butane"], categories: ["Catégories", ""], referentiel: ["Référentiel", "Types de règlements et paramètres"], donnees: ["Import / Export", "Sauvegarde et transfert des données"], paie: ["Paie", "Salaires, primes, prêts, avances et manques du personnel"] };
+    const TITLES = { cafe: ["☕ Café", "Stock au prix de vente, achats, versements et arrêté de compte"], dashboard: ["Tableau de bord", ""], journee: ["Journée & Index", "Relevé des compteurs, ventes par pompiste et comptes de caisse"], achats: ["Achats", "Factures carburant et achats divers (lubrifiants, gaz butane)"], etats: ["État Achats/CA", "Liste et totaux des achats et du chiffre d'affaires entre deux dates (Du / Au)"], fournisseurs: ["Fournisseurs & Soldes", "Suivi des factures à crédit et règlements"], stock: ["Stock & Historique", "État des stocks et historique complet des mouvements"], tresorerie: ["Trésorerie", "Gestion de la caisse et de la banque — encaissements, décaissements, virements"], tiers: ["Tiers", "Pompistes, fournisseurs et clients — rotation via « ord »"], articles: ["Articles", "Carburants, lubrifiants et gaz butane"], categories: ["Catégories", ""], referentiel: ["Référentiel", "Types de règlements et paramètres"], donnees: ["Import / Export", "Sauvegarde et transfert des données"], paie: ["Paie", "Salaires, primes, prêts, avances et manques du personnel"] };
     let view = "dashboard";
     let sel = { date: null, tierId: null, jourTab: "lub", jdate: null, tresoTab: "caisse", paieAnnee: String(new Date().getFullYear()).slice(-2), paieMois: String(new Date().getMonth() + 1).padStart(2, "0"), etDu: null, etAu: null };
     let state = { artFilter: "", tierFilter: "", tierTab: "P", histFilter: "", histSens: "", factFilter: "", lubArt: "", lubSearch: "", lubListOpen: false };
@@ -1850,8 +1864,100 @@
       $("topRight").innerHTML = view === "dashboard" ? "" : `<span class="chip">📅 ${frDate(todayISO())}</span>
   <span class="chip gold">Caisse <b>${fmt(caisseSolde())} DA</b></span>
   <span class="chip blue">Banque <b>${fmt(banqueSolde())} DA</b></span>`;
-      const V = { dashboard: vJournal, journee: vJournee, achats: vAchats, etats: vEtats, fournisseurs: vFournisseurs, stock: vStock, tresorerie: vTresorerie, paie: vPaie, tiers: vTiers, articles: vArticles, categories: vCategories, referentiel: vReferentiel, donnees: vDonnees };
+      const V = { dashboard: vJournal, journee: vJournee, achats: vAchats, cafe: vCafe, etats: vEtats, fournisseurs: vFournisseurs, stock: vStock, tresorerie: vTresorerie, paie: vPaie, tiers: vTiers, articles: vArticles, categories: vCategories, referentiel: vReferentiel, donnees: vDonnees };
       $("view").innerHTML = V[view]();
+    }
+    /* ================= MODULE CAFÉ (stock valorisé au prix de vente, données dans meta.cafe) ================= */
+    const CAFE_TYPE = 4, CAFE_OPS = { versement: "💵 Versement reçu", perem: "🗑️ Péremption", frais: "🧾 Frais", salaire: "👤 Salaire payé" };
+    let cafeD = "";
+    const sumBy = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
+    const achPA = a => sumBy(a.lignes, l => l.qte * l.pa), achPV = a => sumBy(a.lignes, l => l.qte * l.pv);
+    function cafe() { const m = DB.meta; if (!m.cafe) m.cafe = { init: { date: "", montant: 0 }, achats: [], ops: [], inv: [] }; return m.cafe; }
+    function cafeArts() { return DB.articles.filter(a => Number(a.type_a) === CAFE_TYPE && Number(a.actif)); }
+    /* arrêté de compte à la date d : ce que l'employé doit justifier (init + achats au PV) vs ce qu'il justifie */
+    function cafeArrete(d) {
+      const c = cafe(), le = x => !x.date || x.date <= d;
+      const achats = c.achats.filter(le), ops = c.ops.filter(le);
+      const inv = c.inv.filter(le).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+      const som = t => sumBy(ops.filter(o => o.type === t), o => o.montant);
+      const r = { init: Number(c.init.montant) || 0, achatsPV: sumBy(achats, achPV), achatsPA: sumBy(achats, achPA), regle: sumBy(achats, a => Number(a.regle) || 0), inv, invVal: inv ? inv.valeur : 0, vers: som("versement"), perem: som("perem"), frais: som("frais"), sal: som("salaire") };
+      r.attendu = r.init + r.achatsPV; r.justifie = r.invVal + r.vers + r.perem + r.frais + r.sal; r.ecart = r.justifie - r.attendu;
+      r.dettes = r.achatsPA - r.regle; r.marge = r.achatsPV - r.achatsPA; return r;
+    }
+    function vCafe() {
+      const c = cafe(); if (!cafeD) cafeD = todayISO();
+      const r = cafeArrete(cafeD), L = (l, v, s) => `<tr><td>${l}</td><td class="num" ${s ? `style="${s}"` : ""}>${fmt(v)} DA</td></tr>`;
+      const col = r.ecart < 0 ? "var(--red)" : r.ecart > 0 ? "var(--green)" : "var(--accent2)";
+      const del = (k, id) => `<button class="tag-del" onclick="if(confirm('Supprimer ?')){cafeDel('${k}','${id}')}">✕</button>`;
+      const ach = c.achats.slice().sort((a, b) => b.date.localeCompare(a.date)), ops = c.ops.slice().sort((a, b) => b.date.localeCompare(a.date)), invs = c.inv.slice().sort((a, b) => b.date.localeCompare(a.date));
+      return `<div class="card"><div class="row between"><h2 style="margin:0">⚖️ Arrêté de compte — Café</h2>
+   <div class="field"><label>Arrêté au</label><input type="date" value="${cafeD}" onchange="cafeD=this.value;render()"></div></div>
+  <table style="margin-top:10px"><tr><th colspan="2">À justifier par l'employé</th></tr>
+   ${L("Inventaire initial (au PV)" + (c.init.date ? " — " + frDate(c.init.date) : ""), r.init)}${L("＋ Achats (au PV, marge incluse)", r.achatsPV)}${L("<b>Solde comptable</b>", r.attendu, "font-weight:700")}
+   <tr><th colspan="2">Justifié</th></tr>
+   ${L("Inventaire physique au PV" + (r.inv ? " — " + frDate(r.inv.date) : " — <span style='color:var(--red)'>aucun inventaire</span>"), r.invVal)}${L("Versements reçus", r.vers)}${L("Péremptions (au PV)", r.perem)}${L("Frais", r.frais)}${L("Salaire payé", r.sal)}${L("<b>Total justifié</b>", r.justifie, "font-weight:700")}</table>
+  <div style="margin-top:14px;text-align:center"><div class="subtle">Écart (justifié − solde comptable)</div>
+   <div class="caisse-big" style="color:${col}">${r.ecart > 0 ? "+" : ""}${fmt(r.ecart)} DA</div>
+   <div class="subtle">${r.ecart < 0 ? "⛔ Manque à justifier" : r.ecart > 0 ? "⚠ Excédent" : "✔ Compte équilibré"}</div></div>
+  <div class="grid-stats" style="margin-top:12px"><div class="stat"><div class="v">${fmt(r.dettes)}</div><div class="l">Dettes fournisseurs café (PA non réglé)</div></div>
+   <div class="stat green"><div class="v">${fmt(r.marge)}</div><div class="l">Marge cumulée des achats</div></div>
+   <div class="stat"><div class="v">${fmt(r.invVal - r.dettes)}</div><div class="l">Inventaire PV − dettes fournisseurs</div></div></div></div>
+ <div class="card"><div class="row between"><h2 style="margin:0">📦 Inventaire initial</h2><button class="btn" onclick="openCafeInit()">✎ Définir</button></div>
+  <p class="subtle" style="margin-top:6px">${c.init.date ? `Au ${frDate(c.init.date)} : <b>${fmt(c.init.montant)} DA</b> (valorisé au prix de vente)` : "Non défini."} Les articles café se créent dans <b>Articles</b> (Catégorie Café, Type Café).</p></div>
+ <div class="card"><div class="row between"><h2 style="margin:0">🧾 Achats café</h2><button class="btn accent" onclick="openCafeAchat()">＋ Achat</button></div>
+  <table style="margin-top:8px"><tr><th>Date</th><th>Fournisseur</th><th>N°</th><th class="num">Valeur PA</th><th class="num">Valeur PV</th><th class="num">Marge</th><th class="num">Réglé</th><th class="num">Reste</th><th></th></tr>
+  ${ach.map(a => `<tr><td>${frDate(a.date)}</td><td>${tierNom(a.fid)}</td><td>${esc(a.num || "—")}</td><td class="num">${fmt(achPA(a))}</td><td class="num">${fmt(achPV(a))}</td><td class="num">${fmt(achPV(a) - achPA(a))}</td><td class="num">${fmt(a.regle)}</td><td class="num" style="color:${achPA(a) - a.regle > 0 ? "var(--red)" : "var(--green)"}">${fmt(achPA(a) - a.regle)}</td><td>${del("achats", a.id)}</td></tr>`).join("") || `<tr><td colspan="9" class="subtle">Aucun achat.</td></tr>`}</table></div>
+ <div class="card"><div class="row between"><h2 style="margin:0">💵 Versements, péremptions, frais, salaire</h2>
+  <div class="row">${Object.keys(CAFE_OPS).map(t => `<button class="btn sm" onclick="openCafeOp('${t}')">＋ ${CAFE_OPS[t]}</button>`).join("")}</div></div>
+  <table style="margin-top:8px"><tr><th>Date</th><th>Type</th><th>Détail</th><th class="num">Montant</th><th></th></tr>
+  ${ops.map(o => `<tr><td>${frDate(o.date)}</td><td>${CAFE_OPS[o.type]}</td><td style="font-size:12px">${esc(o.note || "")}</td><td class="num">${fmt(o.montant)}</td><td>${del("ops", o.id)}</td></tr>`).join("") || `<tr><td colspan="5" class="subtle">Aucune opération.</td></tr>`}</table></div>
+ <div class="card"><div class="row between"><h2 style="margin:0">🔢 Inventaires physiques (au PV)</h2><button class="btn accent" onclick="openCafeInv()">＋ Inventaire</button></div>
+  <table style="margin-top:8px"><tr><th>Date</th><th class="num">Valeur PV</th><th></th></tr>
+  ${invs.map(i => `<tr><td>${frDate(i.date)}</td><td class="num">${fmt(i.valeur)}</td><td>${del("inv", i.id)}</td></tr>`).join("") || `<tr><td colspan="3" class="subtle">Aucun inventaire.</td></tr>`}</table></div>`;
+    }
+    function cafeDel(k, id) { cafe()[k] = cafe()[k].filter(x => x.id !== id); save(); render(); }
+    function cafeBtns(fn) { return `<div style="text-align:right;margin-top:14px"><button class="btn" onclick="closeModal()">Annuler</button> <button class="btn accent" onclick="${fn}()">✔ Enregistrer</button></div>`; }
+    function openCafeInit() { const i = cafe().init; openModal(`<h2>📦 Inventaire initial café</h2><div class="row"><div class="field"><label>Date</label><input id="ciD" type="date" value="${i.date || todayISO()}"></div><div class="field"><label>Valeur au prix de vente (DA)</label><input id="ciM" type="number" value="${i.montant || ""}"></div></div>${cafeBtns("saveCafeInit")}`); }
+    function saveCafeInit() { cafe().init = { date: $("ciD").value, montant: Number($("ciM").value) || 0 }; save(); closeModal(); render(); toast("Inventaire initial enregistré", "ok"); }
+    function openCafeAchat() {
+      const arts = cafeArts(); if (!arts.length) { toast("Créez d'abord des articles café (Articles → Type Café)", "err"); return; }
+      openModal(`<h2>🧾 Achat café</h2><div class="row"><div class="field"><label>Date</label><input id="caD" type="date" value="${todayISO()}"></div><div class="field"><label>Fournisseur</label><select id="caF">${fournOptions()}</select></div><div class="field"><label>N° facture</label><input id="caN" style="width:100px"></div><div class="field"><label>Montant réglé (PA)</label><input id="caR" type="number" value="0" style="width:110px"></div></div>
+  <table style="margin-top:10px"><tr><th>Article</th><th class="num">PA unit.</th><th class="num">PV unit.</th><th class="num">Qté</th></tr>
+  ${arts.map(a => `<tr><td>${esc(a.article)}</td><td class="num"><input id="cp${a.art_id}" type="number" step="0.01" value="${a.pa}" style="width:80px"></td><td class="num">${fmt(a.pv)}</td><td class="num"><input id="cq${a.art_id}" type="number" value="" style="width:80px"></td></tr>`).join("")}</table>
+  <p class="subtle">La valeur PV (marge incluse) s'ajoute au solde comptable ; le PV est celui de la fiche article.</p>${cafeBtns("saveCafeAchat")}`);
+    }
+    function saveCafeAchat() {
+      const lignes = cafeArts().map(a => ({ artId: a.art_id, qte: Number($("cq" + a.art_id).value) || 0, pa: Number($("cp" + a.art_id).value) || 0, pv: Number(a.pv) || 0 })).filter(l => l.qte > 0);
+      if (!lignes.length) { toast("Saisissez au moins une quantité", "err"); return; }
+      cafe().achats.push({ id: uid(), date: $("caD").value, fid: $("caF").value, num: $("caN").value.trim(), regle: Number($("caR").value) || 0, lignes });
+      save(); closeModal(); render(); toast("Achat enregistré", "ok");
+    }
+    function openCafeOp(t) {
+      const arts = cafeArts();
+      openModal(`<h2>${CAFE_OPS[t]}</h2><input type="hidden" id="coT" value="${t}"><div class="row"><div class="field"><label>Date</label><input id="coD" type="date" value="${todayISO()}"></div>
+  ${t === "perem" ? `<div class="field"><label>Article</label><select id="coA"><option value="">— libre —</option>${arts.map(a => `<option value="${a.art_id}">${esc(a.article)}</option>`).join("")}</select></div><div class="field"><label>Qté</label><input id="coQ" type="number" style="width:80px"></div>` : ""}
+  <div class="field"><label>Montant (DA)${t === "perem" ? " — vide = Qté × PV" : ""}</label><input id="coM" type="number" style="width:120px"></div></div>
+  <div class="field" style="margin-top:8px"><label>Détail</label><input id="coN" style="width:100%"></div>${cafeBtns("saveCafeOp")}`);
+    }
+    function saveCafeOp() {
+      const t = $("coT").value; let m = Number($("coM").value) || 0, note = $("coN").value.trim();
+      if (t === "perem" && $("coA").value) { const a = article($("coA").value), q = Number($("coQ").value) || 0; if (!m) m = q * Number(a.pv); note = (q + " × " + a.article + (note ? " — " + note : "")); }
+      if (!m) { toast("Montant invalide", "err"); return; }
+      cafe().ops.push({ id: uid(), date: $("coD").value, type: t, montant: m, note }); save(); closeModal(); render(); toast("Enregistré", "ok");
+    }
+    function cafeInvTot() { $("ciTot").textContent = fmt(sumBy(cafeArts(), a => (Number($("ck" + a.art_id).value) || 0) * Number(a.pv))); }
+    function openCafeInv() {
+      const arts = cafeArts(); if (!arts.length) { toast("Créez d'abord des articles café (Articles → Type Café)", "err"); return; }
+      openModal(`<h2>🔢 Inventaire physique café</h2><div class="field"><label>Date</label><input id="ckD" type="date" value="${todayISO()}"></div>
+  <table style="margin-top:10px"><tr><th>Article</th><th class="num">PV</th><th class="num">Qté comptée</th></tr>
+  ${arts.map(a => `<tr><td>${esc(a.article)}</td><td class="num">${fmt(a.pv)}</td><td class="num"><input id="ck${a.art_id}" type="number" value="0" style="width:90px" oninput="cafeInvTot()"></td></tr>`).join("")}
+  <tr><td colspan="2"><b>Valeur au PV</b></td><td class="num"><b id="ciTot">0</b> DA</td></tr></table>${cafeBtns("saveCafeInv")}`);
+    }
+    function saveCafeInv() {
+      const lignes = {}; cafeArts().forEach(a => { lignes[a.art_id] = Number($("ck" + a.art_id).value) || 0; });
+      const valeur = sumBy(cafeArts(), a => lignes[a.art_id] * Number(a.pv));
+      cafe().inv = cafe().inv.filter(i => i.date !== $("ckD").value); cafe().inv.push({ id: uid(), date: $("ckD").value, lignes, valeur });
+      save(); closeModal(); render(); toast("Inventaire enregistré", "ok");
     }
     /* ================= VUE : TABLEAU DE BORD ================= */
     function vDashboard() {
@@ -3394,7 +3500,7 @@
         const qs = isCarb ? calcStockCarburant(a.type_a) : Number(a.qs);
         const badge = isCarb ? '<span class="pill neutral" title="Calculé : achats − ventes index">Calculé</span>' : '';
         return `<tr ondblclick="openArticleModal(${a.art_id})" style="cursor:pointer" title="Dl_clic pour modifier"><td>${esc(a.article)}</td><td>${catName(a.id_cat)}</td>
-  <td>${{ 0: "Lubrifiant", 9: "Gaz butane", 1: "Gasoil", 2: "Essence", 3: "GPL" }[a.type_a] || "—"}</td>
+  <td>${{ 0: "Lubrifiant", 9: "Gaz butane", 1: "Gasoil", 2: "Essence", 3: "GPL", 4: "Café" }[a.type_a] || "—"}</td>
   <td class="num">${fmt(qs)} ${esc(a.unite)} ${badge}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
   <td>${Number(a.actif) ? '<span class="pill ok">Actif</span>' : '<span class="pill neutral">Inactif</span>'}</td></tr>`;
       }).join("")}</table>`;
@@ -3513,7 +3619,7 @@
       const arts = DB.articles.filter(a => a.article.toLowerCase().includes(q));
       return `<table class="sortable" data-sk="art"><tr><th>Article</th><th>Catégorie</th><th>Type</th><th>Unité</th><th class="num">Stock</th><th class="num">PA</th><th class="num">PV</th><th>Actif</th></tr>
  ${arts.map(a => `<tr ondblclick="openArticleModal(${a.art_id})" style="cursor:pointer" title="Dl_clic pour modifier"><td>${esc(a.article)}</td><td>${catName(a.id_cat)}</td>
-  <td>${{ 0: "Lubrifiant", 9: "Gaz butane", 1: "Gasoil", 2: "Essence", 3: "GPL" }[a.type_a] || "—"}</td>
+  <td>${{ 0: "Lubrifiant", 9: "Gaz butane", 1: "Gasoil", 2: "Essence", 3: "GPL", 4: "Café" }[a.type_a] || "—"}</td>
   <td>${esc(a.unite)}</td><td class="num">${fmt(a.qs)}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
   <td><button class="btn sm" onclick="event.stopPropagation();toggleArt(${a.art_id})">${Number(a.actif) ? "✅" : "⛔"}</button></td>
   <td style="white-space:nowrap"><button class="btn sm" onclick="event.stopPropagation();openArticleModal(${a.art_id})">✏️</button>
@@ -3538,7 +3644,7 @@
   <div class="field" style="flex:1"><label>Désignation *</label><input id="aNom" value="${esc(a.article)}"></div>
   <div class="field"><label>Catégorie</label><select id="aCat">${DB.categories.map(c => `<option value="${c.cat_id}" ${String(c.cat_id) === String(a.id_cat) ? "selected" : ""}>${esc(c.cat)}</option>`).join("")}</select></div>
   <div class="field"><label>Type</label><select id="aType">
-   ${[[0, "Lubrifiant"], [9, "Gaz butane"], [1, "Gasoil"], [2, "Essence"], [3, "GPL"]].map(t => `<option value="${t[0]}" ${Number(a.type_a) === t[0] ? "selected" : ""}>${t[1]}</option>`).join("")}</select></div>
+   ${[[0, "Lubrifiant"], [9, "Gaz butane"], [1, "Gasoil"], [2, "Essence"], [3, "GPL"], [4, "Café"]].map(t => `<option value="${t[0]}" ${Number(a.type_a) === t[0] ? "selected" : ""}>${t[1]}</option>`).join("")}</select></div>
   <div class="field"><label>Unité</label><input id="aUnite" value="${esc(a.unite)}" style="width:80px"></div>
  </div>
  <div class="row" style="margin-top:10px">
@@ -3746,9 +3852,21 @@
     const TARIF_GE = 3000, TARIF_GPL = 2400; /* journaliers pompistes : Gasoil/Essence et GPL */
     function perDates(annee, mois) { const y = 2000 + Number(annee), m = Number(mois); const dim = new Date(y, m, 0).getDate(); const out = []; for (let d = 1; d <= dim; d++)out.push(y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0")); return out; }
     function nextPeriod(annee, mois) { let a = Number(annee), m = Number(mois) + 1; if (m > 12) { m = 1; a = (a + 1) % 100; } return { annee: String(a).padStart(2, "0"), mois: String(m).padStart(2, "0") }; }
-    function personnelList() {
+    function personnelActif(t) { return t.type === "P" && Number(t.aff) === 1 && (t.pos === "" || t.pos === null || t.pos === undefined || Number(t.pos) === 1); }
+    /* Tiers (type P) ayant une activité sur la période : index (pompiste), lignes de paie, avances/manques (agent_detail) */
+    function tiersActifsPeriode(annee, mois) {
+      const pref = "20" + String(annee) + "-" + String(mois) + "-";
+      const ids = new Set();
+      DB.indexs.forEach(r => { if (r.index_agent !== null && r.index_agent !== undefined && String(r.index_date || "").startsWith(pref)) ids.add(String(r.index_agent)); });
+      DB.paie.forEach(l => { if (String(l.annee) === String(annee) && String(l.mois) === String(mois)) ids.add(String(l.idp_tier)); });
+      DB.agent_detail.forEach(x => { if (String(x.date_agent || "").startsWith(pref)) ids.add(String(x.id_agent)); });
+      return ids;
+    }
+    /* Sans argument : personnel actif seulement. Avec (annee, mois) : actif + toute personne ayant travaillé/eu une écriture sur la période (même inactif ou changé de fonction) */
+    function personnelList(annee, mois) {
+      const worked = (annee !== undefined && mois !== undefined) ? tiersActifsPeriode(annee, mois) : null;
       return DB.tiers
-        .filter(t => t.type === "P" && Number(t.aff) === 1 && (t.pos === "" || t.pos === null || t.pos === undefined || Number(t.pos) === 1))
+        .filter(t => t.type === "P" && (personnelActif(t) || (worked && worked.has(String(t.tier_id)))))
         .sort((a, b) => {
           const aP = isPompiste(a), bP = isPompiste(b);
           if (aP && bP) return (Number(a.ord) || 0) - (Number(b.ord) || 0); /* pompistes : tri par ord */
@@ -3779,6 +3897,30 @@
       });
       return { ge: dGE, gpl: dGPL };
     }
+    /* A-t-il travaillé comme pompiste (lignes d'index) sur la période, même s'il n'est plus pompiste aujourd'hui ? */
+    function aTravaillePompiste(tid, annee, mois) { const d = pompisteDays(tid, annee, mois); return d.ge > 0 || d.gpl > 0; }
+    /* Détail des jours travaillés par un pompiste sur la période (avec jour de la semaine) */
+    function pompisteJoursDetail(tid, annee, mois) {
+      const geCodes = ["P01", "P02", "P03", "P04", "P05", "P06", "P07", "P08"], gplCodes = ["P09", "P10", "P11", "P12"];
+      const out = [];
+      perDates(annee, mois).forEach(d => {
+        const rows = DB.indexs.filter(r => r.index_date === d && String(r.index_agent) === String(tid));
+        const ge = rows.some(r => geCodes.includes(r.index_name)), gpl = rows.some(r => gplCodes.includes(r.index_name));
+        if (ge || gpl) out.push({ date: d, ge: ge, gpl: gpl });
+      });
+      return out;
+    }
+    function openPompisteJoursModal(tid) {
+      const a = String(sel.paieAnnee), m = String(sel.paieMois);
+      const jours = pompisteJoursDetail(tid, a, m);
+      const nGE = jours.filter(j => j.ge).length, nGPL = jours.filter(j => j.gpl).length;
+      const jourSem = iso => { const p = iso.split("-"); const s = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12).toLocaleDateString("fr-FR", { weekday: "long" }); return s.charAt(0).toUpperCase() + s.slice(1); };
+      openModal(`<h2>📅 Jours travaillés — ${tierNom(tid)}</h2>
+ <p class="subtle" style="margin-bottom:10px">Période ${m}/20${a} · <b>${jours.length}</b> jour(s) · Gasoil/Essence : <b>${nGE}</b> · GPL : <b>${nGPL}</b></p>
+ ${jours.length ? `<table><tr><th>#</th><th>Date</th><th>Jour</th><th>Poste</th></tr>
+ ${jours.map((j, i) => `<tr><td>${i + 1}</td><td>${frDate(j.date)}</td><td>${jourSem(j.date)}</td><td>${[j.ge ? "Gasoil/Essence" : "", j.gpl ? "GPL" : ""].filter(Boolean).join(" + ")}</td></tr>`).join("")}</table>` : `<p class="subtle">Aucun jour travaillé sur cette période.</p>`}
+ <div style="text-align:right;margin-top:14px"><button class="btn" onclick="closeModal()">Fermer</button></div>`);
+    }
     /* Manque = différence positive (ventes - règlements) sur les journées de la période */
     function manquePeriode(tid, annee, mois) {
       let total = 0, dates = [];
@@ -3795,10 +3937,13 @@
       const dim = dates.length;
       /* Supprime les lignes auto 1/2/6/8 avant de les recalculer ; les rubriques 10 (paiement) et 11 (report) sont préservées */
     /*DB.paie = DB.paie.filter(l => !(String(l.annee) === String(a) && String(l.mois) === String(m) && [1, 2, 6, 8].includes(Number(l.rubrique))));*/
-      DB.paie = DB.paie.filter(l => !(String(l.annee) === String(a) && String(l.mois) === String(m) && [1, 2, 6, 8].includes(Number(l.rubrique)) && !(Number(l.rubrique) === 6 && l.treso_id)));
+      /* Personnel de la période (y compris inactif / changé de fonction) ; recalcul seulement pour les actifs et ceux ayant travaillé comme pompiste (les lignes des autres sont conservées) */
+      const lstP = personnelList(a, m).filter(t => personnelActif(t) || isPompiste(t) || aTravaillePompiste(t.tier_id, a, m));
+      const idsRecalc = new Set(lstP.map(t => String(t.tier_id)));
+      DB.paie = DB.paie.filter(l => !(String(l.annee) === String(a) && String(l.mois) === String(m) && idsRecalc.has(String(l.idp_tier)) && [1, 2, 6, 8].includes(Number(l.rubrique)) && !(Number(l.rubrique) === 6 && l.treso_id)));
       let seq = nextPaieCle();
-      personnelList().forEach(t => {
-        if (isPompiste(t)) {
+      lstP.forEach(t => {
+        if (isPompiste(t) || aTravaillePompiste(t.tier_id, a, m)) {
           const d = pompisteDays(t.tier_id, a, m);
           if (d.ge > 0) DB.paie.push({ cle: seq++, annee: a, mois: m, date_p: last, idp_tier: t.tier_id, rubrique: 1, sens: 1, nj: d.ge, prix: TARIF_GE });
           if (d.gpl > 0) DB.paie.push({ cle: seq++, annee: a, mois: m, date_p: last, idp_tier: t.tier_id, rubrique: 1, sens: 1, nj: d.gpl, prix: TARIF_GPL });
@@ -3819,7 +3964,7 @@
       const cur = sel.paieMois + "/" + sel.paieAnnee;
       const np = nextPeriod(sel.paieAnnee, sel.paieMois);
       const impayes = [];
-      personnelList().forEach(t => {
+      personnelList(sel.paieAnnee, sel.paieMois).forEach(t => {
         const net = netPaie(sel.paieAnnee, sel.paieMois, t.tier_id);
         const deja = paieLines(sel.paieAnnee, sel.paieMois, t.tier_id).filter(l => Number(l.rubrique) === 10).reduce((s, l) => s + (Number(l.nj) || 1) * Number(l.prix), 0);
         const reste = net - deja;
@@ -3831,7 +3976,7 @@
       let seq = nextPaieCle();
       const lastCur = perDates(sel.paieAnnee, sel.paieMois).pop();
       const firstDay = "20" + np.annee + "-" + np.mois + "-01";
-      personnelList().forEach(t => {
+      personnelList(sel.paieAnnee, sel.paieMois).forEach(t => {
         const lines = paieLines(sel.paieAnnee, sel.paieMois, t.tier_id).filter(l => ![4, 9, 10, 11].includes(Number(l.rubrique)));
         if (!lines.length) return;
         DB.paie = DB.paie.filter(l => !(String(l.annee) === String(sel.paieAnnee) && String(l.mois) === String(sel.paieMois) && String(l.idp_tier) === String(t.tier_id) && Number(l.rubrique) === 9));
@@ -3997,12 +4142,35 @@
       DB.paie = DB.paie.filter(l => String(l.cle) !== String(cle));
       save(); closeModal(); render(); toast("Ligne paie supprimée" + (hasLink ? " + entrée caisse liée retirée" : ""), "ok");
     }
+    /* Pompistes inactifs ayant des jours d'index sur la période : leurs lignes Salaire (rubrique 1) sont chargées/mises à jour automatiquement depuis la table indexs (sans attendre ⟳ Actualiser). Période déjà validée (rubrique 9) = on ne touche pas. */
+    function syncSalairePompistesInactifs(a, m) {
+      const dates = perDates(a, m), last = dates[dates.length - 1];
+      let changed = false, seq = nextPaieCle();
+      personnelList(a, m).forEach(t => {
+        if (personnelActif(t)) return;
+        const d = pompisteDays(t.tier_id, a, m);
+        if (d.ge === 0 && d.gpl === 0) return;
+        const all = paieLines(a, m, t.tier_id);
+        if (all.some(l => Number(l.rubrique) === 9)) return;
+        const exp = []; if (d.ge > 0) exp.push({ nj: d.ge, prix: TARIF_GE }); if (d.gpl > 0) exp.push({ nj: d.gpl, prix: TARIF_GPL });
+        const cur = all.filter(l => Number(l.rubrique) === 1);
+        const same = cur.length === exp.length && exp.every(e => cur.some(c => Number(c.nj) === e.nj && Number(c.prix) === e.prix));
+        if (same) return;
+        DB.paie = DB.paie.filter(l => !(String(l.annee) === String(a) && String(l.mois) === String(m) && String(l.idp_tier) === String(t.tier_id) && Number(l.rubrique) === 1));
+        exp.forEach(e => DB.paie.push({ cle: seq++, annee: a, mois: m, date_p: last, idp_tier: t.tier_id, rubrique: 1, sens: 1, nj: e.nj, prix: e.prix }));
+        changed = true;
+      });
+      if (changed) save();
+    }
     /* ---- Vue Paie ---- */
     function vPaie() {
       const a = String(sel.paieAnnee), m = String(sel.paieMois);
+      syncSalairePompistesInactifs(a, m);
       const annees = [...new Set([a, ...DB.paie.map(l => String(l.annee))])].sort();
       let totalNet = 0, totalSal = 0, totalRet = 0;
-      const html = personnelList().map(t => {
+      const html = personnelList(a, m).map(t => {
+        const pompPer = isPompiste(t) || aTravaillePompiste(t.tier_id, a, m);
+        const badgeAff = !personnelActif(t) ? ' <span class="pill warn">Inactif</span>' : (!isPompiste(t) && pompPer ? ' <span class="pill warn">ex-pompiste</span>' : "");
         const lines = paieLines(a, m, t.tier_id).sort((x, y) => Number(x.rubrique) - Number(y.rubrique) || String(x.date_p || "").localeCompare(String(y.date_p || "")));
         const net = lines.filter(l => ![4, 9, 10, 11].includes(Number(l.rubrique))).reduce((s, l) => s + (RUB_SENS[l.rubrique] || 1) * (Number(l.nj) || 1) * Number(l.prix), 0);
         totalNet += net;
@@ -4013,12 +4181,12 @@
         const lblPaye = dejaPaye > 0 ? `Déjà payé : <b style="color:var(--green)">${fmt(dejaPaye)} DA</b>&nbsp;|&nbsp;<span style="color:var(--orange);font-weight:700">Reste : ${fmt(restePayer)} DA</span>` : "Mt à payer :";
         const soldePret = pretSolde(t.tier_id);
         return `<div class="card"><div class="row between">
-   <h2 style="margin:0">👤 ${tierNom(t.tier_id)} <span class="subtle">${isPompiste(t) ? "Pompiste · ord " + t.ord : "Personnel"}${Number(t.pu) ? " · PU " + fmt(t.pu) + " DA" : ""}</span></h2>
+   <h2 style="margin:0">👤 ${tierNom(t.tier_id)} <span class="subtle">${isPompiste(t) ? "Pompiste · ord " + t.ord : "Personnel"}${Number(t.pu) ? " · PU " + fmt(t.pu) + " DA" : ""}</span>${badgeAff}</h2>
    <div style="display:flex;align-items:center;gap:10px">Net : <b style="color:${net >= 0 ? "var(--green)" : "var(--red)"};font-size:17px">${fmt(net)} DA</b>
    <button class="btn sm" onclick="openPaieLineModal(${t.tier_id})">＋ Ligne</button></div></div>
    ${lines.length ? `<table style="margin-top:10px"><tr><th>Rubrique</th><th>Sens</th><th>Date</th><th class="num">NJ/Qté</th><th class="num">PU (DA)</th><th class="num">Total</th><th class="num">Signé</th><th></th></tr>
    ${lines.map(l => {
-          const sens = RUB_SENS[l.rubrique] || 1; const nj = Number(l.nj) || 1; const tot = nj * Number(l.prix); const isAuto = [1, 8].includes(Number(l.rubrique)); return `<tr ${isAuto ? "" : `ondblclick="openEditPaieLineModal('${l.cle}')" style="cursor:pointer" title="Dl_clic pour modifier"`}>
+          const sens = RUB_SENS[l.rubrique] || 1; const nj = Number(l.nj) || 1; const tot = nj * Number(l.prix); const isAuto = [1, 8].includes(Number(l.rubrique)); const isSalPomp = Number(l.rubrique) === 1 && pompPer; return `<tr ${isSalPomp ? `ondblclick="openPompisteJoursModal(${t.tier_id})" style="cursor:pointer" title="Dl_clic : voir les jours travaillés"` : isAuto ? "" : `ondblclick="openEditPaieLineModal('${l.cle}')" style="cursor:pointer" title="Dl_clic pour modifier"`}>
     <td>${l.rubrique} — ${RUBRIQUES[l.rubrique] || "?"}${l.treso_id ? ` <span title="Lié à la caisse" style="color:var(--accent);font-size:11px">💵</span>` : ""}</td>
     <td>${sens === 1 ? '<span class="pill ok">+ Gain</span>' : '<span class="pill warn">− Retenue</span>'}</td>
     <td>${frDate(l.date_p)}</td>
