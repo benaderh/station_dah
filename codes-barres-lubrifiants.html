@@ -27,6 +27,8 @@ main{padding:10px 12px calc(90px + env(safe-area-inset-bottom))}
 .item .n{font-weight:600}
 .item .c{font-family:ui-monospace,Menlo,monospace;font-size:14px;color:var(--ok);margin-top:2px;word-break:break-all}
 .item .c.none{color:var(--warn);font-family:inherit}
+.qp{font-size:13px;color:var(--mut);margin-top:3px}.qp b{color:var(--tx)}
+.two{display:flex;gap:10px}.two>div{flex:1}
 .cnt{color:var(--mut);font-size:13px;margin:4px 2px 10px}
 .fab{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));display:flex;gap:8px;z-index:6}
 .fab button{flex:1;box-shadow:0 4px 14px rgba(0,0,0,.25)}
@@ -72,7 +74,7 @@ main{padding:10px 12px calc(90px + env(safe-area-inset-bottom))}
 <script>
 (function(){
 'use strict';
-var SEED = [{"id": 1, "code": "", "nom": "DOT4 55"}, {"id": 2, "code": "", "nom": "Luxoil SAE 40 1 L"}, {"id": 3, "code": "", "nom": "Huile moteur 40"}, {"id": 4, "code": "", "nom": "5 W 40 Total"}, {"id": 5, "code": "", "nom": "Glaciol Premogel 2L"}, {"id": 6, "code": "", "nom": "Glaciol Redex 5L"}, {"id": 7, "code": "", "nom": "15W40 5L SOPRE"}, {"id": 8, "code": "", "nom": "Lixoil"}, {"id": 9, "code": "", "nom": "ATF Exol"}, {"id": 10, "code": "", "nom": "DOT4 55 Plus"}, {"id": 11, "code": "", "nom": "Glaciol Naftal 2L"}, {"id": 12, "code": "", "nom": "elf 5L"}, {"id": 13, "code": "", "nom": "Glaciol Power 5L"}, {"id": 14, "code": "", "nom": "Glaciol Naftal 5L"}, {"id": 15, "code": "", "nom": "Glaciol Baraka 5L"}, {"id": 16, "code": "", "nom": "Glaciol IADA 5L"}, {"id": 17, "code": "", "nom": "Eau Distillé HEB M"}, {"id": 18, "code": "", "nom": "Antifreze Berrad+"}, {"id": 19, "code": "", "nom": "ADBlue 10L"}, {"id": 20, "code": "", "nom": "Huile hydraulique"}, {"id": 21, "code": "", "nom": "ATF N"}, {"id": 22, "code": "", "nom": "Filtre à air"}, {"id": 23, "code": "", "nom": "Feu Arièrre"}, {"id": 24, "code": "", "nom": "Gel Moteur"}, {"id": 25, "code": "", "nom": "Filtre 296"}, {"id": 26, "code": "", "nom": "Plaquette de frein"}, {"id": 27, "code": "", "nom": "Graisse Nex 1 Kg"}, {"id": 28, "code": "", "nom": "Graisse Oures 1 Kg"}, {"id": 29, "code": "", "nom": "Antigel Versel"}, {"id": 30, "code": "", "nom": "Liquide de refroidissement Velex"}, {"id": 31, "code": "", "nom": "Lave glace 5L"}, {"id": 32, "code": "", "nom": "Naftilia 15/40 5L"}, {"id": 33, "code": "", "nom": "Baraka SAE 40 5L"}, {"id": 34, "code": "", "nom": "Graisse Asia"}, {"id": 35, "code": "", "nom": "Graisse Luxoil"}, {"id": 36, "code": "", "nom": "AE90 Gear oil Boite Vitesse"}, {"id": 37, "code": "", "nom": "SAE40 Baraka"}, {"id": 38, "code": "", "nom": "Lave glace 2L Premogel"}, {"id": 39, "code": "", "nom": "EAu Distillé 1L"}, {"id": 40, "code": "", "nom": "Acide 1L"}, {"id": 41, "code": "", "nom": "75W80 Baraka"}];
+var SEED = [{"id": 1, "code": "", "nom": "DOT4 55", "qte": 49, "prix": 400}, {"id": 2, "code": "", "nom": "Luxoil SAE 40 1 L", "qte": 3, "prix": 650}, {"id": 3, "code": "", "nom": "Huile moteur 40", "qte": 40, "prix": 410}, {"id": 4, "code": "", "nom": "5 W 40 Total", "qte": 1, "prix": 1000}, {"id": 5, "code": "", "nom": "Glaciol Premogel 2L", "qte": 61, "prix": 250}, {"id": 6, "code": "", "nom": "Glaciol Redex 5L", "qte": 1, "prix": 600}, {"id": 7, "code": "", "nom": "15W40 5L SOPRE", "qte": 0, "prix": 1000}, {"id": 8, "code": "", "nom": "Lixoil", "qte": 0, "prix": 800}, {"id": 9, "code": "", "nom": "ATF Exol", "qte": 0, "prix": 650}, {"id": 10, "code": "", "nom": "DOT4 55 Plus", "qte": 61, "prix": 450}, {"id": 11, "code": "", "nom": "Glaciol Naftal 2L", "qte": 6, "prix": 450}, {"id": 12, "code": "", "nom": "elf 5L", "qte": 1, "prix": 6500}, {"id": 13, "code": "", "nom": "Glaciol Power 5L", "qte": 8, "prix": 600}, {"id": 14, "code": "", "nom": "Glaciol Naftal 5L", "qte": 5, "prix": 950}, {"id": 15, "code": "", "nom": "Glaciol Baraka 5L", "qte": -1, "prix": 850}, {"id": 16, "code": "", "nom": "Glaciol IADA 5L", "qte": 36, "prix": 850}, {"id": 17, "code": "", "nom": "Eau Distillé HEB M", "qte": 8, "prix": 250}, {"id": 18, "code": "", "nom": "Antifreze Berrad+", "qte": 18, "prix": 1000}, {"id": 19, "code": "", "nom": "ADBlue 10L", "qte": 1, "prix": 6500}, {"id": 20, "code": "", "nom": "Huile hydraulique", "qte": 20, "prix": 400}, {"id": 21, "code": "", "nom": "ATF N", "qte": 34, "prix": 450}, {"id": 22, "code": "", "nom": "Filtre à air", "qte": 8, "prix": 1000}, {"id": 23, "code": "", "nom": "Feu Arièrre", "qte": 1, "prix": 1000}, {"id": 24, "code": "", "nom": "Gel Moteur", "qte": 1, "prix": 1000}, {"id": 25, "code": "", "nom": "Filtre 296", "qte": 1, "prix": 1000}, {"id": 26, "code": "", "nom": "Plaquette de frein", "qte": 1, "prix": 1000}, {"id": 27, "code": "", "nom": "Graisse Nex 1 Kg", "qte": 1, "prix": 850}, {"id": 28, "code": "", "nom": "Graisse Oures 1 Kg", "qte": 3, "prix": 400}, {"id": 29, "code": "", "nom": "Antigel Versel", "qte": 1, "prix": 1000}, {"id": 30, "code": "", "nom": "Liquide de refroidissement Velex", "qte": 1, "prix": 1000}, {"id": 31, "code": "", "nom": "Lave glace 5L", "qte": 0, "prix": 300}, {"id": 32, "code": "", "nom": "Naftilia 15/40 5L", "qte": 0, "prix": 2850}, {"id": 33, "code": "", "nom": "Baraka SAE 40 5L", "qte": 0, "prix": 2850}, {"id": 34, "code": "", "nom": "Graisse Asia", "qte": 3, "prix": 850}, {"id": 35, "code": "", "nom": "Graisse Luxoil", "qte": 4, "prix": 850}, {"id": 36, "code": "", "nom": "AE90 Gear oil Boite Vitesse", "qte": 1, "prix": 450}, {"id": 37, "code": "", "nom": "SAE40 Baraka", "qte": 1, "prix": 650}, {"id": 38, "code": "", "nom": "Lave glace 2L Premogel", "qte": 0, "prix": 200}, {"id": 39, "code": "", "nom": "EAu Distillé 1L", "qte": 1, "prix": 70}, {"id": 40, "code": "", "nom": "Acide 1L", "qte": 4, "prix": 200}, {"id": 41, "code": "", "nom": "75W80 Baraka", "qte": 1, "prix": 650}];
 var KEY = 'lubr_barcodes_v1';
 var data, filter='all', query='', scanner=null;
 
@@ -80,6 +82,25 @@ function load(){
   try{ var s=localStorage.getItem(KEY); if(s){ data=JSON.parse(s); return; } }catch(e){}
   data = JSON.parse(JSON.stringify(SEED));
 }
+function fixData(){
+  data.forEach(function(a){ if(a.qte===undefined) a.qte=''; if(a.prix===undefined) a.prix=''; });
+}
+/* Reprend Qté/PA par défaut pour les articles encore vides (une seule fois) */
+function applySeedDefaults(){
+  var flag=null; try{ flag=localStorage.getItem(KEY+'_qp'); }catch(e){}
+  if(flag) return;
+  var ch=false;
+  data.forEach(function(a){
+    if(a.qte===''&&a.prix===''){
+      for(var i=0;i<SEED.length;i++){ var s=SEED[i]; if(s.id===a.id&&s.nom===a.nom){ a.qte=s.qte; a.prix=s.prix; ch=true; break; } }
+    }
+  });
+  try{ localStorage.setItem(KEY+'_qp','1'); }catch(e){}
+  if(ch) save();
+}
+/* '' = vide, null = invalide, sinon nombre */
+function num(v,neg){ v=String(v==null?'':v).trim().replace(/\s+/g,'').replace(',','.'); if(v==='') return ''; var n=Number(v); return (isFinite(n)&&(neg||n>=0))?n:null; }
+function fmt(n){ return n===''||n==null?'—':Number(n).toLocaleString('fr-FR',{maximumFractionDigits:2}); }
 function save(){
   try{ localStorage.setItem(KEY, JSON.stringify(data)); return true; }
   catch(e){ errorModal('Sauvegarde impossible','Le navigateur a refusé d\'écrire les données (mode privé ou stockage plein).','localStorage : '+e.name,'Exportez la liste (menu ⋯) pour ne rien perdre, puis ouvrez l\'app dans un onglet normal (hors navigation privée).'); return false; }
@@ -104,6 +125,7 @@ function render(){
   document.getElementById('list').innerHTML = out.map(function(a){
     return '<div class="item" data-id="'+a.id+'"><div><div class="n">'+esc(a.nom)+'</div>'+
       (a.code?'<div class="c">'+esc(a.code)+'</div>':'<div class="c none">sans code-barres</div>')+
+      '<div class="qp">Qté : <b>'+fmt(a.qte)+'</b> &nbsp;·&nbsp; PA : <b>'+fmt(a.prix)+'</b></div>'+
       '</div><button class="sec" data-edit="'+a.id+'">'+(a.code?'Modifier':'Ajouter')+'</button></div>';
   }).join('') || '<div class="hint">Aucun article.</div>';
 }
@@ -192,18 +214,21 @@ function scanModal(titre, onCode){
 }
 
 /* ---------- édition d'un article ---------- */
-function editModal(id, presetCode){
+function editModal(id, presetCode, draft){
   var a=byId(id); if(!a) return;
+  draft=draft||{nom:a.nom,qte:a.qte,prix:a.prix};
   var m=openModal('<h2>'+esc(a.nom)+'</h2>'+
     '<label>Code-barres</label><input type="text" id="code" inputmode="numeric" autocomplete="off" value="'+esc(presetCode!==undefined?presetCode:a.code)+'">'+
     '<div class="btns"><button data-x="scan">📷 Scanner</button></div>'+
-    '<label>Nom de l\'article</label><input type="text" id="nom" value="'+esc(a.nom)+'">'+
+    '<label>Nom de l\'article</label><input type="text" id="nom" value="'+esc(draft.nom)+'">'+
+    '<div class="two"><div><label>Quantité</label><input type="text" id="qte" inputmode="decimal" autocomplete="off" value="'+esc(draft.qte)+'"></div>'+
+    '<div><label>Prix d\'achat (PA)</label><input type="text" id="prix" inputmode="decimal" autocomplete="off" value="'+esc(draft.prix)+'"></div></div>'+
     '<div class="btns"><button class="sec" data-x="close">Annuler</button>'+(a.code?'<button class="sec" data-x="clr">Effacer code</button>':'')+'<button data-x="save">Enregistrer</button></div>'+
     '<div class="btns"><button class="dng" data-x="del" style="flex:0 0 auto;min-width:0">Supprimer l\'article</button></div>');
   m.querySelector('[data-x=close]').onclick=closeModal;
   m.querySelector('[data-x=scan]').onclick=function(){
-    var nomTmp=m.querySelector('#nom').value;
-    scanModal('Scanner : '+a.nom,function(c){ a.nom=a.nom; editModal(id,c); setTimeout(function(){ var n=document.getElementById('nom'); if(n) n.value=nomTmp; },0); });
+    var d={nom:m.querySelector('#nom').value,qte:m.querySelector('#qte').value,prix:m.querySelector('#prix').value};
+    scanModal('Scanner : '+a.nom,function(c){ editModal(id,c,d); });
   };
   var clr=m.querySelector('[data-x=clr]');
   if(clr) clr.onclick=function(){ m.querySelector('#code').value=''; };
@@ -211,8 +236,10 @@ function editModal(id, presetCode){
     var c=m.querySelector('#code').value.trim().replace(/\s+/g,'');
     var n=m.querySelector('#nom').value.trim();
     if(!n){ errorModal('Nom manquant','Le nom de l\'article est vide.','Formulaire article','Saisissez un nom puis enregistrez.'); return; }
+    var q=num(m.querySelector('#qte').value,true), p=num(m.querySelector('#prix').value);
+    if(q===null||p===null){ errorModal('Nombre invalide','La quantité ou le PA n\'est pas un nombre valide.','Champ '+(q===null?'Quantité':'PA'),'Saisissez un nombre (ex. 12 ou 1500,50) ou laissez vide. Le PA ne peut pas être négatif.'); return; }
     var other=c?byCode(c):null;
-    function commit(){ a.code=c; a.nom=n; if(save()){ closeModal(); render(); } }
+    function commit(){ a.code=c; a.nom=n; a.qte=q; a.prix=p; if(save()){ closeModal(); render(); } }
     if(other && other.id!==a.id){
       confirmModal('Code déjà utilisé','Le code <b>'+esc(c)+'</b> est déjà attribué à <b>'+esc(other.nom)+'</b>. Le retirer de cet article et l\'attribuer à <b>'+esc(n)+'</b> ?','Réattribuer',function(){ other.code=''; commit(); });
     }else commit();
@@ -225,21 +252,25 @@ function editModal(id, presetCode){
 }
 
 /* ---------- ajout d'article ---------- */
-function addModal(presetCode, presetNom){
+function addModal(presetCode, presetNom, presetQte, presetPrix){
   var m=openModal('<h2>Nouvel article</h2><label>Nom de l\'article</label><input type="text" id="nom" value="'+esc(presetNom||'')+'">'+
     '<label>Code-barres (facultatif)</label><input type="text" id="code" inputmode="numeric" value="'+esc(presetCode||'')+'">'+
     '<div class="btns"><button data-x="scan">📷 Scanner le code</button></div>'+
+    '<div class="two"><div><label>Quantité</label><input type="text" id="qte" inputmode="decimal" autocomplete="off" value="'+esc(presetQte||'')+'"></div>'+
+    '<div><label>Prix d\'achat (PA)</label><input type="text" id="prix" inputmode="decimal" autocomplete="off" value="'+esc(presetPrix||'')+'"></div></div>'+
     '<div class="btns"><button class="sec" data-x="close">Annuler</button><button data-x="save">Ajouter</button></div>');
   m.querySelector('[data-x=close]').onclick=closeModal;
   m.querySelector('[data-x=scan]').onclick=function(){
-    var n=m.querySelector('#nom').value;
-    scanModal('Scanner le nouvel article',function(c){ addModal(c,n); });
+    var n=m.querySelector('#nom').value, q0=m.querySelector('#qte').value, p0=m.querySelector('#prix').value;
+    scanModal('Scanner le nouvel article',function(c){ addModal(c,n,q0,p0); });
   };
   m.querySelector('[data-x=save]').onclick=function(){
     var n=m.querySelector('#nom').value.trim(), c=m.querySelector('#code').value.trim().replace(/\s+/g,'');
     if(!n){ errorModal('Nom manquant','Le nom de l\'article est vide.','Formulaire nouvel article','Saisissez un nom puis réessayez.'); return; }
+    var q=num(m.querySelector('#qte').value,true), p=num(m.querySelector('#prix').value);
+    if(q===null||p===null){ errorModal('Nombre invalide','La quantité ou le PA n\'est pas un nombre valide.','Champ '+(q===null?'Quantité':'PA'),'Saisissez un nombre (ex. 12 ou 1500,50) ou laissez vide. Le PA ne peut pas être négatif.'); return; }
     var other=c?byCode(c):null;
-    function commit(){ data.push({id:nextId(),code:c,nom:n}); if(save()){ closeModal(); render(); } }
+    function commit(){ data.push({id:nextId(),code:c,nom:n,qte:q,prix:p}); if(save()){ closeModal(); render(); } }
     if(other){ confirmModal('Code déjà utilisé','Le code <b>'+esc(c)+'</b> est déjà attribué à <b>'+esc(other.nom)+'</b>. Le déplacer vers le nouvel article ?','Déplacer',function(){ other.code=''; commit(); }); }
     else commit();
   };
@@ -282,8 +313,8 @@ function pickModal(c){
 
 /* ---------- menu : export / import ---------- */
 function toCSV(){
-  var L=['art_id;code_bar;Article'];
-  data.forEach(function(a){ L.push(a.id+';'+(a.code?'="'+a.code+'"':'')+';'+String(a.nom).replace(/;/g,',')); });
+  var L=['art_id;code_bar;Article;Qté;PA'];
+  data.forEach(function(a){ L.push(a.id+';'+(a.code?'="'+a.code+'"':'')+';'+String(a.nom).replace(/;/g,',')+';'+String(a.qte).replace('.',',')+';'+String(a.prix).replace('.',',')); });
   return '\ufeff'+L.join('\r\n');
 }
 function download(name,text,type){
@@ -317,13 +348,15 @@ function menuModal(){
       var lines=String(r.result).replace(/^\ufeff/,'').split(/\r?\n/).filter(function(x){return x.trim();});
       var out=[];
       for(var i=1;i<lines.length;i++){
-        var p=lines[i].split(/;|\t|,(?=[^,]*$)/);
         var parts=lines[i].split(';'); if(parts.length<3) parts=lines[i].split('\t');
         if(parts.length<3) continue;
         var id=parseInt(parts[0],10); if(isNaN(id)) continue;
-        out.push({id:id,code:parts[1].replace(/^="?|"$/g,'').trim(),nom:parts.slice(2).join(';').trim()});
+        var nom,qte='',prix='';
+        if(parts.length>=5){ nom=parts.slice(2,parts.length-2).join(';'); qte=num(parts[parts.length-2],true); prix=num(parts[parts.length-1]); }
+        else nom=parts.slice(2).join(';');
+        out.push({id:id,code:parts[1].replace(/^="?|"$/g,'').trim(),nom:nom.trim(),qte:qte===null?'':qte,prix:prix===null?'':prix});
       }
-      if(!out.length){ errorModal('Import impossible','Aucune ligne valide trouvée.','Fichier '+f.name,'Le fichier doit avoir 3 colonnes séparées par « ; » : art_id;code_bar;Article (comme l\'export).'); return; }
+      if(!out.length){ errorModal('Import impossible','Aucune ligne valide trouvée.','Fichier '+f.name,'Le fichier doit avoir les colonnes séparées par « ; » : art_id;code_bar;Article;Qté;PA (comme l\'export).'); return; }
       confirmModal('Importer','Remplacer la liste actuelle par <b>'+out.length+'</b> articles du fichier ?','Remplacer',function(){ data=out; if(save()){ render(); closeModal(); } },true);
     };
     r.onerror=function(){ errorModal('Lecture impossible','Le fichier n\'a pas pu être lu.','FileReader','Réessayez avec un autre fichier.'); };
@@ -347,7 +380,7 @@ document.getElementById('bMenu').onclick=menuModal;
 layer.addEventListener('click',function(e){ if(e.target.id==='ov') closeModal(); });
 window.addEventListener('error',function(e){ errorModal('Erreur inattendue',e.message||'Erreur','Script ('+(e.filename||'page').split('/').pop()+':'+(e.lineno||'?')+')','Rechargez la page. Vos codes déjà enregistrés sont conservés.'); });
 
-load(); render();
+load(); fixData(); applySeedDefaults(); render();
 })();
 </script>
 </body>
