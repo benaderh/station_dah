@@ -2218,7 +2218,7 @@
       const search = state.lubSearch || "";
       const matchByName = lubs.find(a => a.article.toLowerCase() === search.toLowerCase());
       if (matchByName) state.lubArt = matchByName.art_id;
-      else if (!state.lubArt || !lubs.some(a => String(a.art_id) === String(state.lubArt))) state.lubArt = lubs[0] ? lubs[0].art_id : "";
+      else if (state.lubArt && !lubs.some(a => String(a.art_id) === String(state.lubArt))) state.lubArt = "";
       const cur = article(state.lubArt);
       const lubVentes = [];
       DB.mouv_detail.forEach(md => {
@@ -2239,7 +2239,7 @@
         + '</div>' + stockHtml + '</div>'
         + '<div class="row" style="margin-top:8px">'
         + '<div class="field"><label>Quantité</label><input id="lubQte" type="number" min="1" style="width:100px" onfocus="this.select()"></div>'
-        + '<div class="field"><label>PU</label><input id="lubPu" type="number" value="' + (cur ? cur.pv : 0) + '" style="width:100px"></div>'
+        + '<div class="field"><label>PU</label><input id="lubPu" type="number" value="' + (cur ? cur.pv : "") + '" style="width:100px"></div>'
         + '<button class="btn accent" onclick="addLubVente()">✔ Valider la vente</button>'
         + '</div>'
         + '<div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:10px">'
