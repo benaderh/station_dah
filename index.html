@@ -1248,6 +1248,61 @@
       return { changed, entries };
     }
 
+    /* ---- affichage lisible des conflits ---- */
+    const CF_TABLES = { meta: "Réglages généraux", articles: "Articles", mouvements: "Opérations (achats / ventes)", mouv_detail: "Lignes d'opération", factures: "Factures", tiers: "Tiers", agent_detail: "Saisies agents / décaissements", ecarts_stock: "Écarts de stock" };
+    const CF_FIELDS = { caissePhysique: "Caisse physique (comptage saisi jour par jour)" };
+    const cfIsObj = v => v && typeof v === "object" && !Array.isArray(v);
+    /* liste des différences feuille par feuille entre deux valeurs (objets imbriqués) */
+    function cfDiff(a, b, path, out) {
+      if (cfIsObj(a) && cfIsObj(b)) { for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) cfDiff(a[k], b[k], path.concat(k), out); }
+      else if (canon(a) !== canon(b)) out.push({ path, a, b });
+      return out;
+    }
+    function cfVal(v) {
+      if (v === undefined) return "(absent)";
+      if (v === null || v === "") return "(vide)";
+      if (typeof v === "number") return fmt(v);
+      if (cfIsObj(v)) { const p = Object.keys(v).filter(k => v[k] !== "" && v[k] !== null && v[k] !== undefined).map(k => (k === "mt" ? "montant" : k === "obs" ? "obs." : k) + " : " + (typeof v[k] === "number" ? fmt(v[k]) : v[k])); return p.length ? p.join(" · ") : "(ligne vide)"; }
+      return String(v);
+    }
+    /* libellé lisible d'une clé de la caisse physique */
+    function cfCaisseKey(key, date) {
+      const fixed = { sinit: "Solde initial (report)", carb: "Carburant", lub: "Lubrifiants", gaz: "Gaz" };
+      if (fixed[key]) return fixed[key];
+      try {
+        if (key.startsWith("dec_")) { const t = key.slice(4); return "Décaissement : " + (Number(t) === 99 ? "Avance sur salaire" : ((DB.agent.find(x => String(x.agent_type) === t) || {}).agent_libelle || "type " + t)); }
+        if (key.startsWith("pay_") || key.startsWith("enc_")) {
+          const id = key.slice(4).replace(/_p\d+$/, ""), led = getLedger("caisse").find(l => String(l.id) === id || String(l.id) === key.slice(4));
+          return (key.startsWith("pay_") ? "Paiement : " : "Encaissement : ") + (led && led.libelle ? led.libelle : "ligne " + key.slice(4));
+        }
+      } catch (e) { }
+      return key;
+    }
+    function cfPathLabel(field, path) {
+      if (field === "caissePhysique" && path.length >= 2) {
+        const sub = path[2] === "mt" ? "Montant compté" : path[2] === "obs" ? "Observation" : (path[2] || "");
+        return frDate(path[0]) + " › " + cfCaisseKey(path[1], path[0]) + (sub ? " › " + sub : "");
+      }
+      return path.join(" › ");
+    }
+    function cfEditDetail(c) {
+      const MAX = 40;
+      const blocks = c.fields.map(k => {
+        const lv = c.local[k], sv = c.server[k], name = CF_FIELDS[k] || k;
+        if (cfIsObj(lv) && cfIsObj(sv)) {
+          const d = cfDiff(lv, sv, [], []);
+          const sorted = d.slice().sort((x, y) => String(x.path.join("|")).localeCompare(String(y.path.join("|"))));
+          const rows = sorted.slice(0, MAX).map(x => `<tr><td>${esc(cfPathLabel(k, x.path))}</td><td>${esc(cfVal(x.a))}</td><td>${esc(cfVal(x.b))}</td></tr>`).join("");
+          return `<div style="margin:6px 0"><b>${esc(name)}</b> <span class="subtle">— ${d.length} différence(s)</span>
+   <table style="width:100%;font-size:12px;margin-top:4px"><tr><th style="text-align:left">Élément</th><th style="text-align:left">Ce poste</th><th style="text-align:left">Supabase</th></tr>${rows}</table>
+   ${d.length > MAX ? `<div class="subtle" style="font-size:12px">… et ${d.length - MAX} autre(s) différence(s) non affichée(s).</div>` : ""}</div>`;
+        }
+        return `<div style="margin:6px 0"><b>${esc(name)}</b><table style="width:100%;font-size:12px;margin-top:4px"><tr><th style="text-align:left">Ce poste</th><th style="text-align:left">Supabase</th></tr><tr><td>${esc(cfVal(lv))}</td><td>${esc(cfVal(sv))}</td></tr></table></div>`;
+      }).join("");
+      const names = c.fields.map(k => "« " + (CF_FIELDS[k] || k) + " »").join(", ");
+      return `<div class="subtle" style="font-size:12px;margin:6px 0">Ce poste et Supabase ont modifié ${c.fields.length > 1 ? "les champs" : "le champ"} ${esc(names)} de façon différente. Seul${c.fields.length > 1 ? "s ces champs sont" : " ce champ est"} en conflit : le reste de l'enregistrement a été fusionné automatiquement. <b>La version Supabase est appliquée par défaut.</b></div>${blocks}`;
+    }
+
     /* ---- liste des conflits à valider ---- */
     function openConflicts() {
       if (!conflicts.length) { closeModal(); return; }
@@ -1256,12 +1311,12 @@
       const ALT = { edit: "Utiliser ma version locale", srvdel: "Supprimer", locdel: "Supprimer quand même" };
       const val = v => esc(JSON.stringify(v === undefined ? null : v));
       const rows = conflicts.map((c, i) => {
-        const detail = c.kind === "edit"
-          ? `<table style="width:100%;font-size:12px;margin:6px 0"><tr><th style="text-align:left">Champ</th><th style="text-align:left">Ce poste</th><th style="text-align:left">Supabase</th></tr>${c.fields.map(k => `<tr><td>${esc(k)}</td><td>${val(c.local[k])}</td><td>${val(c.server[k])}</td></tr>`).join("")}</table>`
-          : `<div class="subtle" style="font-size:12px;margin:6px 0;word-break:break-all">${esc(JSON.stringify(c.rec || {}).slice(0, 300))}</div>`;
-        return `<div style="background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px"><b>${esc(c.table)} · ${esc(c.id)}</b> — <span class="subtle">${T[c.kind]}</span>${detail}<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="resolveConflict(${i},false)">${KEEP[c.kind]}</button><button class="btn sm accent" onclick="resolveConflict(${i},true)">${ALT[c.kind]}</button></div></div>`;
+        const EXPL = { srvdel: "Cet enregistrement a été supprimé sur Supabase alors que vous l'avez modifié sur ce poste : il a été recréé.", locdel: "Cet enregistrement a été supprimé sur ce poste alors qu'il a été modifié sur Supabase : il a été restauré." };
+        const detail = c.kind === "edit" ? cfEditDetail(c)
+          : `<div class="subtle" style="font-size:12px;margin:6px 0">${EXPL[c.kind] || ""}</div><div class="subtle" style="font-size:12px;margin:6px 0;word-break:break-all">${esc(JSON.stringify(c.rec || {}).slice(0, 300))}</div>`;
+        return `<div style="background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px"><b>${esc(CF_TABLES[c.table] || c.table)}${c.id === "singleton" ? "" : " · " + esc(c.id)}</b> — <span class="subtle">${T[c.kind]}</span>${detail}<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="resolveConflict(${i},false)">${KEEP[c.kind]}</button><button class="btn sm accent" onclick="resolveConflict(${i},true)">${ALT[c.kind]}</button></div></div>`;
       }).join("");
-      openModal(`<h2 style="margin-bottom:6px">⚠ Conflits de synchronisation (${conflicts.length})</h2><p class="subtle" style="margin-bottom:12px">Le même enregistrement a été modifié sur deux postes. Rien n'est perdu : un choix par défaut a déjà été appliqué, vous pouvez le changer ici.</p>${rows}<div style="text-align:right"><button class="btn" onclick="closeModal()">Fermer</button></div>`);
+      openModal(`<h2 style="margin-bottom:6px">⚠ Conflits de synchronisation (${conflicts.length})</h2><p class="subtle" style="margin-bottom:12px">Un même enregistrement a été modifié en même temps sur ce poste et sur Supabase. Pour chaque conflit, seuls les éléments qui diffèrent sont affichés ci-dessous. Rien n'est perdu : un choix par défaut a déjà été appliqué (version Supabase), vous pouvez le garder ou prendre la version de ce poste.</p>${rows}<div style="text-align:right"><button class="btn" onclick="closeModal()">Fermer</button></div>`);
     }
     function resolveConflict(i, alt) {
       const c = conflicts[i]; if (!c) return;
@@ -2980,17 +3035,22 @@
       save(); render(); toast("Achat enregistré : " + fmt(montant) + " DA", "ok");
     }
     function fournOptions(selId) { return DB.tiers.filter(t => t.type === "F").map(f => `<option value="${f.tier_id}" ${String(f.tier_id) === String(selId) ? "selected" : ""}>${tierNom(f.tier_id)}</option>`).join(""); }
-    function factQtesStr(f) {
-      return (f.lignes || []).map(l => { const a = article(l.artId); return a ? esc(a.article) + " : " + fmt(l.qte) + (a.unite ? " " + esc(a.unite) : "") : ""; }).filter(Boolean).join("<br>");
+    function factQtesStr(f, detail, cat) {
+      return (f.lignes || []).map(l => {
+        const a = article(l.artId); if (!a || (cat && !hCatMatch(a, cat))) return "";
+        let cs = "";
+        if (detail && l.cuves) { const e = Object.keys(l.cuves).filter(k => Number(l.cuves[k]) > 0).sort((x, y) => x - y).map(k => "C" + k + ": " + fmt(l.cuves[k])); if (e.length) cs = " (" + e.join(" / ") + ")"; }
+        return esc(a.article) + " : " + fmt(l.qte) + (a.unite ? " " + esc(a.unite) : "") + cs;
+      }).filter(Boolean).join("<br>");
     }
-    function factHistTable() {
-      const q = state.factFilter.toLowerCase();
-      const fs = DB.factures.filter(f => { const s = (tierNom(f.fournisseurId) + " " + (f.numero || "") + " " + f.type).toLowerCase(); return s.includes(q); }).slice().reverse();
+    function factHistTable(withCat) {
+      const q = state.factFilter.toLowerCase(), cat = withCat ? (state.factCat || "") : "";
+      const fs = DB.factures.filter(f => { const s = (tierNom(f.fournisseurId) + " " + (f.numero || "") + " " + f.type).toLowerCase(); return s.includes(q) && (!cat || (f.lignes || []).some(l => { const a = article(l.artId); return a && hCatMatch(a, cat); })); }).slice().reverse();
       return `<table class="sortable" data-sk="fact"><thead><tr><th>Date</th><th>Type</th><th>Fournisseur</th><th>N°</th><th>Chèque</th><th>Qtés</th><th class="num">Montant</th><th class="num">Réglé</th><th class="num">Reste</th><th>Mode</th></tr></thead><tbody>
  ${fs.map(f => {
         const cheques = (f.paiements || []).filter(p => p.cheque).map(p => esc(p.cheque)).join(", ") || (f.cheque ? esc(f.cheque) : "—");
         return `<tr ondblclick="openFactureEdit('${f.id}')" style="cursor:pointer" title="Dl_clic pour modifier"><td>${frDate(f.date)}</td><td>${f.type === "carburant" ? "⛽ Carburant" : "📦 Divers"}</td><td>${tierNom(f.fournisseurId)}</td>
-  <td>${esc(f.numero || "—")}</td><td style="color:var(--accent2);font-size:12px">${cheques}</td><td style="font-size:12px">${factQtesStr(f)}</td><td class="num">${fmt(f.montant)}</td><td class="num">${fmt(f.regle)}</td>
+  <td>${esc(f.numero || "—")}</td><td style="color:var(--accent2);font-size:12px">${cheques}</td><td style="font-size:12px">${factQtesStr(f, withCat, cat)}</td><td class="num">${fmt(f.montant)}</td><td class="num">${fmt(f.regle)}</td>
   <td class="num" style="color:${f.montant - f.regle > 0 ? "var(--red)" : "var(--green)"}">${fmt(f.montant - f.regle)}</td>
   <td>${f.mode === "credit" ? '<span class="pill warn">Crédit</span>' : '<span class="pill ok">Cash</span>'}</td></tr>`;
       }).join("") || `<tr><td colspan="10" class="subtle">Aucune facture.</td></tr>`}</tbody></table>`;
@@ -3216,8 +3276,11 @@
   </div>
  </div>
  <div class="card"><h2>🧾 Historique des factures & achats</h2>
-  <div class="field" style="margin-bottom:10px;max-width:280px"><label>Recherche (fournisseur, n°, type)</label><input value="${esc(state.factFilter)}" oninput="state.factFilter=this.value;$('factHistWrap').innerHTML=factHistTable()"></div>
-  <div id="factHistWrap">${factHistTable()}</div>
+  <div class="row" style="gap:12px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end">
+   <div class="field" style="min-width:240px"><label>Recherche (fournisseur, n°, type)</label><input value="${esc(state.factFilter)}" oninput="state.factFilter=this.value;$('factHistWrap').innerHTML=factHistTable(true)"></div>
+   <div class="field"><label>Catégorie</label><select onchange="state.factCat=this.value;$('factHistWrap').innerHTML=factHistTable(true)">${hCatOpts(state.factCat)}</select></div>
+  </div>
+  <div id="factHistWrap">${factHistTable(true)}</div>
  </div>`;
     }
     /* ================= VUE : ÉTAT ACHATS / CA (PÉRIODE DU/AU) ================= */
@@ -3474,6 +3537,15 @@
     /* ================= VUE : STOCK & HISTORIQUE ================= */
     /* Stock & Mouvements : une seule carte, deux vues (Mouvements / Stock par article), filtres communs.
        Lubrifiants : achat -> magasin, vente -> vitrine. */
+    /* Filtre catégorie : id de catégorie, ou "carb_eg" (Essence/Gasoil) / "carb_gpl" (GPL) */
+    const hCatMatch = (a, cat) => !cat || (cat === "carb_eg" ? [1, 2].includes(Number(a.type_a)) : cat === "carb_gpl" ? Number(a.type_a) === 3 : String(a.id_cat) === String(cat));
+    /* Catégorie carburant (Carburant, Essence/Gasoil, GPL) => mouvements regroupés par facture */
+    const hGrouped = () => { const c = state.stkCat || ""; if (c === "carb_eg" || c === "carb_gpl") return true; const k = DB.categories.find(x => String(x.cat_id) === String(c)); return !!(k && /carburant/i.test(k.cat)); };
+    const hCatOpts = cur => '<option value="">Toutes</option>' + DB.categories.map(c => {
+      const o = (v, l) => `<option value="${v}" ${String(cur || "") === String(v) ? "selected" : ""}>${l}</option>`;
+      return o(c.cat_id, esc(c.cat)) + (/carburant/i.test(c.cat) ? o("carb_eg", "&nbsp;&nbsp;↳ Essence / Gasoil") + o("carb_gpl", "&nbsp;&nbsp;↳ GPL") : "");
+    }).join("");
+    const hCuveLbl = md => { const c = CUVES.find(x => x.id === Number(md.cuve)); return c ? c.label : ""; };
     const hRaw = id => { const t = tier(id); return t ? (t.nom + " " + (t.prenom || "")).trim() : ""; };
     const hStockOf = a => [1, 2, 3].includes(Number(a.type_a)) ? calcStockCarburant(a.type_a) : qsTot(a);
     /* Stock après chaque mouvement (total magasin + vitrine pour les lubrifiants), recalculé à rebours depuis le stock actuel.
@@ -3499,6 +3571,7 @@
       const q = (state.histFilter || "").toLowerCase(), sf = state.histSens || "", loc = state.stkLoc || "tous", cat = state.stkCat || "";
       const from = state.hFrom || "", to = state.hTo || "";
       const ops = new Map(DB.mouvements.map(m => [String(m.operation_id), m]));
+      const facs = new Map(DB.factures.map(f => [String(f.operation_id), f]));
       const rows = [];
       DB.mouv_detail.forEach(md => {
         const o = ops.get(String(md.id_operation)); if (!o) return;
@@ -3506,22 +3579,45 @@
         if (sf && o.sens !== sf) return;
         if (from && o.date_m < from) return;
         if (to && o.date_m > to) return;
-        if (cat && String(a.id_cat) !== String(cat)) return;
+        if (!hCatMatch(a, cat)) return;
         const isLub = Number(a.type_a) === 0;
         if (loc !== "tous") { if (!isLub) return; if (loc === "mag" && o.sens !== "E") return; if (loc === "vit" && o.sens !== "S") return; }
-        const tx = hRaw(o.id_tier);
-        if (q && !(a.article + " " + tx + " " + o.date_m).toLowerCase().includes(q)) return;
+        const tx = hRaw(o.id_tier), fnum = (facs.get(String(o.operation_id)) || {}).numero || "";
+        if (q && !(a.article + " " + tx + " " + o.date_m + " " + fnum).toLowerCase().includes(q)) return;
         const qte = Number(md.quantite) || 0, pu = Number(md.prix_u) || 0;
-        rows.push({ d: o.date_m, sens: o.sens, tier: o.id_tier, tierTxt: tx, art: a, q: qte, pu: pu, mt: qte * pu, stock: apres.get(md), empl: isLub ? (o.sens === "E" ? "Magasin" : "Vitrine") : "" });
+        const isFuel = [1, 2, 3].includes(Number(a.type_a));
+        const empl = isLub ? (o.sens === "E" ? "Magasin" : "Vitrine") : (isFuel && o.sens === "E" && [1, 2].includes(Number(a.type_a)) ? (hCuveLbl(md) || "Non répartie") : "");
+        rows.push({ d: o.date_m, sens: o.sens, tier: o.id_tier, tierTxt: tx, art: a, q: qte, pu: pu, mt: qte * pu, stock: apres.get(md), empl: empl, fuel: isFuel, op: o.operation_id, num: fnum, cuve: md.cuve });
       });
       rows.sort((a, b) => b.d.localeCompare(a.d));
       return rows;
+    }
+    /* Regroupe les lignes carburant par facture : une ligne par facture, détail dans la cellule Qté, montant de la facture */
+    function histFactRows() {
+      const g = new Map();
+      histRows().forEach(r => {
+        const k = String(r.op); if (!g.has(k)) g.set(k, { d: r.d, sens: r.sens, tier: r.tier, tierTxt: r.tierTxt, num: r.num, mt: 0, arts: new Map() });
+        const x = g.get(k); x.mt += r.mt;
+        const ak = String(r.art.art_id); if (!x.arts.has(ak)) x.arts.set(ak, { art: r.art, q: 0, cuves: new Map() });
+        const y = x.arts.get(ak); y.q += r.q;
+        if (r.cuve) y.cuves.set(Number(r.cuve), (y.cuves.get(Number(r.cuve)) || 0) + r.q);
+      });
+      const out = [];
+      g.forEach(x => {
+        const det = [...x.arts.values()].sort((a, b) => Number(a.art.type_a) - Number(b.art.type_a)).map(y => {
+          const cs = [...y.cuves.entries()].sort((a, b) => a[0] - b[0]).map(e => "C" + e[0] + ": " + fmt(e[1]));
+          return { txt: y.art.article + " : " + fmt(y.q) + (cs.length ? " (" + cs.join(" / ") + ")" : "") };
+        });
+        out.push({ d: x.d, sens: x.sens, tier: x.tier, tierTxt: x.tierTxt, num: x.num, mt: x.mt, det: det });
+      });
+      out.sort((a, b) => b.d.localeCompare(a.d));
+      return out;
     }
     function stockRows() {
       const q = (state.histFilter || "").toLowerCase(), loc = state.stkLoc || "tous", cat = state.stkCat || "";
       return DB.articles.filter(a => {
         if (q && !a.article.toLowerCase().includes(q)) return false;
-        if (cat && String(a.id_cat) !== String(cat)) return false;
+        if (!hCatMatch(a, cat)) return false;
         if (loc !== "tous") { if (Number(a.type_a) !== 0) return false; if ((loc === "mag" ? Number(a.qs) || 0 : qsVit(a)) === 0) return false; }
         else if (state.hHideZero && hStockOf(a) === 0) return false;
         return true;
@@ -3535,7 +3631,7 @@
   <div class="row" style="gap:12px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end">
    <div class="field" style="min-width:220px"><label>Recherche ${v === "mv" ? "(article, tiers, date aaaa-mm-jj)" : "(article)"}</label><input value="${esc(state.histFilter || "")}" oninput="state.histFilter=this.value;hRefresh()"></div>
    <div class="field"><label>Emplacement</label><select onchange="state.stkLoc=this.value;hRefresh()">${opt(loc, "tous", "Tous (magasin + vitrine)")}${opt(loc, "mag", "Magasin")}${opt(loc, "vit", "Vitrine")}</select></div>
-   <div class="field"><label>Catégorie</label><select onchange="state.stkCat=this.value;hRefresh()"><option value="">Toutes</option>${DB.categories.map(c => opt(state.stkCat || "", c.cat_id, esc(c.cat))).join("")}</select></div>
+   <div class="field"><label>Catégorie</label><select onchange="state.stkCat=this.value;hRefresh()">${hCatOpts(state.stkCat)}</select></div>
    ${v === "mv" ? `<div class="field"><label>Sens</label><select onchange="state.histSens=this.value;hRefresh()">${opt(state.histSens || "", "", "Tout")}${opt(state.histSens || "", "E", "Achats")}${opt(state.histSens || "", "S", "Ventes")}</select></div>
    <div class="field"><label>Du</label><input type="date" value="${state.hFrom || ""}" onchange="state.hFrom=this.value;hRefresh()"></div>
    <div class="field"><label>Au</label><input type="date" value="${state.hTo || ""}" onchange="state.hTo=this.value;hRefresh()"></div>`
@@ -3546,14 +3642,23 @@
     }
     function hTable() {
       const v = state.hView || "mv", loc = state.stkLoc || "tous";
+      if (v === "mv" && hGrouped()) {
+        const rows = histFactRows();
+        const tE = rows.filter(r => r.sens === "E").reduce((s, r) => s + r.mt, 0), tS = rows.filter(r => r.sens === "S").reduce((s, r) => s + r.mt, 0);
+        return `<p class="subtle" style="margin:0 0 8px">${rows.length} facture(s)${rows.length > 300 ? " (300 premières affichées, exportez en CSV pour tout avoir)" : ""} — Achats : <b>${fmt(tE)} DA</b>${tS ? ` · Ventes : <b>${fmt(tS)} DA</b>` : ""}</p>
+ <table class="sortable" data-sk="hist"><tr><th>Date</th><th>Sens</th><th>N° Facture</th><th>Tiers</th><th>Qté (détail)</th><th class="num">Mt facture</th></tr>
+ ${rows.slice(0, 300).map(r => `<tr><td>${frDate(r.d)}</td>
+  <td>${r.sens === "E" ? '<span class="pill ok">Achat</span>' : '<span class="pill mid">Vente</span>'}</td>
+  <td>${esc(r.num) || "—"}</td><td>${tierNom(r.tier)}</td><td>${r.det.map(x => esc(x.txt)).join("<br>")}</td><td class="num">${fmt(r.mt)}</td></tr>`).join("") || `<tr><td colspan="6" class="subtle">Aucune facture.</td></tr>`}</table>`;
+      }
       if (v === "mv") {
         const rows = histRows();
         const tE = rows.filter(r => r.sens === "E").reduce((s, r) => s + r.mt, 0), tS = rows.filter(r => r.sens === "S").reduce((s, r) => s + r.mt, 0);
         return `<p class="subtle" style="margin:0 0 8px">${rows.length} ligne(s)${rows.length > 300 ? " (300 premières affichées, exportez en CSV pour tout avoir)" : ""} — Achats : <b>${fmt(tE)} DA</b> · Ventes : <b>${fmt(tS)} DA</b></p>
- <table class="sortable" data-sk="hist"><tr><th>Date</th><th>Sens</th><th>Emplacement</th><th>Tiers</th><th>Article</th><th class="num">Qté</th><th class="num" title="Stock total de l'article après ce mouvement (magasin + vitrine)">Stock après</th><th class="num">PU</th><th class="num">Mt</th></tr>
+ <table class="sortable" data-sk="hist"><tr><th>Date</th><th>Sens</th><th>Emplacement / Cuve</th><th>Tiers</th><th>Article</th><th class="num">Qté</th><th class="num" title="Stock total de l'article après ce mouvement (magasin + vitrine)">Stock après</th><th class="num">PU</th><th class="num">Mt</th></tr>
  ${rows.slice(0, 300).map(r => `<tr><td>${frDate(r.d)}</td>
   <td>${r.sens === "E" ? '<span class="pill ok">Achat</span>' : '<span class="pill mid">Vente</span>'}</td>
-  <td>${r.empl || "—"}</td><td>${tierNom(r.tier)}</td><td>${esc(r.art.article)}</td><td class="num">${fmt(r.q)}</td>
+  <td>${r.empl || "—"}</td><td>${tierNom(r.tier)}</td><td>${esc(r.art.article)}</td><td class="num">${r.fuel ? esc(r.art.article) + " : " + fmt(r.q) : fmt(r.q)}</td>
   <td class="num">${r.stock === undefined ? "—" : "<b>" + fmt(r.stock) + "</b>"}</td>
   <td class="num">${fmt(r.pu)}</td><td class="num">${fmt(r.mt)}</td></tr>`).join("") || `<tr><td colspan="9" class="subtle">Aucun mouvement.</td></tr>`}</table>`;
       }
@@ -3578,8 +3683,10 @@
       const v = state.hView || "mv", loc = state.stkLoc || "tous";
       const c = x => '"' + String(x === undefined || x === null ? "" : x).replace(/"/g, '""') + '"';
       let lines;
-      if (v === "mv") {
-        lines = [["Date", "Sens", "Emplacement", "Tiers", "Article", "Qté", "Stock après", "PU", "Montant"]].concat(histRows().map(r => [r.d, r.sens === "E" ? "Achat" : "Vente", r.empl, r.tierTxt, r.art.article, r.q, r.stock === undefined ? "" : r.stock, r.pu, r.mt]));
+      if (v === "mv" && hGrouped()) {
+        lines = [["Date", "Sens", "N° Facture", "Tiers", "Qté (détail)", "Mt facture"]].concat(histFactRows().map(r => [r.d, r.sens === "E" ? "Achat" : "Vente", r.num, r.tierTxt, r.det.map(x => x.txt).join(" | "), r.mt]));
+      } else if (v === "mv") {
+        lines = [["Date", "Sens", "Emplacement/Cuve", "Tiers", "Article", "Qté", "Stock après", "PU", "Montant"]].concat(histRows().map(r => [r.d, r.sens === "E" ? "Achat" : "Vente", r.empl, r.tierTxt, r.art.article, r.q, r.stock === undefined ? "" : r.stock, r.pu, r.mt]));
       } else {
         lines = [["Article", "Catégorie", "Magasin", "Vitrine", "Total", "PA", "PV"]].concat(stockRows().map(a => [a.article, (DB.categories.find(x => String(x.cat_id) === String(a.id_cat)) || {}).cat || "", Number(a.type_a) === 0 ? Number(a.qs) || 0 : "", Number(a.type_a) === 0 ? qsVit(a) : "", [1, 2, 3].includes(Number(a.type_a)) ? calcStockCarburant(a.type_a) : qsTot(a), a.pa, a.pv]));
       }
