@@ -2033,6 +2033,29 @@
       DB.indexs.forEach(r => s.add(r.index_date)); DB.mouvements.forEach(m => s.add(m.date_m)); DB.agent_detail.forEach(a => s.add(a.date_agent));
       return [...s].sort();
     }
+    /* ---- Appui long sur la date → recherche dans le Suivi de Caisse (Date / Libellé / Mt, date décroissante) ---- */
+    let _lpT = null;
+    function lpCancel() { if (_lpT) { clearTimeout(_lpT); _lpT = null; } }
+    function lpStart() {
+      lpCancel();
+      _lpT = setTimeout(() => { _lpT = null; sel.jsearch = true; sel.jq = ""; render(); setTimeout(() => { const i = $("jqInput"); if (i) i.focus(); }, 30); }, 600);
+    }
+    function caisseSearchHtml() {
+      const q = (sel.jq || "").trim().toLowerCase(), qd = q.replace(/\s/g, "");
+      const norm = n => fmt(n).replace(/[\s\u00a0\u202f]/g, "");
+      const all = getLedger("caisse").slice().reverse().sort((a, b) => b.date.localeCompare(a.date));
+      const rows = all.filter(l => {
+        if (!q) return true;
+        const txt = (l.libelle + " " + (l.obs && l.obs !== "Aucune" ? l.obs : "")).toLowerCase();
+        return txt.includes(q) || (qd !== "" && (String(Math.round(l.montant)).includes(qd) || norm(l.montant).includes(qd)));
+      });
+      const tot = rows.reduce((s, l) => s + (l.sens === "E" ? l.montant : -l.montant), 0);
+      return `<p class="subtle" style="margin-bottom:8px">${rows.length} ligne(s)${rows.length > 300 ? " (300 premières affichées)" : ""} — Total : <b>${fmt(tot)} DA</b></p>
+   <table style="width:100%">
+    <thead><tr style="background:rgba(255,255,255,0.04)"><th style="padding:6px 4px">Date</th><th style="padding:6px 4px">Libellé</th><th class="num" style="padding:6px 4px">Mt</th></tr></thead>
+    <tbody>${rows.slice(0, 300).map(l => `<tr><td style="padding:4px;font-size:13px;white-space:nowrap">${frDate(l.date)}</td><td style="padding:4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}</td><td class="num" style="padding:4px;font-size:13px;color:${l.sens === "E" ? "var(--green)" : "var(--red)"}">${l.sens === "E" ? "+" : "−"} ${fmt(l.montant)} DA</td></tr>`).join("") || `<tr><td colspan="3" class="subtle" style="padding:8px">Aucun résultat.</td></tr>`}</tbody>
+   </table>`;
+    }
     function vJournal() {
       const ds = allDates().slice().reverse(); // décroissant
       const today = todayISO();
@@ -2177,9 +2200,12 @@
    <h1 style="font-size:18px;font-weight:700;margin:0;color:var(--ink)">Tableau de bord</h1>
   </div>
   <div class="row" style="gap:10px;flex-wrap:wrap">
-   <select style="padding:8px 12px;border-radius:9px;background:#fff;border:1px solid var(--accent);color:#000;font-size:14px;font-weight:600;min-width:140px;cursor:pointer" onchange="sel.jdate=this.value;render()">
+   ${sel.jsearch ? `<input id="jqInput" type="text" placeholder="🔍 Libellé ou montant…" value="${esc(sel.jq || "")}" oninput="sel.jq=this.value;$('caisseSearchWrap').innerHTML=caisseSearchHtml()" style="padding:8px 12px;border-radius:9px;background:#fff;border:1px solid var(--accent);color:#000;font-size:14px;font-weight:600;min-width:200px" autocomplete="off">
+   <button class="btn" onclick="sel.jsearch=false;sel.jq='';render()" title="Revenir au sélecteur de date">✕</button>`
+   : `<select title="Appui long : recherche dans la caisse" style="padding:8px 12px;border-radius:9px;background:#fff;border:1px solid var(--accent);color:#000;font-size:14px;font-weight:600;min-width:140px;cursor:pointer" onchange="sel.jdate=this.value;render()"
+    onmousedown="lpStart()" onmouseup="lpCancel()" onmouseleave="lpCancel()" ontouchstart="lpStart()" ontouchend="lpCancel()" ontouchmove="lpCancel()" ontouchcancel="lpCancel()" oncontextmenu="return false">
     ${ds.map(x => `<option value="${x}" ${x === d ? "selected" : ""}>${frDate(x)}</option>`).join("")}
-   </select>
+   </select>`}
    <button class="btn" style="background:var(--red);color:#fff;border:none;display:flex;align-items:center;gap:6px" onclick="window.print()">📄 PDF</button>
   </div>
  </div>
@@ -2195,6 +2221,26 @@
     <div class="stat-col">
      <div class="stat red"><div class="v">${fmt(resteCarburant)}</div><div class="l">Crédit Carburant (En attente)<br><span style="font-weight:bold;opacity:0.85">G/E: ${fmt(resteValeurGE)} | GPL: ${fmt(resteValeurGPL)}</span></div></div>
     </div>
+   </div>
+
+   <!-- SUIVI CAISSE -->
+   <div class="card" style="margin-bottom:12px">
+    <h2 style="margin-top:0;margin-bottom:10px">💵 Suivi de Caisse${sel.jsearch ? ' <span class="subtle">— recherche (toutes les dates)</span>' : ''}</h2>
+    ${sel.jsearch ? `<div id="caisseSearchWrap">${caisseSearchHtml()}</div>` : `
+    <table style="width:100%;max-width:480px">
+     <tr>
+      <td style="padding:7px 4px">Solde initial (report)</td>
+      <td class="num" style="padding:7px 4px;font-weight:700">${fmt(soldePrec)} DA</td>
+     </tr>
+     <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Carburant</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(tvCarb)} DA</td></tr>
+     ${autresEncDetails.map(l => `<tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` (${esc(l.obs)})` : ""}</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(l.montant)} DA</td></tr>`).join("")}
+     ${Object.keys(parType).sort().map(t => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${agentLib(t)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(parType[t])} DA</td></tr>`).join("")}
+     ${paiementsDetails.map(l => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${esc(l.libelle)}${l.obs ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td></tr>`).join("")}
+     <tr style="border-top:2px solid var(--border)">
+      <td style="padding:10px 4px;font-weight:700;font-size:15px">Solde final caisse</td>
+      <td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:${soldeFin >= 0 ? "var(--accent)" : "var(--red)"}">${fmt(soldeFin)} DA</td>
+     </tr>
+    </table>`}
    </div>
 
    <!-- CARBURANT -->
@@ -2218,25 +2264,6 @@
        <td class="num" style="padding:8px 4px">—</td>
       </tr>
      </tbody>
-    </table>
-   </div>
-
-   <!-- SUIVI CAISSE -->
-   <div class="card" style="margin-bottom:12px">
-    <h2 style="margin-top:0;margin-bottom:10px">💵 Suivi de Caisse</h2>
-    <table style="width:100%;max-width:480px">
-     <tr>
-      <td style="padding:7px 4px">Solde initial (report)</td>
-      <td class="num" style="padding:7px 4px;font-weight:700">${fmt(soldePrec)} DA</td>
-     </tr>
-     <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Carburant</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(tvCarb)} DA</td></tr>
-     ${autresEncDetails.map(l => `<tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` (${esc(l.obs)})` : ""}</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(l.montant)} DA</td></tr>`).join("")}
-     ${Object.keys(parType).sort().map(t => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${agentLib(t)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(parType[t])} DA</td></tr>`).join("")}
-     ${paiementsDetails.map(l => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${esc(l.libelle)}${l.obs ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td></tr>`).join("")}
-     <tr style="border-top:2px solid var(--border)">
-      <td style="padding:10px 4px;font-weight:700;font-size:15px">Solde final caisse</td>
-      <td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:${soldeFin >= 0 ? "var(--accent)" : "var(--red)"}">${fmt(soldeFin)} DA</td>
-     </tr>
     </table>
    </div>
 
