@@ -3545,6 +3545,8 @@
       const o = (v, l) => `<option value="${v}" ${String(cur || "") === String(v) ? "selected" : ""}>${l}</option>`;
       return o(c.cat_id, esc(c.cat)) + (/carburant/i.test(c.cat) ? o("carb_eg", "&nbsp;&nbsp;↳ Essence / Gasoil") + o("carb_gpl", "&nbsp;&nbsp;↳ GPL") : "");
     }).join("");
+    /* N° de chèque(s) d'une facture : paiements[].cheque, sinon f.cheque */
+    const hCheques = f => { const l = [...new Set((f.paiements || []).map(p => p.cheque).filter(Boolean))]; return l.length ? l.join(", ") : (f.cheque || ""); };
     const hCuveLbl = md => { const c = CUVES.find(x => x.id === Number(md.cuve)); return c ? c.label : ""; };
     const hRaw = id => { const t = tier(id); return t ? (t.nom + " " + (t.prenom || "")).trim() : ""; };
     const hStockOf = a => [1, 2, 3].includes(Number(a.type_a)) ? calcStockCarburant(a.type_a) : qsTot(a);
@@ -3582,12 +3584,13 @@
         if (!hCatMatch(a, cat)) return;
         const isLub = Number(a.type_a) === 0;
         if (loc !== "tous") { if (!isLub) return; if (loc === "mag" && o.sens !== "E") return; if (loc === "vit" && o.sens !== "S") return; }
-        const tx = hRaw(o.id_tier), fnum = (facs.get(String(o.operation_id)) || {}).numero || "";
-        if (q && !(a.article + " " + tx + " " + o.date_m + " " + fnum).toLowerCase().includes(q)) return;
+        const fac = facs.get(String(o.operation_id)) || {}, tx = hRaw(o.id_tier), fnum = fac.numero || "";
+        const chq = hCheques(fac);
+        if (q && !(a.article + " " + tx + " " + o.date_m + " " + fnum + " " + chq).toLowerCase().includes(q)) return;
         const qte = Number(md.quantite) || 0, pu = Number(md.prix_u) || 0;
         const isFuel = [1, 2, 3].includes(Number(a.type_a));
         const empl = isLub ? (o.sens === "E" ? "Magasin" : "Vitrine") : (isFuel && o.sens === "E" && [1, 2].includes(Number(a.type_a)) ? (hCuveLbl(md) || "Non répartie") : "");
-        rows.push({ d: o.date_m, sens: o.sens, tier: o.id_tier, tierTxt: tx, art: a, q: qte, pu: pu, mt: qte * pu, stock: apres.get(md), empl: empl, fuel: isFuel, op: o.operation_id, num: fnum, cuve: md.cuve });
+        rows.push({ d: o.date_m, sens: o.sens, tier: o.id_tier, tierTxt: tx, art: a, q: qte, pu: pu, mt: qte * pu, stock: apres.get(md), empl: empl, fuel: isFuel, op: o.operation_id, num: fnum, chq: chq, cuve: md.cuve });
       });
       rows.sort((a, b) => b.d.localeCompare(a.d));
       return rows;
@@ -3596,7 +3599,7 @@
     function histFactRows() {
       const g = new Map();
       histRows().forEach(r => {
-        const k = String(r.op); if (!g.has(k)) g.set(k, { d: r.d, sens: r.sens, tier: r.tier, tierTxt: r.tierTxt, num: r.num, mt: 0, arts: new Map() });
+        const k = String(r.op); if (!g.has(k)) g.set(k, { d: r.d, sens: r.sens, tier: r.tier, tierTxt: r.tierTxt, num: r.num, chq: r.chq, mt: 0, arts: new Map() });
         const x = g.get(k); x.mt += r.mt;
         const ak = String(r.art.art_id); if (!x.arts.has(ak)) x.arts.set(ak, { art: r.art, q: 0, cuves: new Map() });
         const y = x.arts.get(ak); y.q += r.q;
@@ -3608,7 +3611,7 @@
           const cs = [...y.cuves.entries()].sort((a, b) => a[0] - b[0]).map(e => "C" + e[0] + ": " + fmt(e[1]));
           return { txt: y.art.article + " : " + fmt(y.q) + (cs.length ? " (" + cs.join(" / ") + ")" : "") };
         });
-        out.push({ d: x.d, sens: x.sens, tier: x.tier, tierTxt: x.tierTxt, num: x.num, mt: x.mt, det: det });
+        out.push({ d: x.d, sens: x.sens, tier: x.tier, tierTxt: x.tierTxt, num: x.num, chq: x.chq, mt: x.mt, det: det });
       });
       out.sort((a, b) => b.d.localeCompare(a.d));
       return out;
@@ -3629,7 +3632,7 @@
       const opt = (cur, val, lbl) => `<option value="${val}" ${String(cur) === String(val) ? "selected" : ""}>${lbl}</option>`;
       return `<div class="tabs" style="margin:0 0 10px">${tab("mv", "🧾 Mouvements")}${tab("stk", "📦 Stock par article")}</div>
   <div class="row" style="gap:12px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end">
-   <div class="field" style="min-width:220px"><label>Recherche ${v === "mv" ? "(article, tiers, date aaaa-mm-jj)" : "(article)"}</label><input value="${esc(state.histFilter || "")}" oninput="state.histFilter=this.value;hRefresh()"></div>
+   <div class="field" style="min-width:300px"><label>Recherche ${v === "mv" ? "(article, tiers, n° facture, chèque, date aaaa-mm-jj)" : "(article)"}</label><input value="${esc(state.histFilter || "")}" oninput="state.histFilter=this.value;hRefresh()"></div>
    <div class="field"><label>Emplacement</label><select onchange="state.stkLoc=this.value;hRefresh()">${opt(loc, "tous", "Tous (magasin + vitrine)")}${opt(loc, "mag", "Magasin")}${opt(loc, "vit", "Vitrine")}</select></div>
    <div class="field"><label>Catégorie</label><select onchange="state.stkCat=this.value;hRefresh()">${hCatOpts(state.stkCat)}</select></div>
    ${v === "mv" ? `<div class="field"><label>Sens</label><select onchange="state.histSens=this.value;hRefresh()">${opt(state.histSens || "", "", "Tout")}${opt(state.histSens || "", "E", "Achats")}${opt(state.histSens || "", "S", "Ventes")}</select></div>
@@ -3646,10 +3649,11 @@
         const rows = histFactRows();
         const tE = rows.filter(r => r.sens === "E").reduce((s, r) => s + r.mt, 0), tS = rows.filter(r => r.sens === "S").reduce((s, r) => s + r.mt, 0);
         return `<p class="subtle" style="margin:0 0 8px">${rows.length} facture(s)${rows.length > 300 ? " (300 premières affichées, exportez en CSV pour tout avoir)" : ""} — Achats : <b>${fmt(tE)} DA</b>${tS ? ` · Ventes : <b>${fmt(tS)} DA</b>` : ""}</p>
- <table class="sortable" data-sk="hist"><tr><th>Date</th><th>Sens</th><th>N° Facture</th><th>Tiers</th><th>Qté (détail)</th><th class="num">Mt facture</th></tr>
+ <table class="sortable" data-sk="hist"><tr><th>Date</th><th>Sens</th><th>N° Facture</th><th>Tiers</th><th>Qté (détail)</th><th>Chèque</th><th class="num">Mt facture</th></tr>
  ${rows.slice(0, 300).map(r => `<tr><td>${frDate(r.d)}</td>
   <td>${r.sens === "E" ? '<span class="pill ok">Achat</span>' : '<span class="pill mid">Vente</span>'}</td>
-  <td>${esc(r.num) || "—"}</td><td>${tierNom(r.tier)}</td><td>${r.det.map(x => esc(x.txt)).join("<br>")}</td><td class="num">${fmt(r.mt)}</td></tr>`).join("") || `<tr><td colspan="6" class="subtle">Aucune facture.</td></tr>`}</table>`;
+  <td>${esc(r.num) || "—"}</td><td>${tierNom(r.tier)}</td><td>${r.det.map(x => esc(x.txt)).join("<br>")}</td><td style="color:var(--accent2);font-size:12px">${esc(r.chq) || "—"}</td><td class="num">${fmt(r.mt)}</td></tr>`).join("") || `<tr><td colspan="7" class="subtle">Aucune facture.</td></tr>`}
+ <tfoot><tr style="border-top:2px solid var(--line);font-weight:800"><td colspan="6">TOTAL achats${(state.histFilter || "").trim() ? " — recherche « " + esc(state.histFilter.trim()) + " »" : ""} (${rows.length} facture(s))</td><td class="num">${fmt(rows.reduce((s, r) => s + r.mt, 0))}</td></tr></tfoot></table>`;
       }
       if (v === "mv") {
         const rows = histRows();
@@ -3684,7 +3688,7 @@
       const c = x => '"' + String(x === undefined || x === null ? "" : x).replace(/"/g, '""') + '"';
       let lines;
       if (v === "mv" && hGrouped()) {
-        lines = [["Date", "Sens", "N° Facture", "Tiers", "Qté (détail)", "Mt facture"]].concat(histFactRows().map(r => [r.d, r.sens === "E" ? "Achat" : "Vente", r.num, r.tierTxt, r.det.map(x => x.txt).join(" | "), r.mt]));
+        lines = [["Date", "Sens", "N° Facture", "Tiers", "Qté (détail)", "Chèque", "Mt facture"]].concat(histFactRows().map(r => [r.d, r.sens === "E" ? "Achat" : "Vente", r.num, r.tierTxt, r.det.map(x => x.txt).join(" | "), r.chq, r.mt]));
       } else if (v === "mv") {
         lines = [["Date", "Sens", "Emplacement/Cuve", "Tiers", "Article", "Qté", "Stock après", "PU", "Montant"]].concat(histRows().map(r => [r.d, r.sens === "E" ? "Achat" : "Vente", r.empl, r.tierTxt, r.art.article, r.q, r.stock === undefined ? "" : r.stock, r.pu, r.mt]));
       } else {
@@ -3813,21 +3817,31 @@
     /* ================= VUE : ARTICLES ================= */
     function artTable() {
       const q = state.artFilter.toLowerCase();
-      const arts = DB.articles.filter(a => a.article.toLowerCase().includes(q));
+      const loc = state.artLoc || "tous";
+      const arts = DB.articles.filter(a => {
+        if (!a.article.toLowerCase().includes(q)) return false;
+        if (loc === "tous") return true;
+        if (Number(a.type_a) !== 0) return false; /* magasin / vitrine : lubrifiants uniquement */
+        return (loc === "mag" ? Number(a.qs) || 0 : qsVit(a)) !== 0;
+      });
       return `<table class="sortable" data-sk="art"><tr><th>Article</th><th>Catégorie</th><th>Type</th><th>Unité</th><th class="num">Stock</th><th class="num">PA</th><th class="num">PV</th><th>Actif</th></tr>
  ${arts.map(a => `<tr ondblclick="openArticleModal(${a.art_id})" style="cursor:pointer" title="Dl_clic pour modifier"><td>${esc(a.article)}</td><td>${catName(a.id_cat)}</td>
   <td>${{ 0: "Lubrifiant", 9: "Gaz butane", 1: "Gasoil", 2: "Essence", 3: "GPL", 4: "Café" }[a.type_a] || "—"}</td>
-  <td>${esc(a.unite)}</td><td class="num">${fmt(qsTot(a))}${Number(a.type_a) === 0 ? ' <span class="subtle">(Mag ' + fmt(a.qs) + ' / Vit ' + fmt(qsVit(a)) + ')</span>' : ""}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
+  <td>${esc(a.unite)}</td><td class="num">${loc === "vit" ? fmt(qsVit(a)) : loc === "mag" ? fmt(a.qs) : fmt(qsTot(a)) + (Number(a.type_a) === 0 ? ' <span class="subtle">(Mag ' + fmt(a.qs) + ' / Vit ' + fmt(qsVit(a)) + ')</span>' : "")}</td><td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
   <td><button class="btn sm" onclick="event.stopPropagation();toggleArt(${a.art_id})">${Number(a.actif) ? "✅" : "⛔"}</button></td>
   <td style="white-space:nowrap"><button class="btn sm" onclick="event.stopPropagation();openArticleModal(${a.art_id})">✏️</button>
-  <button class="btn sm red" onclick="event.stopPropagation();delArticle(${a.art_id})">🗑</button></td></tr>`).join("")}</table>`;
+  <button class="btn sm red" onclick="event.stopPropagation();delArticle(${a.art_id})">🗑</button></td></tr>`).join("") || `<tr><td colspan="9" class="subtle">Aucun article.</td></tr>`}</table>`;
     }
     function vArticles() {
       return `
  <div class="card"><h2>🛢️ Articles</h2>
   <div class="row between" style="margin-bottom:10px">
-   <div class="field" style="min-width:220px"><label>Recherche</label><input value="${esc(state.artFilter)}" oninput="state.artFilter=this.value;$('artWrap').innerHTML=artTable()"></div>
-   <button class="btn accent" onclick="openArticleModal()">＋ Ajouter un article</button>
+   <div class="row">
+    <div class="field" style="min-width:220px"><label>Recherche</label><input value="${esc(state.artFilter)}" oninput="state.artFilter=this.value;$('artWrap').innerHTML=artTable()"></div>
+    <div class="field"><label>Emplacement</label><select onchange="state.artLoc=this.value;$('artWrap').innerHTML=artTable()">${[["tous", "Tous"], ["vit", "Vitrine"], ["mag", "Magasin"]].map(o => `<option value="${o[0]}" ${(state.artLoc || "tous") === o[0] ? "selected" : ""}>${o[1]}</option>`).join("")}</select></div>
+   </div>
+   <div class="row"><button class="btn" onclick="openMajStock()" title="Recalcule les stocks magasin / vitrine à partir des entrées et sorties">🔄 Mise à jour stock</button>
+   <button class="btn accent" onclick="openArticleModal()">＋ Ajouter un article</button></div>
   </div>
   <div id="artWrap">${artTable()}</div>
   <p class="subtle" style="margin-top:8px">Dl_clic sur une ligne pour modifier l'article.</p>
@@ -3877,6 +3891,50 @@
       save(); render(); toast("Article supprimé", "ok");
     }
     function toggleArt(id) { const a = article(id); a.actif = Number(a.actif) ? 0 : 1; save(); render(); }
+    /* ---- Mise à jour du stock magasin / vitrine à partir des mouvements (lubrifiants + gaz butane) ----
+       Total théorique = stock initial + entrées (achats) − sorties (ventes).
+       Vitrine = comptée / saisie ; Magasin = Total − Vitrine. Rien n'est modifié avant « Appliquer ». */
+    function msArts() { return DB.articles.filter(a => [0, 9].includes(Number(a.type_a))); }
+    function msFlux() {
+      const ops = new Map(DB.mouvements.map(m => [String(m.operation_id), m])), r = {};
+      DB.mouv_detail.forEach(md => {
+        const o = ops.get(String(md.id_operation)); if (!o) return;
+        const k = String(md.id_art), q = Number(md.quantite) || 0; r[k] = r[k] || { E: 0, S: 0 };
+        if (o.sens === "E") r[k].E += q; else if (o.sens === "S") r[k].S += q;
+      });
+      return r;
+    }
+    function openMajStock() {
+      const fl = msFlux(), arts = msArts();
+      openModal(`<h2>🔄 Mise à jour du stock (magasin / vitrine)</h2>
+ <p class="subtle" style="margin-bottom:10px">Total recalculé = <b>stock initial + entrées − ventes</b>. Saisissez le <b>stock initial</b> (avant les opérations enregistrées) et le stock <b>vitrine</b> ; le <b>magasin</b> = total − vitrine. Aucune modification tant que vous n'avez pas cliqué sur « Appliquer ».</p>
+ <div style="overflow-x:auto"><table style="min-width:760px" id="msTable"><tr><th>Article</th><th class="num">Mag actuel</th><th class="num">Vit actuel</th><th class="num">Entrées</th><th class="num">Ventes</th><th class="num">Stock initial</th><th class="num">Total recalculé</th><th class="num">Vitrine</th><th class="num">Magasin</th></tr>
+ ${arts.map(a => { const f = fl[String(a.art_id)] || { E: 0, S: 0 }, lub = Number(a.type_a) === 0;
+        return `<tr data-id="${a.art_id}" data-e="${f.E}" data-s="${f.S}"><td>${esc(a.article)}</td><td class="num">${fmtQ(a.qs)}</td><td class="num">${lub ? fmtQ(qsVit(a)) : "—"}</td><td class="num">${fmtQ(f.E)}</td><td class="num">${fmtQ(f.S)}</td>
+  <td class="num"><input type="number" id="msI_${a.art_id}" value="${Number(a.qs_init) || 0}" style="width:80px" oninput="msUpd(${a.art_id})"></td>
+  <td class="num"><b id="msT_${a.art_id}"></b></td>
+  <td class="num"><input type="number" id="msV_${a.art_id}" value="${lub ? qsVit(a) : 0}" ${lub ? "" : "disabled"} style="width:80px" oninput="msUpd(${a.art_id})"></td>
+  <td class="num"><b id="msM_${a.art_id}"></b></td></tr>`; }).join("")}</table></div>
+ <div style="text-align:right;margin-top:14px"><button class="btn" onclick="closeModal()">Annuler</button> <button class="btn accent" onclick="msApply()">✔ Appliquer</button></div>`);
+      const mdl = document.querySelector("#modal-root .modal"); if (mdl) mdl.style.width = "min(1100px, 96vw)";
+      arts.forEach(a => msUpd(a.art_id));
+    }
+    function msUpd(id) {
+      const tr = document.querySelector('#msTable tr[data-id="' + id + '"]'); if (!tr) return;
+      const T = (Number($("msI_" + id).value) || 0) + Number(tr.dataset.e) - Number(tr.dataset.s), V = Number($("msV_" + id).value) || 0, M = T - V;
+      $("msT_" + id).textContent = fmtQ(T); const m = $("msM_" + id); m.textContent = fmtQ(M); m.style.color = M < 0 ? "var(--red)" : "";
+    }
+    function msApply() {
+      let n = 0;
+      msArts().forEach(a => {
+        const tr = document.querySelector('#msTable tr[data-id="' + a.art_id + '"]'); if (!tr) return;
+        const init = Number($("msI_" + a.art_id).value) || 0, V = Number($("msV_" + a.art_id).value) || 0, T = init + Number(tr.dataset.e) - Number(tr.dataset.s);
+        const lub = Number(a.type_a) === 0, newVit = lub ? V : 0, newQs = T - newVit;
+        if (Number(a.qs_init || 0) !== init) a.qs_init = init;
+        if ((Number(a.qs) || 0) !== newQs || (lub && qsVit(a) !== newVit)) { a.qs = newQs; if (lub) a.qs_vitrine = newVit; n++; }
+      });
+      save(); closeModal(); render(); toast(n + " article(s) mis à jour", "ok");
+    }
     /* ================= VUE : CATÉGORIES ================= */
     function vCategories() {
       return `
