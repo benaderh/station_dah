@@ -1,12 +1,13 @@
 {
-  "name": "StationPro",
-  "short_name": "StationPro",
+  "id": "/station-admin",
+  "name": "StationPro Admin",
+  "short_name": "Admin",
   "start_url": "./index.html",
-  "scope": "./",
+  "scope": "./index.html",
   "display": "standalone",
   "background_color": "#0a0e18",
   "theme_color": "#0a0e18",
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "icon_index.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
 }

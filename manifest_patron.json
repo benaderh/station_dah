@@ -1,0 +1,13 @@
+{
+  "id": "/station-patron",
+  "name": "Station Patron",
+  "short_name": "Patron",
+  "start_url": "./patron.html",
+  "scope": "./patron.html",
+  "display": "standalone",
+  "background_color": "#0a0e18",
+  "theme_color": "#0a0e18",
+  "icons": [
+    { "src": "icon_patron.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
