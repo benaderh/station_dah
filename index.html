@@ -742,6 +742,23 @@
       margin-bottom: 16px
     }
 
+    .modal.wide {
+      width: min(1040px, 96vw)
+    }
+
+    .cafe-lines th {
+      font-size: 11px;
+      white-space: nowrap
+    }
+
+    .cafe-lines td {
+      padding: 3px 4px
+    }
+
+    .cafe-lines input {
+      padding: 6px 7px
+    }
+
     #toast-root {
       position: fixed;
       bottom: 22px;
@@ -2060,7 +2077,7 @@
     }
     /* ================= MODULE CAFÉ (stock valorisé au prix de vente, données dans meta.cafe) ================= */
     const CAFE_TYPE = 4, CAFE_OPS = { versement: "💵 Versement reçu", perem: "🗑️ Péremption", frais: "🧾 Frais", salaire: "👤 Salaire payé" };
-    let cafeD = "";
+    let cafeD = "", cafeAll = false;
     const sumBy = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
     const achPA = a => sumBy(a.lignes, l => l.qte * l.pa), achPV = a => sumBy(a.lignes, l => l.qte * l.pv);
     function cafe() { const m = DB.meta; if (!m.cafe) m.cafe = { init: { date: "", montant: 0 }, achats: [], ops: [], inv: [] }; return m.cafe; }
@@ -2072,19 +2089,20 @@
       const inv = c.inv.filter(le).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
       const som = t => sumBy(ops.filter(o => o.type === t), o => o.montant);
       const r = { init: Number(c.init.montant) || 0, achatsPV: sumBy(achats, achPV), achatsPA: sumBy(achats, achPA), regle: sumBy(achats, a => Number(a.regle) || 0), inv, invVal: inv ? inv.valeur : 0, vers: som("versement"), perem: som("perem"), frais: som("frais"), sal: som("salaire") };
-      r.attendu = r.init + r.achatsPV; r.justifie = r.invVal + r.vers + r.perem + r.frais + r.sal; r.ecart = r.justifie - r.attendu;
-      r.dettes = r.achatsPA - r.regle; r.marge = r.achatsPV - r.achatsPA; return r;
+      r.marge = r.achatsPV - r.achatsPA;
+      r.attendu = r.init + r.marge; r.justifie = r.invVal + r.vers + r.perem + r.frais + r.sal; r.ecart = r.justifie - r.attendu;
+      r.dettes = r.achatsPA - r.regle; return r;
     }
     function vCafe() {
       const c = cafe(); if (!cafeD) cafeD = todayISO();
       const r = cafeArrete(cafeD), L = (l, v, s) => `<tr><td>${l}</td><td class="num" ${s ? `style="${s}"` : ""}>${fmt(v)} DA</td></tr>`;
       const col = r.ecart < 0 ? "var(--red)" : r.ecart > 0 ? "var(--green)" : "var(--accent2)";
       const del = (k, id) => `<button class="tag-del" onclick="if(confirm('Supprimer ?')){cafeDel('${k}','${id}')}">✕</button>`;
-      const ach = c.achats.slice().sort((a, b) => b.date.localeCompare(a.date)), ops = c.ops.slice().sort((a, b) => b.date.localeCompare(a.date)), invs = c.inv.slice().sort((a, b) => b.date.localeCompare(a.date));
+      const achAll = c.achats.slice().sort((a, b) => b.date.localeCompare(a.date)), opsAll = c.ops.slice().sort((a, b) => b.date.localeCompare(a.date)), ach = cafeAll ? achAll : achAll.slice(0, 40), ops = cafeAll ? opsAll : opsAll.slice(0, 40), invs = c.inv.slice().sort((a, b) => b.date.localeCompare(a.date));
       return `<div class="card"><div class="row between"><h2 style="margin:0">⚖️ Arrêté de compte — Café</h2>
    <div class="field"><label>Arrêté au</label><input type="date" value="${cafeD}" onchange="cafeD=this.value;render()"></div></div>
   <table style="margin-top:10px"><tr><th colspan="2">À justifier par l'employé</th></tr>
-   ${L("Inventaire initial (au PV)" + (c.init.date ? " — " + frDate(c.init.date) : ""), r.init)}${L("＋ Achats (au PV, marge incluse)", r.achatsPV)}${L("<b>Solde comptable</b>", r.attendu, "font-weight:700")}
+   ${L("Inventaire initial (au PV)" + (c.init.date ? " — " + frDate(c.init.date) : ""), r.init)}${L("＋ Marge des achats (PV − PA)", r.marge)}${L("<b>Solde comptable</b>", r.attendu, "font-weight:700")}
    <tr><th colspan="2">Justifié</th></tr>
    ${L("Inventaire physique au PV" + (r.inv ? " — " + frDate(r.inv.date) : " — <span style='color:var(--red)'>aucun inventaire</span>"), r.invVal)}${L("Versements reçus", r.vers)}${L("Péremptions (au PV)", r.perem)}${L("Frais", r.frais)}${L("Salaire payé", r.sal)}${L("<b>Total justifié</b>", r.justifie, "font-weight:700")}</table>
   <div style="margin-top:14px;text-align:center"><div class="subtle">Écart (justifié − solde comptable)</div>
@@ -2093,11 +2111,12 @@
   <div class="grid-stats" style="margin-top:12px"><div class="stat"><div class="v">${fmt(r.dettes)}</div><div class="l">Dettes fournisseurs café (PA non réglé)</div></div>
    <div class="stat green"><div class="v">${fmt(r.marge)}</div><div class="l">Marge cumulée des achats</div></div>
    <div class="stat"><div class="v">${fmt(r.invVal - r.dettes)}</div><div class="l">Inventaire PV − dettes fournisseurs</div></div></div></div>
- <div class="card"><div class="row between"><h2 style="margin:0">📦 Inventaire initial</h2><button class="btn" onclick="openCafeInit()">✎ Définir</button></div>
+ <div class="card"><div class="row between"><h2 style="margin:0">📦 Inventaire initial</h2><div class="row"><button class="btn" onclick="openCafeImport()" title="Importer articles, achats, frais et péremptions depuis cafe_import.json">📥 Importer l'historique xls</button><button class="btn" onclick="openCafeInit()">✎ Définir</button></div></div>
   <p class="subtle" style="margin-top:6px">${c.init.date ? `Au ${frDate(c.init.date)} : <b>${fmt(c.init.montant)} DA</b> (valorisé au prix de vente)` : "Non défini."} Les articles café se créent dans <b>Articles</b> (Catégorie Café, Type Café).</p></div>
  <div class="card"><div class="row between"><h2 style="margin:0">🧾 Achats café</h2><button class="btn accent" onclick="openCafeAchat()">＋ Achat</button></div>
   <table style="margin-top:8px"><tr><th>Date</th><th>Fournisseur</th><th>N°</th><th class="num">Valeur PA</th><th class="num">Valeur PV</th><th class="num">Marge</th><th class="num">Réglé</th><th class="num">Reste</th><th></th></tr>
-  ${ach.map(a => `<tr><td>${frDate(a.date)}</td><td>${tierNom(a.fid)}</td><td>${esc(a.num || "—")}</td><td class="num">${fmt(achPA(a))}</td><td class="num">${fmt(achPV(a))}</td><td class="num">${fmt(achPV(a) - achPA(a))}</td><td class="num">${fmt(a.regle)}</td><td class="num" style="color:${achPA(a) - a.regle > 0 ? "var(--red)" : "var(--green)"}">${fmt(achPA(a) - a.regle)}</td><td>${del("achats", a.id)}</td></tr>`).join("") || `<tr><td colspan="9" class="subtle">Aucun achat.</td></tr>`}</table></div>
+  ${ach.map(a => `<tr><td>${frDate(a.date)}</td><td>${tierNom(a.fid)}</td><td>${esc(a.num || "—")}</td><td class="num">${fmt(achPA(a))}</td><td class="num">${fmt(achPV(a))}</td><td class="num">${fmt(achPV(a) - achPA(a))}</td><td class="num">${fmt(a.regle)}</td><td class="num" style="color:${achPA(a) - a.regle > 0 ? "var(--red)" : "var(--green)"}">${fmt(achPA(a) - a.regle)}</td><td style="white-space:nowrap"><button class="btn sm" title="Voir les lignes" onclick="cafeAchatView('${a.id}')">👁</button> ${del("achats", a.id)}</td></tr>`).join("") || `<tr><td colspan="9" class="subtle">Aucun achat.</td></tr>`}</table>
+  ${c.achats.length > 40 || c.ops.length > 40 ? `<div style="text-align:center;margin-top:8px"><button class="btn sm" onclick="cafeAll=!cafeAll;render()">${cafeAll ? "Afficher seulement les 40 derniers" : `Afficher tout (${c.achats.length} achats, ${c.ops.length} opérations)`}</button></div>` : ""}</div>
  <div class="card"><div class="row between"><h2 style="margin:0">💵 Versements, péremptions, frais, salaire</h2>
   <div class="row">${Object.keys(CAFE_OPS).map(t => `<button class="btn sm" onclick="openCafeOp('${t}')">＋ ${CAFE_OPS[t]}</button>`).join("")}</div></div>
   <table style="margin-top:8px"><tr><th>Date</th><th>Type</th><th>Détail</th><th class="num">Montant</th><th></th></tr>
@@ -2109,19 +2128,113 @@
     function cafeDel(k, id) { cafe()[k] = cafe()[k].filter(x => x.id !== id); save(); render(); }
     function cafeBtns(fn) { return `<div style="text-align:right;margin-top:14px"><button class="btn" onclick="closeModal()">Annuler</button> <button class="btn accent" onclick="${fn}()">✔ Enregistrer</button></div>`; }
     function openCafeInit() { const i = cafe().init; openModal(`<h2>📦 Inventaire initial café</h2><div class="row"><div class="field"><label>Date</label><input id="ciD" type="date" value="${i.date || todayISO()}"></div><div class="field"><label>Valeur au prix de vente (DA)</label><input id="ciM" type="number" value="${i.montant || ""}"></div></div>${cafeBtns("saveCafeInit")}`); }
-    function saveCafeInit() { cafe().init = { date: $("ciD").value, montant: Number($("ciM").value) || 0 }; save(); closeModal(); render(); toast("Inventaire initial enregistré", "ok"); }
+    function saveCafeInit() { cafe().init = Object.assign({}, cafe().init, { date: $("ciD").value, montant: Number($("ciM").value) || 0 }); save(); closeModal(); render(); toast("Inventaire initial enregistré", "ok"); }
+    /* ---- Saisie d'un achat café : une ligne = un article (Q colis × coeff unités, PA du colis, PV unitaire) ---- */
+    const cafeNrm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g, "");
+    function cafeFindArt(nom) { const k = cafeNrm(nom); if (!k) return null; return cafeArts().find(a => cafeNrm(a.article) === k) || null; }
+    function cafeLev(a, b) { const m = a.length, n = b.length; if (Math.abs(m - n) > 2) return 9; let p = Array.from({ length: n + 1 }, (_, j) => j); for (let i = 1; i <= m; i++) { const c = [i]; for (let j = 1; j <= n; j++) c[j] = Math.min(p[j] + 1, c[j - 1] + 1, p[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); p = c; } return p[n]; }
+    function cafeNearArt(nom) { const k = cafeNrm(nom); if (k.length < 4) return null; let best = null, bd = 3; cafeArts().forEach(a => { const d = cafeLev(k, cafeNrm(a.article)); if (d < bd) { bd = d; best = a; } }); return best; }
+    function cafeLineRow() {
+      return `<tr><td><input class="cl-a" list="cafeArtList" placeholder="Article…" onchange="cafeLineArt(this)" style="width:230px"></td>
+  <td><input class="cl-q" type="number" step="any" min="0" oninput="cafeLineCalc()" style="width:66px"></td>
+  <td><input class="cl-c" type="number" step="any" min="0" value="1" oninput="cafeLineCalc()" style="width:66px"></td>
+  <td><input class="cl-pa" type="number" step="any" min="0" oninput="cafeLineCalc()" style="width:86px"></td>
+  <td><input class="cl-pv" type="number" step="any" min="0" oninput="cafeLineCalc()" style="width:72px"></td>
+  <td class="num cl-u"></td><td class="num cl-m"></td><td><button class="tag-del" title="Retirer la ligne" onclick="this.closest('tr').remove();cafeLineCalc()">✕</button></td></tr>`;
+    }
+    function cafeLineArt(inp) {
+      const tr = inp.closest("tr"), a = cafeFindArt(inp.value);
+      inp.style.borderColor = a || !inp.value.trim() ? "" : "var(--gold, #e0a800)";
+      if (a) { inp.value = a.article; tr.querySelector(".cl-c").value = Number(a.coeff) || 1; tr.querySelector(".cl-pa").value = +(Number(a.pa) * (Number(a.coeff) || 1)).toFixed(2) || ""; tr.querySelector(".cl-pv").value = Number(a.pv) || ""; }
+      cafeLineCalc();
+    }
+    function cafeLineCalc() {
+      let pa = 0, pv = 0;
+      document.querySelectorAll("#cafeLines tr").forEach(tr => {
+        const q = Number(tr.querySelector(".cl-q").value) || 0, c = Number(tr.querySelector(".cl-c").value) || 0, ac = Number(tr.querySelector(".cl-pa").value) || 0, v = Number(tr.querySelector(".cl-pv").value) || 0;
+        const la = q * ac, lv = q * c * v; pa += la; pv += lv;
+        tr.querySelector(".cl-u").textContent = q && c ? fmt(q * c) + " u." : ""; tr.querySelector(".cl-m").textContent = q ? fmt(lv - la) : "";
+      });
+      let fr = 0; document.querySelectorAll("#cafeFrais .cf-m").forEach(i => fr += Number(i.value) || 0);
+      $("caTot").innerHTML = `Valeur PA <b>${fmt(pa)}</b> · Valeur PV <b>${fmt(pv)}</b> · Marge <b>${fmt(pv - pa)}</b> DA${fr ? ` · Frais <b>${fmt(fr)}</b> DA` : ""}`;
+    }
+    function cafeAddLine(n) { const tb = $("cafeLines"); for (let i = 0; i < (n || 1); i++) tb.insertAdjacentHTML("beforeend", cafeLineRow()); }
+    function cafeAddFrais(n) { const tb = $("cafeFrais"); for (let i = 0; i < (n || 1); i++) tb.insertAdjacentHTML("beforeend", `<tr><td><input class="cf-l" list="cafeFraisList" placeholder="Frais, Gaz butane, Sucre, Jetables…" style="width:260px"></td><td><input class="cf-m" type="number" step="any" min="0" oninput="cafeLineCalc()" style="width:100px"></td><td><button class="tag-del" onclick="this.closest('tr').remove();cafeLineCalc()">✕</button></td></tr>`); }
     function openCafeAchat() {
-      const arts = cafeArts(); if (!arts.length) { toast("Créez d'abord des articles café (Articles → Type Café)", "err"); return; }
-      openModal(`<h2>🧾 Achat café</h2><div class="row"><div class="field"><label>Date</label><input id="caD" type="date" value="${todayISO()}"></div><div class="field"><label>Fournisseur</label><select id="caF">${fournOptions()}</select></div><div class="field"><label>N° facture</label><input id="caN" style="width:100px"></div><div class="field"><label>Montant réglé (PA)</label><input id="caR" type="number" value="0" style="width:110px"></div></div>
-  <table style="margin-top:10px"><tr><th>Article</th><th class="num">PA unit.</th><th class="num">PV unit.</th><th class="num">Qté</th></tr>
-  ${arts.map(a => `<tr><td>${esc(a.article)}</td><td class="num"><input id="cp${a.art_id}" type="number" step="0.01" value="${a.pa}" style="width:80px"></td><td class="num">${fmt(a.pv)}</td><td class="num"><input id="cq${a.art_id}" type="number" value="" style="width:80px"></td></tr>`).join("")}</table>
-  <p class="subtle">La valeur PV (marge incluse) s'ajoute au solde comptable ; le PV est celui de la fiche article.</p>${cafeBtns("saveCafeAchat")}`);
+      const labels = [...new Set(["Frais", "Gaz butane", "Sucre", "Jetables"].concat(cafe().ops.filter(o => o.type === "frais").map(o => o.note).filter(Boolean)))];
+      openModal(`<h2>🧾 Achat café</h2>
+  <div class="row"><div class="field"><label>Date</label><input id="caD" type="date" value="${todayISO()}"></div><div class="field"><label>Fournisseur</label><select id="caF" onchange="$('caR').disabled=!this.value;if(!this.value)$('caR').value=''"><option value="">— Comptant (sans fournisseur)</option>${fournOptions()}</select></div><div class="field"><label>N° facture</label><input id="caN" style="width:100px"></div><div class="field"><label>Réglé (fournisseur choisi ; vide = tout payé)</label><input id="caR" type="number" step="any" style="width:130px" disabled></div></div>
+  <datalist id="cafeArtList">${cafeArts().map(a => `<option value="${esc(a.article)}">`).join("")}</datalist><datalist id="cafeFraisList">${labels.map(l => `<option value="${esc(l)}">`).join("")}</datalist>
+  <table class="cafe-lines" style="margin-top:10px"><thead><tr><th>Article</th><th class="num">Q (colis)</th><th class="num">Coeff (unités/colis)</th><th class="num">PA du colis</th><th class="num">PV unitaire</th><th class="num">Qté</th><th class="num">Marge</th><th></th></tr></thead><tbody id="cafeLines">${cafeLineRow().repeat(6)}</tbody></table>
+  <div style="margin-top:6px"><button class="btn sm" onclick="cafeAddLine(3)">＋ 3 lignes</button></div>
+  <h3 style="margin:14px 0 4px;font-size:13px">🧾 Frais / charges (sans prix de vente : ce ne sont pas des articles)</h3>
+  <table class="cafe-lines"><tbody id="cafeFrais"></tbody></table><div style="margin-top:6px"><button class="btn sm" onclick="cafeAddFrais(1)">＋ Frais</button></div>
+  <div id="caTot" class="subtle" style="margin-top:12px"></div>
+  <p class="subtle">Choisissez l'article dans la liste : coeff, PA et PV se remplissent avec le dernier achat. Un nom inconnu ou proche d'un article existant est signalé avant création (pas de doublons). Les frais sont enregistrés à la même date.</p>${cafeBtns("saveCafeAchat")}`);
+      document.querySelector("#modal-root .modal").classList.add("wide"); cafeAddFrais(1); cafeLineCalc();
     }
     function saveCafeAchat() {
-      const lignes = cafeArts().map(a => ({ artId: a.art_id, qte: Number($("cq" + a.art_id).value) || 0, pa: Number($("cp" + a.art_id).value) || 0, pv: Number(a.pv) || 0 })).filter(l => l.qte > 0);
-      if (!lignes.length) { toast("Saisissez au moins une quantité", "err"); return; }
-      cafe().achats.push({ id: uid(), date: $("caD").value, fid: $("caF").value, num: $("caN").value.trim(), regle: Number($("caR").value) || 0, lignes });
-      save(); closeModal(); render(); toast("Achat enregistré", "ok");
+      const date = $("caD").value; if (!date) { toast("Date obligatoire", "err"); return; }
+      const lignes = [], frais = [];
+      for (const tr of document.querySelectorAll("#cafeLines tr")) {
+        const nom = tr.querySelector(".cl-a").value.trim(), q = Number(tr.querySelector(".cl-q").value) || 0, c = Number(tr.querySelector(".cl-c").value) || 0, pac = Number(tr.querySelector(".cl-pa").value) || 0, pv = Number(tr.querySelector(".cl-pv").value) || 0;
+        if (!nom && !q && !pac) continue;
+        if (!nom || !(q > 0) || !(c > 0)) { toast("Ligne incomplète : article, quantité et coeff sont obligatoires", "err"); return; }
+        if (!(pv > 0)) { toast("« " + nom + " » : sans prix de vente, c'est un frais → mettez-le dans « Frais / charges »", "err"); return; }
+        let a = cafeFindArt(nom);
+        if (!a) { const pr = cafeNearArt(nom); if (pr && confirm("« " + nom + " » n'existe pas.\nArticle proche : « " + pr.article + " ».\n\nOK = utiliser « " + pr.article + " »\nAnnuler = créer « " + nom + " » comme nouvel article")) a = pr; }
+        lignes.push({ a, nom, q, c, pac, pv });
+      }
+      for (const tr of document.querySelectorAll("#cafeFrais tr")) {
+        const lib = tr.querySelector(".cf-l").value.trim(), m = Number(tr.querySelector(".cf-m").value) || 0;
+        if (!lib && !m) continue; if (!lib || !(m > 0)) { toast("Frais incomplet : libellé et montant obligatoires", "err"); return; }
+        frais.push({ lib, m });
+      }
+      if (!lignes.length && !frais.length) { toast("Rien à enregistrer", "err"); return; }
+      const nouveaux = [...new Set(lignes.filter(l => !l.a).map(l => l.nom))];
+      if (nouveaux.length && !confirm("Créer " + nouveaux.length + " nouvel(s) article(s) café ?\n\n" + nouveaux.join("\n"))) return;
+      nouveaux.forEach(nom => {
+        const l = lignes.find(x => !x.a && x.nom === nom);
+        const art = { art_id: nextNumId(DB.articles, "art_id"), article: nom, id_cat: 4, unite: "unité", type_a: CAFE_TYPE, coeff: l.c, qs: 0, pa: l.pac / l.c, pv: l.pv, actif: 1 };
+        DB.articles.push(art); lignes.forEach(x => { if (!x.a && x.nom === nom) x.a = art; });
+      });
+      if (lignes.length) {
+        const totPA = sumBy(lignes, l => l.q * l.pac), rg = $("caR").value.trim();
+        cafe().achats.push({ id: uid(), date, fid: $("caF").value, num: $("caN").value.trim(), regle: !$("caF").value || rg === "" ? totPA : Number(rg) || 0, lignes: lignes.map(l => ({ artId: l.a.art_id, qte: l.q * l.c, pa: l.pac / l.c, pv: l.pv, q: l.q, c: l.c })) });
+        lignes.forEach(l => Object.assign(l.a, { coeff: l.c, pa: l.pac / l.c, pv: l.pv }));   /* la fiche article garde le dernier coeff / PA / PV */
+      }
+      frais.forEach(f => cafe().ops.push({ id: uid(), date, type: "frais", montant: f.m, note: f.lib }));
+      save(); closeModal(); render(); toast("Achat enregistré" + (frais.length ? " (+ " + frais.length + " frais)" : ""), "ok");
+    }
+    function cafeAchatView(id) {
+      const a = cafe().achats.find(x => x.id === id); if (!a) return;
+      openModal(`<h2>🧾 Achat du ${frDate(a.date)}</h2>
+  <table class="cafe-lines"><tr><th>Article</th><th class="num">Q colis</th><th class="num">Coeff</th><th class="num">Qté</th><th class="num">PA colis</th><th class="num">PV unit.</th><th class="num">Valeur PA</th><th class="num">Valeur PV</th></tr>
+  ${a.lignes.map(l => { const ar = article(l.artId), c = l.c || 1; return `<tr><td>${ar ? esc(ar.article) : "—"}</td><td class="num">${l.q != null ? l.q : fmt(l.qte)}</td><td class="num">${c}</td><td class="num">${fmt(l.qte)}</td><td class="num">${fmt(l.pa * c)}</td><td class="num">${fmt(l.pv)}</td><td class="num">${fmt(l.qte * l.pa)}</td><td class="num">${fmt(l.qte * l.pv)}</td></tr>`; }).join("")}
+  <tr><td colspan="6"><b>Total</b></td><td class="num"><b>${fmt(achPA(a))}</b></td><td class="num"><b>${fmt(achPV(a))}</b></td></tr></table>
+  <div style="text-align:right;margin-top:14px"><button class="btn" onclick="closeModal()">Fermer</button></div>`);
+      document.querySelector("#modal-root .modal").classList.add("wide");
+    }
+    /* ---- Import de l'historique (fichier cafe_import.json généré depuis cafe2.xls) ---- */
+    function openCafeImport() {
+      openModal(`<h2>📥 Importer l'historique café</h2>
+  <p class="subtle">Choisissez le fichier <b>cafe_import.json</b>. Il contient les articles sans doublons, l'inventaire initial, les achats journaliers, les frais et les péremptions.</p>
+  <p class="subtle" style="color:var(--red)">⚠ Remplace : articles de catégorie Café, inventaire initial, achats, frais et péremptions café déjà saisis. Les versements, salaires et inventaires physiques sont conservés.</p>
+  <input type="file" id="ciF" accept=".json,application/json" style="margin-top:8px">${cafeBtns("doCafeImport")}`);
+    }
+    async function doCafeImport() {
+      const f = $("ciF").files[0]; if (!f) { toast("Choisissez le fichier cafe_import.json", "err"); return; }
+      let j; try { j = JSON.parse(await f.text()); } catch (e) { toast("Fichier illisible", "err"); return; }
+      if (!j || j.version !== 1 || !Array.isArray(j.articles) || !Array.isArray(j.achats) || !Array.isArray(j.ops) || !j.init) { toast("Fichier non reconnu", "err"); return; }
+      const c = cafe(), ancArts = DB.articles.filter(a => Number(a.type_a) === CAFE_TYPE).length, ancOps = c.ops.filter(o => o.type === "frais" || o.type === "perem").length;
+      if (!confirm("Importer " + j.articles.length + " articles, " + j.achats.length + " achats, " + j.ops.length + " frais/péremptions ?\n\nSera remplacé : " + ancArts + " article(s) café, " + c.achats.length + " achat(s), " + ancOps + " frais/péremption(s), inventaire initial.")) return;
+      DB.articles = DB.articles.filter(a => Number(a.type_a) !== CAFE_TYPE);
+      const idOf = {};
+      j.articles.forEach(a => { const id = nextNumId(DB.articles, "art_id"); idOf[a.k] = id; DB.articles.push({ art_id: id, article: a.article, id_cat: 4, unite: "unité", type_a: CAFE_TYPE, coeff: a.coeff || 1, qs: 0, pa: a.pa || 0, pv: a.pv || 0, actif: 1 }); });
+      c.init = { date: j.init.date, montant: j.init.montant, lignes: (j.init.lignes || []).map(l => ({ artId: idOf[l.k], qte: l.qte, pv: l.pv })) };
+      c.achats = j.achats.map(a => ({ id: uid(), date: a.date, fid: a.fid || "", num: a.num || "", regle: a.regle, lignes: a.lignes.map(l => ({ artId: idOf[l.k], qte: l.qte, pa: l.pa, pv: l.pv, q: l.q, c: l.c })) }));
+      c.ops = c.ops.filter(o => o.type !== "frais" && o.type !== "perem").concat(j.ops.map(o => Object.assign({ id: uid(), date: o.date, type: o.type, montant: o.montant, note: o.note }, o.k ? { artId: idOf[o.k], qte: o.qte } : {})));
+      save(); closeModal(); render(); toast("Import terminé : " + j.articles.length + " articles, " + j.achats.length + " achats", "ok");
     }
     function openCafeOp(t) {
       const arts = cafeArts();
