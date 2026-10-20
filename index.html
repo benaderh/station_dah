@@ -1781,7 +1781,7 @@
       else DB.agent_detail.push({ cle_id: uid(), id_agent: tid, date_agent: sel.date, type_agent: type, id_art_agent: null, mt_agent: mt, obs_agent: obs || "" });
     }
     function totauxCaisse(tid, d) {
-      const ops = DB.mouvements.filter(m => m.date_m === d && String(m.id_tier) === String(tid)).map(m => String(m.operation_id));
+      const ops = DB.mouvements.filter(m => m.date_m === d && m.sens === "S" && String(m.id_tier) === String(tid)).map(m => String(m.operation_id));   /* ventes seulement */
       let tLub = 0, tGb = 0;
       DB.mouv_detail.forEach(md => {
         if (ops.includes(String(md.id_operation))) {
@@ -1800,7 +1800,7 @@
       return { tLub, tGb, tDetail, tEspece, carb, diff, isT1, isT2 };
     }
     function venteTypeMt(d, ta) {
-      const ops = DB.mouvements.filter(m => m.date_m === d).map(m => String(m.operation_id));
+      const ops = DB.mouvements.filter(m => m.date_m === d && m.sens === "S").map(m => String(m.operation_id));   /* ventes seulement (jamais les achats, sens E) */
       let s = 0; DB.mouv_detail.forEach(md => {
         if (ops.includes(String(md.id_operation))) {
           const a = article(md.id_art);
@@ -2663,17 +2663,26 @@
   ${detailVentesJour(sel.date)}`;
     }
     function detailVentesJour(d) {
-      const ops = DB.mouvements.filter(m => m.date_m === d).map(m => ({ id: String(m.operation_id), tier: m.id_tier }));
-      if (!ops.length) return "";
-      const lines = DB.mouv_detail.filter(md => ops.some(o => o.id === String(md.id_operation)));
-      if (!lines.length) return "";
+      /* Carburant : ventes calculées d'après les INDEX (pompe par pompe), attribuées au pompiste responsable du groupe.
+         Lubrifiants / gaz butane : lignes des mouvements de SORTIE (sens "S") du jour. Les achats n'y figurent pas. */
+      const g = calcGroup(d), rows = [];
+      [["G", g.t1], ["E", g.t1], ["L", g.t2]].forEach(([ty, tid]) => {
+        const pr = g.rows.filter(r => r.type === ty), q = pr.reduce((s, r) => s + r.diff, 0), m = pr.reduce((s, r) => s + r.mt, 0);
+        if (!q && !m) return;
+        const a = article(fuelArtId(ty));
+        rows.push({ agent: tid ? tierNom(tid) : "—", art: a ? esc(a.article) : "—", q, pu: q ? m / q : 0, m, idx: true });
+      });
+      /* Ventes seulement : sens S, jamais un achat (type_m A…, tiers fournisseur) ; le carburant n'est PAS lu ici (il vient des index) ni le café (module à part) */
+      const ops = DB.mouvements.filter(m => m.date_m === d && m.sens === "S" && !/^A/i.test(String(m.type_m || "")) && !(tier(m.id_tier) && tier(m.id_tier).type === "F")).map(m => ({ id: String(m.operation_id), tier: m.id_tier }));
+      DB.mouv_detail.forEach(md => {
+        const o = ops.find(x => x.id === String(md.id_operation)); if (!o) return;
+        const a = article(md.id_art); if (a && [1, 2, 3, CAFE_TYPE].includes(Number(a.type_a))) return; rows.push({ agent: tierNom(o.tier), art: a ? esc(a.article) : "—", q: Number(md.quantite), pu: Number(md.prix_u), m: Number(md.quantite) * Number(md.prix_u) });
+      });
+      if (!rows.length) return "";
       return `<div class="card"><h2>🧾 Détail des ventes du ${frDate(d)}</h2>
  <table><tr><th>Agent</th><th>Article</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Mt</th></tr>
- ${lines.map(md => {
-        const a = article(md.id_art); const o = ops.find(x => x.id === String(md.id_operation)); return `<tr>
-  <td>${tierNom(o.tier)}</td><td>${a ? esc(a.article) : "—"}</td><td class="num">${fmtQ(md.quantite)}</td>
-  <td class="num">${fmt(md.prix_u)}</td><td class="num">${fmt(md.quantite * md.prix_u)}</td></tr>`;
-      }).join("")}
+ ${rows.map(r => `<tr><td>${r.agent}</td><td>${r.art}${r.idx ? ' <span class="subtle" style="font-size:11px">(index)</span>' : ""}</td><td class="num">${fmtQ(r.q)}</td><td class="num">${fmt(r.pu)}</td><td class="num">${fmt(r.m)}</td></tr>`).join("")}
+ <tr><td colspan="4"><b>Total</b></td><td class="num"><b>${fmt(sumBy(rows, r => r.m))}</b></td></tr>
  </table></div>`;
     }
     function lubTab() {
@@ -4969,10 +4978,29 @@
  </div>`;
     }
     /* ---- EXPORT XLSX ---- */
+    /* Le format .xls (BIFF8) tronque chaque cellule texte à 255 caractères : les textes longs (JSON des factures, etc.)
+       sont donc coupés en morceaux de 250 caractères dans des colonnes « nom~2 », « nom~3 »… et recollés à l'import. */
+    const XLS_CH = 250;
+    function xlsSplitRow(r) {
+      const o = {};
+      Object.keys(r).forEach(k => {
+        const v = r[k];
+        if (typeof v === "string" && v.length > XLS_CH) { o[k] = v.slice(0, XLS_CH); for (let i = XLS_CH, n = 2; i < v.length; i += XLS_CH, n++) o[k + "~" + n] = v.slice(i, i + XLS_CH); }
+        else o[k] = v;
+      });
+      return o;
+    }
+    function xlsJoinRow(r) {
+      const o = {}, ex = {};
+      Object.keys(r).forEach(k => { const m = /^(.+)~(\d+)$/.exec(k); if (m) (ex[m[1]] = ex[m[1]] || []).push([Number(m[2]), r[k] == null ? "" : String(r[k])]); else o[k] = r[k]; });
+      Object.keys(ex).forEach(b => { if (o[b] != null) o[b] = String(o[b]) + ex[b].sort((x, y) => x[0] - y[0]).map(x => x[1]).join(""); });
+      return o;
+    }
     /* café : DB.meta.cafe est exporté en feuilles « cafe_… » (un JSON unique dépasserait la limite d'une cellule Excel) */
-    const CAFE_SHEETS = ["cafe_init", "cafe_init_lignes", "cafe_achats", "cafe_ops", "cafe_inv", "cafe_reglements", "cafe_modeles"];
+    const CAFE_SHEETS = ["cafe_emp", "cafe_init", "cafe_init_lignes", "cafe_achats", "cafe_ops", "cafe_inv", "cafe_reglements", "cafe_modeles"];
     function cafeSheetsOut() {
       const c = cafe(), art = id => { const a = article(id); return a ? a.article : ""; }, S = {};
+      S.cafe_emp = [{ nom: c.emp.nom || "", salaire: Number(c.emp.salaire) || 0, debut: c.emp.debut || "" }];
       S.cafe_init = [{ date: c.init.date || "", montant: Number(c.init.montant) || 0 }];
       S.cafe_init_lignes = (c.init.lignes || []).map(l => ({ artId: l.artId, article: art(l.artId), qte: l.qte, pv: l.pv }));
       S.cafe_achats = []; c.achats.forEach(a => a.lignes.forEach(l => S.cafe_achats.push({ id: a.id, date: a.date, fid: a.fid || "", fournisseur: a.fid ? tierNom(a.fid) : "", num: a.num || "", modele: a.modele || "", regle: a.regle, artId: l.artId, article: art(l.artId), q: l.q, c: l.c, qte: l.qte, pa: l.pa, pv: l.pv })));
@@ -4983,9 +5011,10 @@
       return S;
     }
     function cafeSheetsIn(wb, meta) {
-      const rd = n => wb.Sheets[n] ? XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: "" }).filter(r => Object.keys(r).length) : null;
+      const rd = n => wb.Sheets[n] ? XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: "" }).filter(r => Object.keys(r).length).map(xlsJoinRow) : null;
       if (!CAFE_SHEETS.some(n => wb.Sheets[n])) return false;
-      const c = { init: { date: "", montant: 0, lignes: [] }, achats: [], ops: [], inv: [], reglements: [], modeles: [] }, s = v => v === "" || v == null ? "" : String(v), n = v => Number(v) || 0;
+      const c = { init: { date: "", montant: 0, lignes: [] }, achats: [], ops: [], inv: [], reglements: [], modeles: [], emp: { nom: "", salaire: 0, debut: "" } }, s = v => v === "" || v == null ? "" : String(v), n = v => Number(v) || 0;
+      const e0 = (rd("cafe_emp") || [])[0]; c.emp = e0 ? { nom: s(e0.nom), salaire: n(e0.salaire), debut: s(e0.debut) } : { nom: "", salaire: 0, debut: "" };
       const i0 = (rd("cafe_init") || [])[0]; if (i0) { c.init.date = s(i0.date); c.init.montant = n(i0.montant); }
       c.init.lignes = (rd("cafe_init_lignes") || []).map(r => ({ artId: r.artId, qte: n(r.qte), pv: n(r.pv) }));
       const ach = {}; (rd("cafe_achats") || []).forEach(r => { const id = s(r.id); const a = ach[id] || (ach[id] = { id, date: s(r.date), fid: s(r.fid), num: s(r.num), regle: n(r.regle), lignes: [] }); if (s(r.modele)) a.modele = s(r.modele); a.lignes.push({ artId: r.artId, qte: n(r.qte), pa: n(r.pa), pv: n(r.pv), q: n(r.q), c: n(r.c) }); });
@@ -5012,7 +5041,7 @@
               const v = r[k];
               if (dtF.includes(k)) { o[k] = v ? String(v) : ''; }
               else { o[k] = (v !== null && typeof v === "object") ? JSON.stringify(v) : v; }
-            }); return o;
+            }); return xlsSplitRow(o);
           });
           ws = XLSX.utils.json_to_sheet(flat, { cellDates: false });
           if (dtF.length && flat.length) {
@@ -5032,12 +5061,14 @@
       const metaRows = [];
       Object.keys(DB.meta || {}).forEach(k => {
         if (k === "cafe") return;   /* exporté en feuilles cafe_… */
-        const v = DB.meta[k];
-        metaRows.push({ cle: k, valeur: (v !== null && typeof v === "object") ? JSON.stringify(v) : v });
+        const v = DB.meta[k], s = (v !== null && typeof v === "object") ? JSON.stringify(v) : v;
+        /* limite des cellules Excel (255 car. en .xls, 32 767 en .xlsx) : les valeurs longues (ex. caisse physique) sont coupées en parties */
+        if (typeof s === "string" && s.length > XLS_CH) { for (let i = 0, n = 1; i < s.length; i += XLS_CH, n++) metaRows.push({ cle: k, partie: n, valeur: s.slice(i, i + XLS_CH) }); }
+        else metaRows.push({ cle: k, valeur: s });
       });
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(metaRows), "meta");
       const CS = cafeSheetsOut();
-      CAFE_SHEETS.forEach(n => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(CS[n].length ? CS[n] : [{}]), n));
+      CAFE_SHEETS.forEach(n => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(CS[n].length ? CS[n].map(xlsSplitRow) : [{}]), n));
       XLSX.writeFile(wb, "station-pro-" + todayISO() + ".xls", { bookType: "biff8" });
       toast("Export Excel téléchargé", "ok");
     }
@@ -5064,7 +5095,7 @@
             const sheet = wb.Sheets[name.slice(0, 31)];
             if (!sheet) return;
             let rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
-            rows = rows.filter(row => Object.keys(row).length > 0);
+            rows = rows.filter(row => Object.keys(row).length > 0).map(xlsJoinRow);
             rows = rows.map(row => {
               const o = {};
               Object.keys(row).forEach(k => { o[k] = tryParseJSON(row[k]); });
@@ -5077,7 +5108,13 @@
           if (metaSheet) {
             const metaRows = XLSX.utils.sheet_to_json(metaSheet, { defval: null });
             const meta = {};
-            metaRows.forEach(row => { if (row.cle !== undefined && row.cle !== null && row.cle !== "") meta[row.cle] = tryParseJSON(row.valeur); });
+            const parts = {};
+            metaRows.forEach(row => {
+              if (row.cle === undefined || row.cle === null || row.cle === "") return;
+              if (row.partie !== undefined && row.partie !== null && row.partie !== "") { (parts[row.cle] = parts[row.cle] || []).push([Number(row.partie), String(row.valeur == null ? "" : row.valeur)]); }
+              else meta[row.cle] = tryParseJSON(row.valeur);
+            });
+            Object.keys(parts).forEach(k => { meta[k] = tryParseJSON(parts[k].sort((a, b) => a[0] - b[0]).map(x => x[1]).join("")); });
             newDB.meta = Object.assign(defaultDB().meta, meta);
             foundAny = true;
           }
