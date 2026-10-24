@@ -468,6 +468,13 @@
     }
 
     .stat-col { display: contents }
+    .grid-stats.db-stats { grid-template-columns: repeat(5, minmax(0, 1fr)) }
+    .db-stats .stat { padding: 12px 12px; min-width: 0 }
+    .db-stats .stat .v { font-size: 19px; white-space: nowrap }
+    .db-stats .stat .l { font-size: 11px }
+    @media(max-width:1100px) { .grid-stats.db-stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) } }
+    /* tableau de bord : une partie ouverte => les autres sont cachées (plus de hauteur) */
+    .db-wrap.has-open .cafe-sec.closed { display: none }
 
     .stat {
       background: var(--card2);
@@ -1045,6 +1052,7 @@
       }
     }
     @media print {
+      .db-wrap.has-open .cafe-sec.closed { display: block !important }
       .content:has(.cafe-wrap) { overflow: visible !important; display: block !important }
       .cafe-wrap { display: block !important; overflow: visible !important }
       .cafe-sec.closed > *:not(.no-print), .cafe-sec.closed .cafe-head > *:not(.no-print):not(.btn) { display: revert !important }
@@ -2095,11 +2103,23 @@
     function closeSidebar() { const s = $("sidebar"), o = $("sbOverlay"); if (s) s.classList.remove("open"); if (o) o.classList.remove("show"); }
     function setView(v) { view = v; closeSidebar(); render(); }
     function metaCD() { const m = DB.meta.clientsDiversId; return DB.tiers.some(t => String(t.tier_id) === String(m)) ? m : (DB.tiers.find(t => t.type === "C") || {}).tier_id; }
+    /* tableau de bord : sélecteur de date + PDF placés dans la barre du haut (évite le titre en double) */
+    function dashTop() {
+      const ds = allDates().slice().reverse(), today = todayISO();
+      if (!ds.length) return "";
+      if (!sel.jdate || !ds.includes(sel.jdate)) sel.jdate = ds.includes(today) ? today : ds[0];
+      return `<select style="padding:7px 12px;border-radius:9px;background:#fff;border:1px solid var(--accent);color:#000;font-size:14px;font-weight:600;min-width:140px;cursor:pointer" onchange="sel.jdate=this.value;render()">${ds.map(x => `<option value="${x}" ${x === sel.jdate ? "selected" : ""}>${frDate(x)}</option>`).join("")}</select>
+  <button class="btn" style="background:var(--red);color:#fff;border:none" onclick="window.print()">📄 PDF</button>`;
+    }
+    function cafeTop() {
+      if (!cafeD) cafeD = todayISO();
+      return `<label class="chip" style="gap:6px">Arrêté au <input type="date" value="${cafeD}" onchange="cafeD=this.value;render()" style="padding:3px 8px"></label>`;
+    }
     function render() {
       $("nav").innerHTML = NAV.map(s => `<div class="nav-sec">${s.sec}</div>` + s.items.map(i => `<div class="nav-item ${view === i.id ? "active" : ""}" onclick="setView('${i.id}')"><span class="ico">${i.ico}</span>${i.label}</div>`).join("")).join("");
       $("vTitle").textContent = TITLES[view][0];
       $("vSub").textContent = TITLES[view][1];
-      $("topRight").innerHTML = view === "dashboard" ? "" : `<span class="chip">📅 ${frDate(todayISO())}</span>
+      $("topRight").innerHTML = view === "dashboard" ? dashTop() : `${view === "cafe" ? cafeTop() : ""}<span class="chip">📅 ${frDate(todayISO())}</span>
   <span class="chip gold">Caisse <b>${fmt(caisseSolde())} DA</b></span>
   <span class="chip blue">Banque <b>${fmt(banqueSolde())} DA</b></span>`;
       const V = { dashboard: vJournal, journee: vJournee, achats: vAchats, cafe: vCafe, etats: vEtats, fournisseurs: vFournisseurs, stock: vStock, tresorerie: vTresorerie, paie: vPaie, tiers: vTiers, articles: vArticles, categories: vCategories, referentiel: vReferentiel, donnees: vDonnees };
@@ -2173,6 +2193,7 @@
       cafeSec[k] = open;
       try { localStorage.setItem("cafeSec", JSON.stringify(cafeSec)); } catch (e) { }
       h.closest(".cafe-sec").classList.toggle("closed", !open);
+      const w = h.closest(".cafe-wrap"); if (w) w.classList.toggle("has-open", open);
     }
     function vCafe() {
       const c = cafe(); if (!cafeD) cafeD = todayISO();
@@ -2180,8 +2201,7 @@
       const col = r.ecart < 0 ? "var(--red)" : r.ecart > 0 ? "var(--green)" : "var(--accent2)";
       const del = (k, id) => `<button class="tag-del" onclick="if(confirm('Supprimer ?')){cafeDel('${k}','${id}')}">✕</button>`;
       const achAll = c.achats.slice().sort((a, b) => b.date.localeCompare(a.date)), opsAll = c.ops.slice().sort((a, b) => b.date.localeCompare(a.date)), ach = cafeAll ? achAll : achAll.slice(0, 40), ops = cafeAll ? opsAll : opsAll.slice(0, 40), invs = c.inv.slice().sort((a, b) => b.date.localeCompare(a.date));
-      return `<div class="cafe-wrap"><div class="card ${cafeSecCls('arr')}"><div class="row between cafe-head"><h2 class="cafe-h" style="margin:0" onclick="cafeToggle('arr',this)">⚖️ Arrêté de compte — Café <span class="subtle cafe-sum" style="font-weight:400;font-size:12.5px">— Solde comptable <b>${fmt(r.attendu)} DA</b> · Écart <b style="color:${col}">${r.ecart > 0 ? "+" : ""}${fmt(r.ecart)} DA</b></span></h2>
-   <div class="field"><label>Arrêté au</label><input type="date" value="${cafeD}" onchange="cafeD=this.value;render()"></div></div>
+      return `<div class="cafe-wrap db-wrap${['arr','ach','fourn','ops','art','inv'].some(k=>cafeSec[k])?' has-open':''}"><div class="card ${cafeSecCls('arr')}"><div class="row between cafe-head"><h2 class="cafe-h" style="margin:0" onclick="cafeToggle('arr',this)">⚖️ Arrêté de compte — Café <span class="subtle cafe-sum" style="font-weight:400;font-size:12.5px">— Solde comptable <b>${fmt(r.attendu)} DA</b> · Écart <b style="color:${col}">${r.ecart > 0 ? "+" : ""}${fmt(r.ecart)} DA</b></span></h2></div>
   <div class="cafe-scroll cafe-nosticky"><table style="margin-top:10px"><tr><th colspan="2">À justifier par l'employé</th></tr>
    ${L("Inventaire initial (au PV)" + (c.init.date ? " — " + frDate(c.init.date) : ""), r.init)}${L("＋ Marge des achats (PV − PA)", r.marge)}${r.dettes ? L("＋ Achats à crédit non payés (dettes fournisseurs)", r.dettes) : ""}${L("<b>Solde comptable</b>", r.attendu, "font-weight:700")}
    <tr><th colspan="2">Justifié</th></tr>
@@ -3277,24 +3297,11 @@
       if (facNonBanqueReste.length) { facRowsHtml += facGrpRow("🟫 Gasoil / Essence", "var(--accent)", "rgba(245,158,11,0.08)"); facRowsHtml += facNonBanqueReste.map(f => facRowLine(f).row).join(""); }
 
       return `
- <div class="cafe-wrap">
- <div class="row between no-print" style="margin-bottom:16px;align-items:center;background:var(--card);padding:14px 18px;border-radius:var(--radius);border:1px solid var(--line)">
-  <div style="display:flex;align-items:center;gap:12px">
-   <span style="font-size:24px">📊</span>
-   <h1 style="font-size:18px;font-weight:700;margin:0;color:var(--ink)">Tableau de bord</h1>
-  </div>
-  <div class="row" style="gap:10px;flex-wrap:wrap">
-   <select style="padding:8px 12px;border-radius:9px;background:#fff;border:1px solid var(--accent);color:#000;font-size:14px;font-weight:600;min-width:140px;cursor:pointer" onchange="sel.jdate=this.value;render()">
-    ${ds.map(x => `<option value="${x}" ${x === d ? "selected" : ""}>${frDate(x)}</option>`).join("")}
-   </select>
-   <button class="btn" style="background:var(--red);color:#fff;border:none;display:flex;align-items:center;gap:6px" onclick="window.print()">📄 PDF</button>
-  </div>
- </div>
-
+ <div class="cafe-wrap db-wrap${['db_carb','db_caisse','db_regl'].some(k=>cafeSec[k])?' has-open':''}">
  <div class="print-columns">
   <div class="print-col-left">
 
-   <div class="grid-stats" style="margin-bottom:16px">
+   <div class="grid-stats db-stats" style="margin-bottom:16px">
     <div class="stat-col">
      <div class="stat gold"><div class="v">${fmt(soldeFin)}</div><div class="l">Caisse (Fin de journée)</div></div>
      <div class="stat green"><div class="v">${fmt(tmCarb)}</div><div class="l">Marge Carburant</div></div>
