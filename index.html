@@ -2189,7 +2189,7 @@
   <div style="margin-top:14px;text-align:center"><div class="subtle">Écart (justifié − solde comptable)</div>
    <div class="caisse-big" style="color:${col}">${r.ecart > 0 ? "+" : ""}${fmt(r.ecart)} DA</div>
    <div class="subtle">${r.ecart < 0 ? "⛔ Manque à justifier" : r.ecart > 0 ? "⚠ Excédent" : "✔ Compte équilibré"}</div></div>
-  <div class="grid-stats" style="margin-top:12px"><div class="stat"><div class="v">${fmt(r.achatsPA)}</div><div class="l">Achats café au PA (payés au comptant)</div></div>
+  <div class="grid-stats" style="margin-top:12px"><div class="stat"><div class="v">${fmt(r.achatsPA)}</div><div class="l">Achats café au PA (total, dettes comprises)</div></div>
    <div class="stat green"><div class="v">${fmt(r.marge)}</div><div class="l">Marge cumulée des achats</div></div>
    <div class="stat ${r.dettes > 0 ? "red" : ""}"><div class="v">${fmt(r.dettes)}</div><div class="l">Dettes fournisseurs café</div></div></div></div></div>
  <div class="card ${cafeSecCls('ach')}"><div class="row between cafe-head"><h2 class="cafe-h" style="margin:0" onclick="cafeToggle('ach',this)">🧾 Achats café</h2><div class="row" style="flex-wrap:wrap;justify-content:flex-end"><button class="btn accent" onclick="openCafeAchat()">＋ Achat</button>${c.modeles.map(m => `<button class="btn" title="Saisie rapide : ${esc(m.nom)}" onclick="openCafeAchat('${m.id}')">${esc(m.nom)}</button>`).join("")}<button class="btn sm" title="Gérer les modèles de saisie rapide" onclick="openCafeModeles()">⚙ Modèles</button></div></div>
