@@ -8,6 +8,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon_index.svg" type="image/svg+xml">
   <meta name="theme-color" content="#0a0e18">
+  <script>try { var _t = localStorage.getItem("sp_theme"); if (_t === "light") { document.documentElement.setAttribute("data-theme", "light"); } } catch (e) { }</script>
   <style>
     * {
       box-sizing: border-box;
@@ -936,6 +937,111 @@
       }
     }
 
+    /* ===== LISIBILITÉ : thème sombre amélioré + thème clair (bouton « Thème » dans le menu) ===== */
+    :root {
+      color-scheme: dark;
+      --muted: #aab6d2;
+      --line: #34446b;
+      --label: #d5ddf0;
+      --input-bg: #1e2a47;
+      --input-line: #52648f
+    }
+
+    .field label {
+      color: var(--label);
+      font-size: 12.5px
+    }
+
+    input,
+    select,
+    textarea {
+      background: var(--input-bg);
+      border: 1px solid var(--input-line);
+      color: var(--ink);
+      font-size: 14px
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: #8190b3
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(245, 158, 11, .35)
+    }
+
+    input:disabled,
+    select:disabled {
+      opacity: .8
+    }
+
+    th,
+    .card h3 {
+      color: var(--label)
+    }
+
+    html[data-theme="light"] {
+      color-scheme: light;
+      --bg: #eef2f8;
+      --panel: #ffffff;
+      --card: #ffffff;
+      --card2: #f1f5fb;
+      --line: #c3cde0;
+      --ink: #0f1a30;
+      --muted: #4a5772;
+      --label: #1f2a44;
+      --input-bg: #ffffff;
+      --input-line: #8d9bb8;
+      --accent: #b45309;
+      --accent2: #0e7490;
+      --blue: #2563eb;
+      --green: #15803d;
+      --red: #dc2626;
+      --orange: #c2410c
+    }
+
+    html[data-theme="light"] .sidebar {
+      background: linear-gradient(180deg, #ffffff, #f1f5fb)
+    }
+
+    html[data-theme="light"] .topbar {
+      background: rgba(255, 255, 255, .92)
+    }
+
+    html[data-theme="light"] .btn.accent {
+      background: linear-gradient(90deg, #f59e0b, #fb923c);
+      color: #1a1206
+    }
+
+    html[data-theme="light"] tbody tr:hover {
+      background: rgba(0, 0, 0, .04)
+    }
+
+    html[data-theme="light"] tr[style*="rgba(255,255,255"],
+    html[data-theme="light"] thead tr {
+      background: #e9eef7 !important
+    }
+
+    html[data-theme="light"] ::-webkit-scrollbar-thumb {
+      background: #b4c0d8
+    }
+
+    html[data-theme="light"] input::placeholder,
+    html[data-theme="light"] textarea::placeholder {
+      color: #7a879f
+    }
+
+    html[data-theme="light"] .modal {
+      box-shadow: 0 30px 80px rgba(15, 26, 48, .25)
+    }
+
+    html[data-theme="light"] .toast {
+      box-shadow: 0 10px 30px rgba(15, 26, 48, .2)
+    }
+
     @media print {
       #netPill {
         display: none !important
@@ -1083,7 +1189,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="logo">⛽ Station<b>Pro</b></div>
       <div id="nav"></div>
-      <div class="side-foot">HB Soft · v2.0<br>Supabase · <span id="netBadge"></span><br><span id="pendingBadge"></span><br><span id="conflictBadge" style="cursor:pointer;color:var(--accent)" onclick="openConflicts()"></span><br><button onclick="doAdminLogout()" style="margin-top:8px;padding:4px 10px;background:#263350;color:#8d99b5;border:none;border-radius:6px;font-size:11px;cursor:pointer">Déconnexion</button></div>
+      <div class="side-foot">HB Soft · v2.0<br>Supabase · <span id="netBadge"></span><br><span id="pendingBadge"></span><br><span id="conflictBadge" style="cursor:pointer;color:var(--accent)" onclick="openConflicts()"></span><br><button onclick="doAdminLogout()" style="margin-top:8px;padding:4px 10px;background:#263350;color:#8d99b5;border:none;border-radius:6px;font-size:11px;cursor:pointer">Déconnexion</button> <button onclick="toggleTheme()" title="Basculer thème sombre / clair" style="margin-top:8px;padding:4px 10px;background:#263350;color:#e8edf7;border:none;border-radius:6px;font-size:11px;cursor:pointer">🌓 Thème</button></div>
     </aside>
     <div class="main">
       <header class="topbar">
@@ -2099,6 +2205,13 @@
     let state = { artFilter: "", tierFilter: "", tierTab: "P", histFilter: "", histSens: "", factFilter: "", lubArt: "", lubSearch: "", lubListOpen: false };
     let factLines = [], factType = "CE";
     let factForm = { fourn: "", num: "", date: todayISO(), mode: "credit", cheque: "" };
+    /* thème sombre / clair : choix mémorisé sur ce poste */
+    function toggleTheme() {
+      const d = document.documentElement, n = d.getAttribute("data-theme") === "light" ? "dark" : "light";
+      if (n === "light") d.setAttribute("data-theme", "light"); else d.removeAttribute("data-theme");
+      try { localStorage.setItem("sp_theme", n); } catch (e) { }
+      const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute("content", n === "light" ? "#eef2f8" : "#0a0e18");
+    }
     function toggleSidebar() { const s = $("sidebar"), o = $("sbOverlay"); if (!s) return; const open = s.classList.toggle("open"); if (o) o.classList.toggle("show", open); }
     function closeSidebar() { const s = $("sidebar"), o = $("sbOverlay"); if (s) s.classList.remove("open"); if (o) o.classList.remove("show"); }
     function setView(v) { view = v; closeSidebar(); render(); }
@@ -3598,8 +3711,29 @@
     /* ---- édition d'une facture (double-clic) ---- */
     let editFactLines = [];
     function factEditProds(f) { return f.type === "carburant" ? DB.articles.filter(a => [1, 2, 3].includes(Number(a.type_a))) : DB.articles.filter(a => [0, 9].includes(Number(a.type_a))); }
+    /* Total des factures portant le même N° de chèque (la facture en cours d'édition compte avec son total actuel) */
+    function chequesDeFacture(f) {
+      const l = [...new Set((f.paiements || []).map(p => String(p.cheque || "").trim()).filter(Boolean))];
+      if (!l.length && f.cheque) l.push(String(f.cheque).trim());
+      return l;
+    }
+    function updateEditChequeTot() {
+      const el = $("editChequeTot"), inp = $("editCheque"), fid = $("editFid");
+      if (!el || !inp || !fid) return;
+      const num = inp.value.trim();
+      if (!num) { el.textContent = ""; return; }
+      let tot = 0, n = 0;
+      DB.factures.forEach(f => {
+        if (String(f.id) === String(fid.value)) return;
+        if (chequesDeFacture(f).includes(num)) { tot += Number(f.montant) || 0; n++; }
+      });
+      tot += editFactLines.reduce((s, l) => s + Number(l.qte) * Number(l.pu), 0);
+      n++;
+      el.innerHTML = "— Total chèque : <b style='color:var(--accent2)'>" + fmt(tot) + " DA</b> (" + n + " facture" + (n > 1 ? "s" : "") + ")";
+    }
     function editLinesTable() {
       const tot = editFactLines.reduce((s, l) => s + Number(l.qte) * Number(l.pu), 0);
+      setTimeout(updateEditChequeTot, 0);
       return `<table><tr><th>Article</th><th>Détail / Cuves</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Mt</th></tr>
  ${editFactLines.map((l, i) => {
         const a = article(l.artId); const typeA = a ? Number(a.type_a) : null;
@@ -3650,7 +3784,7 @@
    <option value="C" ${normMode(f.mode) === "C" ? "selected" : ""}>Chèque (Banque)</option>
    <option value="B" ${normMode(f.mode) === "B" ? "selected" : ""}>Bons Naftal</option>
    <option value="T" ${normMode(f.mode) === "T" ? "selected" : ""}>À terme (Crédit)</option></select></div>
-  <div class="field" id="editChequeWrap" style="display:${(normMode(f.mode) === 'C' || normMode(f.mode) === 'T') ? 'flex' : 'none'}"><label>N° Chèque</label><input id="editCheque" value="${esc(f.cheque || (f.paiements && f.paiements[0] && f.paiements[0].cheque) || '')}" style="width:110px"></div>
+  <div class="field" id="editChequeWrap" style="display:${(normMode(f.mode) === 'C' || normMode(f.mode) === 'T') ? 'flex' : 'none'}"><label>N° Chèque <span id="editChequeTot" class="subtle" style="font-weight:400"></span></label><input id="editCheque" value="${esc(f.cheque || (f.paiements && f.paiements[0] && f.paiements[0].cheque) || '')}" style="width:110px" oninput="updateEditChequeTot()"></div>
  </div>
  <h3>Lignes</h3>
  <div class="row">
