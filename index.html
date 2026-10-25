@@ -1950,7 +1950,7 @@
       const ledger = [];
       DB.tresorerie.forEach(t => { if (t.compte === compte) ledger.push({ id: t.id, date: (compte === "caisse" && t.rep) || t.date, dateReelle: t.date, rep: (compte === "caisse" && t.rep) || null, libelle: t.libelle, obs: t.obs || "", sens: t.sens, montant: Number(t.montant), source: t.source || "treso", paie_cle: t.paie_cle || null }); });
       const agGroup = {}; DB.agent_detail.forEach(a => { const ty = Number(a.type_agent), mt = Number(a.mt_agent), d = a.date_agent; const k = d + "_" + ty; if (!agGroup[k]) agGroup[k] = { date: d, ty: ty, mt: 0, cle_id: a.cle_id }; agGroup[k].mt += mt; }); Object.values(agGroup).forEach(g => { if (compte === "caisse") { if (g.ty === 1) ledger.push({ id: g.cle_id, date: g.date, libelle: "دفعة " + agentLib(1) + " (Total)", obs: "", sens: "E", montant: g.mt, source: "agent" }); if (g.ty === 5 || g.ty === 6) ledger.push({ id: g.cle_id, date: g.date, libelle: "Retrait " + agentLib(g.ty) + " (Total)", obs: "", sens: "S", montant: g.mt, source: "agent" }); } });
-      DB.factures.forEach(f => { (f.paiements || []).forEach((p, idx) => { let isCaisse = p.source === "caisse", isBanque = p.source === "banque"; if (!p.source) { const nm = normMode(f.mode); isCaisse = nm === "E"; isBanque = nm === "C"; } if ((compte === "caisse" && isCaisse) || (compte === "banque" && isBanque)) { ledger.push({ id: f.id + "_p" + idx, date: (compte === "caisse" && p.rep) || p.date, dateReelle: p.date, rep: (compte === "caisse" && p.rep) || null, libelle: "Paiement Facture " + (f.numero ? f.numero : (f.type === "carburant" ? "Carb" : "Div")), obs: tierNom(f.fournisseurId), sens: "S", montant: Number(p.montant), source: "facture" }); } }); });
+      DB.factures.forEach(f => { (f.paiements || []).forEach((p, idx) => { let isCaisse = p.source === "caisse", isBanque = p.source === "banque"; if (!p.source) { const nm = normMode(f.mode); isCaisse = nm === "E"; isBanque = nm === "C"; } if ((compte === "caisse" && isCaisse) || (compte === "banque" && isBanque)) { const chq = String(p.cheque || "").trim() || ((f.paiements || []).length === 1 ? String(f.cheque || "").trim() : ""); ledger.push({ id: f.id + "_p" + idx, date: (compte === "caisse" && p.rep) || p.date, dateReelle: p.date, rep: (compte === "caisse" && p.rep) || null, libelle: "Paiement Facture " + (f.numero ? f.numero : (f.type === "carburant" ? "Carb" : "Div")), obs: tierNom(f.fournisseurId), sens: "S", montant: Number(p.montant), source: "facture", cheque: chq }); } }); });
       ledger.sort((a, b) => a.date.localeCompare(b.date));
       let solde = compte === "caisse" ? (Number(DB.meta.caisseInit) || 0) : (Number(DB.meta.banqueInit) || 0);
       ledger.forEach(l => { if (l.sens === "E") solde += l.montant; else solde -= l.montant; l.solde = solde; });
@@ -2199,7 +2199,7 @@
           { id: "referentiel", ico: "⚙️", label: "Référentiel" }]
       },
       { sec: "Données", items: [{ id: "donnees", ico: "💾", label: "Import / Export" }] }];
-    const TITLES = { cafe: ["☕ Café", "Stock au prix de vente, achats, versements et arrêté de compte"], dashboard: ["Tableau de bord", ""], journee: ["Journée & Index", "Relevé des compteurs, ventes par pompiste et comptes de caisse"], achats: ["Achats", "Factures carburant et achats divers (lubrifiants, gaz butane)"], etats: ["État Achats/CA", "Liste et totaux des achats et du chiffre d'affaires entre deux dates (Du / Au)"], fournisseurs: ["Fournisseurs & Soldes", "Suivi des factures à crédit et règlements"], stock: ["Stock & Historique", "État des stocks et historique complet des mouvements"], tresorerie: ["Trésorerie", "Gestion de la caisse et de la banque — encaissements, décaissements, virements"], tiers: ["Tiers", "Pompistes, fournisseurs et clients — rotation via « ord »"], articles: ["Articles", "Carburants, lubrifiants et gaz butane"], categories: ["Catégories", ""], referentiel: ["Référentiel", "Types de règlements et paramètres"], donnees: ["Import / Export", "Sauvegarde et transfert des données"], paie: ["Paie", "Salaires, primes, prêts, avances et manques du personnel"] };
+    const TITLES = { cafe: ["☕ Café", "Stock au prix de vente, achats, versements et arrêté de compte"], dashboard: ["Tableau de bord", ""], journee: ["Journée & Index", "Relevé des compteurs, ventes par pompiste et comptes de caisse"], achats: ["Achats", "Factures carburant et achats divers (lubrifiants, gaz butane)"], etats: ["État Achats/CA", "Liste et totaux des achats et du chiffre d'affaires entre deux dates (Du / Au)"], fournisseurs: ["Fournisseurs & Soldes", "Suivi des factures à crédit et règlements"], stock: ["Stock & Historique", "État des stocks et historique complet des mouvements"], tresorerie: ["Trésorerie", ""], tiers: ["Tiers", "Pompistes, fournisseurs et clients — rotation via « ord »"], articles: ["Articles", "Carburants, lubrifiants et gaz butane"], categories: ["Catégories", ""], referentiel: ["Référentiel", "Types de règlements et paramètres"], donnees: ["Import / Export", "Sauvegarde et transfert des données"], paie: ["Paie", "Salaires, primes, prêts, avances et manques du personnel"] };
     let view = "dashboard";
     let sel = { date: null, tierId: null, jourTab: "lub", jdate: null, tresoTab: "caisse", paieAnnee: String(new Date().getFullYear()).slice(-2), paieMois: String(new Date().getMonth() + 1).padStart(2, "0"), etDu: null, etAu: null };
     let state = { artFilter: "", tierFilter: "", tierTab: "P", histFilter: "", histSens: "", factFilter: "", lubArt: "", lubSearch: "", lubListOpen: false };
@@ -4686,19 +4686,47 @@
       save(); toast("Paramètres enregistrés", "ok");
     }
     /* ================= VUE : TRÉSORERIE ================= */
+    /* Détail d'un chèque : toutes les lignes banque portant ce N° de chèque */
+    function showChequeDetail(num) {
+      const L = getLedger("banque").filter(l => l.cheque === num).slice().sort((a, b) => a.date.localeCompare(b.date));
+      const tot = L.reduce((s, l) => s + l.montant, 0);
+      openModal(`<h2>Chèque N° ${esc(num)}</h2>
+ <table style="font-size:13px"><tr><th>Date</th><th>Libellé</th><th>Fournisseur</th><th class="num">Mt</th></tr>
+ ${L.map(l => `<tr><td>${frDate(l.date)}</td><td>${esc(l.libelle)}</td><td>${esc(l.obs || "—")}</td><td class="num">${fmt(l.montant)} DA</td></tr>`).join("")}
+ <tr><td colspan="3" style="text-align:right"><b>Total (${L.length} ligne${L.length > 1 ? "s" : ""})</b></td><td class="num"><b>${fmt(tot)} DA</b></td></tr></table>
+ <div style="text-align:right;margin-top:16px"><button class="btn" onclick="closeModal()">Fermer</button></div>`);
+    }
     function vTresorerie() {
       const sc = tresoSolde("caisse"), sb = tresoSolde("banque");
       const tab = sel.tresoTab || "caisse";
       const ledger = getLedger(tab).slice().reverse();
-      function opTable(ops) {
-        if (!ops.length) return `<p class="subtle" style="margin-top:10px">Aucun historique disponible.</p>`;
-        return `<table class="sortable" data-sk="treso-${tab}" style="margin-top:10px;font-size:12.5px">
-  <tr><th>Date</th><th>Sens</th><th>Source</th><th>Libellé / Obs.</th><th class="num">Mt</th><th class="num">Solde progressif</th></tr>
+      /* Banque : les lignes portant le même N° de chèque sont regroupées en une seule ligne (clic sur le chèque = détail) */
+      function groupByCheque(ops) {
+        if (tab !== "banque") return ops;
+        const cnt = {}; ops.forEach(o => { if (o.cheque) (cnt[o.cheque] = cnt[o.cheque] || []).push(o); });
+        const out = [];
+        ops.forEach(o => {
+          const g = o.cheque ? cnt[o.cheque] : null;
+          if (!g || g.length < 2) { out.push(o); return; }
+          /* ops est trié du plus récent au plus ancien : la ligne du groupe prend la place de son membre le plus récent (premier rencontré) */
+          if (g[0] !== o) return;
+          out.push({ group: true, cheque: o.cheque, n: g.length, date: g[0].date, sens: g[0].sens, source: g[0].source,
+            libelle: "Chèque N° " + o.cheque, obs: g.length + " factures — " + [...new Set(g.map(x => x.obs).filter(Boolean))].join(", "),
+            montant: g.reduce((s, x) => s + x.montant, 0), solde: g[0].solde });
+        });
+        return out;
+      }
+      function opTable(ops0) {
+        if (!ops0.length) return `<p class="subtle" style="margin-top:10px">Aucun historique disponible.</p>`;
+        const ops = groupByCheque(ops0), withChq = tab === "banque";
+        return `<table class="sortable" data-sk="treso-${tab}" style="margin-top:6px;font-size:12.5px">
+  <tr><th>Date</th><th>Sens</th><th>Source</th><th>Libellé / Obs.</th>${withChq ? "<th>Chèque</th>" : ""}<th class="num">Mt</th><th class="num">Solde progressif</th></tr>
   ${ops.map(t => `<tr ${t.source === "treso" ? `ondblclick="openEditTresoOp('${t.id}')" style="cursor:pointer" title="Dl_clic pour modifier"` : ""}>
    <td>${frDate(t.date)}${t.dateReelle && t.dateReelle !== t.date ? '<div class="subtle" style="font-size:11px">saisi le ' + frDate(t.dateReelle) + ' (après arrêt)</div>' : ""}</td>
    <td>${t.sens === "E" ? '<span class="pill ok">Débit (+)</span>' : '<span class="pill warn">Crédit (-)</span>'}</td>
    <td><span class="pill neutral">${t.source}</span></td>
    <td><b>${esc(t.libelle)}</b><div class="subtle">${esc(t.obs || "—")}</div></td>
+   ${withChq ? `<td>${t.cheque ? `<a href="#" data-c="${esc(t.cheque)}" onclick="event.preventDefault();showChequeDetail(this.dataset.c)" title="Voir le détail du chèque" style="color:var(--accent2);font-weight:700;text-decoration:underline">${esc(t.cheque)}${t.group ? " (" + t.n + ")" : ""}</a>` : "—"}</td>` : ""}
    <td class="num" style="color:${t.sens === "E" ? "var(--green)" : "var(--red)"};font-weight:700">${t.sens === "E" ? "+" : "-"} ${fmt(t.montant)} DA</td>
    <td class="num" style="font-weight:700">${fmt(t.solde)} DA</td>
   </tr>`).join("")}
@@ -4706,29 +4734,21 @@
       }
       return `
  <div class="cafe-wrap">
- <div class="grid-stats">
-  <div class="stat gold"><div class="v">${fmt(sc)}</div><div class="l">💵 Solde Caisse</div></div>
-  <div class="stat blue"><div class="v">${fmt(sb)}</div><div class="l">🏦 Solde Banque</div></div>
-  <div class="stat green"><div class="v">${fmt(sc + sb)}</div><div class="l">Total trésorerie</div></div>
- </div>
- <div class="card" style="margin-top:16px">
-  <h2>⇄ Virement entre comptes</h2>
-  <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
-   <div class="field"><label>De</label><select id="virDe"><option value="caisse">💵 Caisse</option><option value="banque">🏦 Banque</option></select></div>
-   <div class="field"><label>Vers</label><select id="virVers"><option value="banque">🏦 Banque</option><option value="caisse">💵 Caisse</option></select></div>
-   <div class="field"><label>Mt (DA)</label><input id="virMt" type="number" min="1" style="width:130px" placeholder="0"></div>
-   <div class="field"><label>Date</label><input id="virDate" type="date" value="${todayISO()}"></div>
-   <div class="field"><label>Obs.</label><input id="virObs" style="width:130px" placeholder="Optionnel"></div>
-   <button class="btn blue" onclick="virementTreso($('virDe').value,$('virVers').value,Number($('virMt').value),$('virDate').value||todayISO(),$('virObs').value)">⇄ Effectuer le virement</button>
+ <div class="card" style="margin-top:0;padding:8px 12px">
+  <div class="row" style="flex-wrap:wrap;gap:8px;align-items:flex-end">
+   <b style="align-self:center">⇄ Virement</b>
+   <div class="field"><select id="virSens" title="De"><option value="caisse>banque">💵 Caisse vers 🏦 Banque</option><option value="banque>caisse">🏦 Banque vers 💵 Caisse</option></select></div>
+   <div class="field"><input id="virMt" type="number" min="1" style="width:120px" placeholder="Mt (DA)" title="Mt (DA)"></div>
+   <div class="field"><input id="virDate" type="date" value="${todayISO()}" title="Date"></div>
+   <div class="field"><input id="virObs" style="width:130px" placeholder="Obs" title="Obs."></div>
+   <button class="btn blue" onclick="const v=$('virSens').value.split('>');virementTreso(v[0],v[1],Number($('virMt').value),$('virDate').value||todayISO(),$('virObs').value)">⇄ Effectuer le virement</button>
   </div>
  </div>
- <div class="card cafe-fill">
+ <div class="card cafe-fill" style="margin-top:8px;padding-top:8px">
   <div class="tabs">
    <button class="${tab === "caisse" ? "active" : ""}" onclick="sel.tresoTab='caisse';render()">💵 Caisse</button>
    <button class="${tab === "banque" ? "active" : ""}" onclick="sel.tresoTab='banque';render()">🏦 Banque</button>
   </div>
-  <h2 style="margin-top:0">${tab === "caisse" ? "💵 Caisse" : "🏦 Banque"} — Solde : <span style="color:${tab === "caisse" ? "var(--accent)" : "var(--accent2)"};">${fmt(tab === "caisse" ? sc : sb)} DA</span></h2>
-  <h3>Ajouter une opération</h3>
   <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
    <div class="field"><label>Sens</label><select id="tresoSens"><option value="S">－ Décaissement (charge)</option><option value="E">＋ Encaissement</option></select></div>
    <div class="field" style="flex:1;min-width:160px"><label>Libellé *</label><input id="tresoLib" placeholder="Ex: Loyer, Salaire, Recette…"></div>
