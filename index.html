@@ -3638,6 +3638,8 @@
       DB.mouv_detail.push({ mouv_detail_id: uid(), id_operation: opsens, id_art: artId, quantite: qte, prix_u: pu, prix_v: 0, qte_r: 0 });
       save(); render(); toast("Achat enregistré : " + fmt(montant) + " DA", "ok");
     }
+    /* Fournisseur par défaut des achats lubrifiants / gaz butane : « Fourn. gaz & lubrifiants » */
+    function fournGazLubId() { const t = DB.tiers.find(x => x.type === "F" && /gaz\s*&\s*lubrifiants/i.test(x.nom || "")); return t ? t.tier_id : 22; }
     function fournOptions(selId) { return DB.tiers.filter(t => t.type === "F" && Number(t.stat) !== 4).map(f => `<option value="${f.tier_id}" ${String(f.tier_id) === String(selId) ? "selected" : ""}>${tierNom(f.tier_id)}</option>`).join(""); }
     function factQtesStr(f, detail, cat) {
       return (f.lignes || []).map(l => {
@@ -3896,7 +3898,7 @@
  <div class="card cafe-form ${cafeSecCls('ac_div')}"><div class="row between cafe-head"><h2 class="cafe-h" style="margin:0" onclick="cafeToggle('ac_div',this)">📦 Achat lubrifiant / gaz butane</h2></div>
   <div class="cafe-scroll"><div class="row">
    <div class="field"><label>Article</label><select id="divArticle">${divers.map(a => `<option value="${a.art_id}">${esc(a.article)}</option>`).join("")}</select></div>
-   <div class="field"><label>Fournisseur</label><select id="divFourn">${fournOptions()}</select></div>
+   <div class="field"><label>Fournisseur</label><select id="divFourn">${fournOptions(fournGazLubId())}</select></div>
    <div class="field"><label>Date</label><input id="divDate" type="date" value="${todayISO()}"></div>
    <div class="field"><label>Quantité</label><input id="divQte" type="number" min="1" style="width:90px"></div>
    <div class="field"><label>PA unitaire</label><input id="divPu" type="number" style="width:90px"></div>
