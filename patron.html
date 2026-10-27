@@ -1095,6 +1095,8 @@
       DB.agent = [{ agent_id: 1, agent_type: 1, agent_libelle: "Espèce", actif: "Oui" }, { agent_id: 2, agent_type: 2, agent_libelle: "Med", actif: "Oui" }, { agent_id: 3, agent_type: 3, agent_libelle: "Bons Naftal", actif: "Oui" }, { agent_id: 4, agent_type: 4, agent_libelle: "Bons Autres", actif: "Oui" }, { agent_id: 5, agent_type: 5, agent_libelle: "TPE", actif: "Oui" }, { agent_id: 6, agent_type: 6, agent_libelle: "Groupe Electogène", actif: "Oui" }, { agent_id: 7, agent_type: 7, agent_libelle: "chemsou", actif: "Oui" }, { agent_id: 8, agent_type: 8, agent_libelle: "laamri", actif: "Oui" }, { agent_id: 9, agent_type: 9, agent_libelle: "Autres", actif: "Oui" }, { agent_id: 10, agent_type: 10, agent_libelle: "Butane", actif: "Non" }, { agent_id: 11, agent_type: 11, agent_libelle: "الزيوت", actif: "Non" }];
       if (!DB.meta.fournisseurCarburantId) DB.meta.fournisseurCarburantId = 21;
       if (!DB.meta.qteMemoire) DB.meta.qteMemoire = { Gasoil: 20000, Essence: 7000, GPL: 8000 };
+      if (!DB.meta.caissePhysique) DB.meta.caissePhysique = {};
+      if (!DB.meta.arrets_caisse) DB.meta.arrets_caisse = [];
       if (!DB.tresorerie) DB.tresorerie = [];
       if (!DB.paie) DB.paie = [];
     }
@@ -1388,9 +1390,9 @@
     function normMode(m) { if (m === "cash" || m === "Espèce" || m === "E") return "E"; if (m === "credit" || m === "Crédit" || m === "T") return "T"; if (m === "banque" || m === "Chèque" || m === "C") return "C"; if (m === "bons" || m === "Bons Naftal" || m === "B") return "B"; return String(m || "E"); }
     function getLedger(compte) {
       const ledger = [];
-      DB.tresorerie.forEach(t => { if (t.compte === compte) ledger.push({ id: t.id, date: t.date, libelle: t.libelle, obs: t.obs || "", sens: t.sens, montant: Number(t.montant), source: t.source || "treso", paie_cle: t.paie_cle || null }); });
+      DB.tresorerie.forEach(t => { if (t.compte === compte) ledger.push({ id: t.id, date: (compte === "caisse" && t.rep) || t.date, dateReelle: t.date, rep: (compte === "caisse" && t.rep) || null, libelle: t.libelle, obs: t.obs || "", sens: t.sens, montant: Number(t.montant), source: t.source || "treso", paie_cle: t.paie_cle || null }); });
       const agGroup = {}; DB.agent_detail.forEach(a => { const ty = Number(a.type_agent), mt = Number(a.mt_agent), d = a.date_agent; const k = d + "_" + ty; if (!agGroup[k]) agGroup[k] = { date: d, ty: ty, mt: 0, cle_id: a.cle_id }; agGroup[k].mt += mt; }); Object.values(agGroup).forEach(g => { if (compte === "caisse") { if (g.ty === 1) ledger.push({ id: g.cle_id, date: g.date, libelle: "دفعة " + agentLib(1) + " (Total)", obs: "", sens: "E", montant: g.mt, source: "agent" }); if (g.ty === 5 || g.ty === 6) ledger.push({ id: g.cle_id, date: g.date, libelle: "Retrait " + agentLib(g.ty) + " (Total)", obs: "", sens: "S", montant: g.mt, source: "agent" }); } });
-      DB.factures.forEach(f => { (f.paiements || []).forEach((p, idx) => { let isCaisse = p.source === "caisse", isBanque = p.source === "banque"; if (!p.source) { const nm = normMode(f.mode); isCaisse = nm === "E"; isBanque = nm === "C"; } if ((compte === "caisse" && isCaisse) || (compte === "banque" && isBanque)) { ledger.push({ id: f.id + "_p" + idx, date: p.date, libelle: "Paiement Facture " + (f.numero ? f.numero : (f.type === "carburant" ? "Carb" : "Div")), obs: tierNom(f.fournisseurId), sens: "S", montant: Number(p.montant), source: "facture" }); } }); });
+      DB.factures.forEach(f => { (f.paiements || []).forEach((p, idx) => { let isCaisse = p.source === "caisse", isBanque = p.source === "banque"; if (!p.source) { const nm = normMode(f.mode); isCaisse = nm === "E"; isBanque = nm === "C"; } if ((compte === "caisse" && isCaisse) || (compte === "banque" && isBanque)) { const chq = String(p.cheque || "").trim() || ((f.paiements || []).length === 1 ? String(f.cheque || "").trim() : ""); ledger.push({ id: f.id + "_p" + idx, date: (compte === "caisse" && p.rep) || p.date, dateReelle: p.date, rep: (compte === "caisse" && p.rep) || null, libelle: "Paiement Facture " + (f.numero ? f.numero : (f.type === "carburant" ? "Carb" : "Div")), obs: tierNom(f.fournisseurId), sens: "S", montant: Number(p.montant), source: "facture", cheque: chq }); } }); });
       ledger.sort((a, b) => a.date.localeCompare(b.date));
       let solde = compte === "caisse" ? (Number(DB.meta.caisseInit) || 0) : (Number(DB.meta.banqueInit) || 0);
       ledger.forEach(l => { if (l.sens === "E") solde += l.montant; else solde -= l.montant; l.solde = solde; });
@@ -1410,6 +1412,85 @@
     function caisseSoldeAvant(date) { const led = getLedger("caisse"); const last = led.filter(l => l.date < date).pop(); return last ? last.solde : (Number(DB.meta.caisseInit) || 0); }
     function caisseSolde() { const led = getLedger("caisse"); return led.length ? led[led.length - 1].solde : (Number(DB.meta.caisseInit) || 0); }
     function banqueSolde() { const led = getLedger("banque"); return led.length ? led[led.length - 1].solde : (Number(DB.meta.banqueInit) || 0); }
+    const fmtMil = n => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    /* ---- Arrêt de caisse : après un arrêt, tout mouvement de caisse saisi (même daté d'une journée déjà arrêtée)
+       reçoit un repère « rep » = lendemain de l'arrêt, et est compté dans le Suivi de caisse suivant ---- */
+    function arretsCaisse() { return (DB.meta.arrets_caisse || []).slice().sort((a, b) => a.date.localeCompare(b.date)); }
+    function arretOf(d) { return arretsCaisse().find(a => a.date === d) || null; }
+    function lastArretDate() { const a = arretsCaisse(); return a.length ? a[a.length - 1].date : null; }
+    function repFor(date) { const L = lastArretDate(); return (L && date <= L) ? addDays(L, 1) : undefined; }
+    function withRep(o, date) { const r = repFor(date); if (r) o.rep = r; return o; }
+    function pushTreso(o) { if (o.compte === "caisse") withRep(o, o.date); DB.tresorerie.push(o); }
+    function repPay(p) { if (p.source === "caisse") withRep(p, p.date); return p; }
+    function repKeep(p, old) {
+      if (p.source !== "caisse") return p;
+      if (old && old.source === "caisse" && old.date === p.date) { if (old.rep) p.rep = old.rep; return p; }
+      return repPay(p);
+    }
+    function openArretCaisse(d) {
+      const el = $("cpDiffVal");
+      const comptable = el ? Number(el.dataset.soldefin) || 0 : 0;
+      let physique = 0; document.querySelectorAll(".cp-mt-input").forEach(i => physique += cpParse(i.value));
+      const ecart = physique - comptable;
+      openModal(`<h2>🔒 Arrêt de caisse — ${frDate(d)}</h2>
+ <div class="grid-stats" style="margin-bottom:12px">
+  <div class="stat gold"><div class="v">${fmt(comptable)}</div><div class="l">Caisse comptable</div></div>
+  <div class="stat blue"><div class="v">${fmt(physique)}</div><div class="l">Caisse physique (comptée)</div></div>
+  <div class="stat ${ecart === 0 ? "green" : "red"}"><div class="v">${ecart > 0 ? "+" : ""}${fmt(ecart)}</div><div class="l">Écart (physique − comptable)</div></div>
+ </div>
+ ${physique === 0 ? '<p style="color:var(--red);font-size:13px;margin-bottom:10px">⚠ Aucun comptage physique saisi pour cette journée.</p>' : ""}
+ <div class="field"><label>Observation (optionnel)</label><input id="arObs" style="width:100%"></div>
+ <p class="subtle" style="margin-top:10px">Après l'arrêt, les comptages de cette journée sont verrouillés et tout mouvement de caisse saisi ensuite (même daté du ${frDate(d)}) sera compté dans le <b>Suivi de caisse suivant</b> (${frDate(addDays(d, 1))}).</p>
+ <div style="text-align:right;margin-top:16px"><button class="btn" onclick="closeModal()">Annuler</button>
+ <button class="btn accent" onclick="saveArretCaisse('${d}',${comptable},${physique})">🔒 Confirmer l'arrêt</button></div>`);
+    }
+    function saveArretCaisse(d, comptable, physique) {
+      const L = lastArretDate();
+      if (arretOf(d) || (L && d < L)) { toast("Arrêt impossible pour cette date", "err"); return; }
+      const obs = $("arObs") ? $("arObs").value.trim() : "";
+      const rec = { id: uid(), date: d, ts: new Date().toISOString(), comptable: comptable, physique: physique, ecart: physique - comptable, obs: obs };
+      DB.meta.arrets_caisse = (DB.meta.arrets_caisse || []).concat([rec]);
+      save(); closeModal(); render(); toast("Caisse arrêtée au " + frDate(d), "ok");
+    }
+    function annulerArretCaisse(id) {
+      const a = (DB.meta.arrets_caisse || []).find(x => x.id === id); if (!a) return;
+      if (a.date !== lastArretDate()) { toast("Seul le dernier arrêt peut être annulé", "err"); return; }
+      if (!confirm("Annuler l'arrêt de caisse du " + frDate(a.date) + " ?\n\nLes mouvements saisis après cet arrêt reviendront dans cette journée.")) return;
+      const r = addDays(a.date, 1);
+      DB.tresorerie.forEach(t => { if (t.rep === r) delete t.rep; });
+      DB.factures.forEach(f => (f.paiements || []).forEach(p => { if (p.rep === r) delete p.rep; }));
+      DB.meta.arrets_caisse = DB.meta.arrets_caisse.filter(x => x.id !== id);
+      save(); render(); toast("Arrêt annulé", "ok");
+    }
+    /* ---- Caisse physique (comptage / rapprochement) ---- */
+    function cpRow(d, key) {
+      DB.meta.caissePhysique = DB.meta.caissePhysique || {};
+      DB.meta.caissePhysique[d] = DB.meta.caissePhysique[d] || {};
+      DB.meta.caissePhysique[d][key] = DB.meta.caissePhysique[d][key] || { mt: "", obs: "" };
+      return DB.meta.caissePhysique[d][key];
+    }
+    /* Montants caisse physique : entier, espace entre les milliers (ex: 1 250 000) */
+    function cpParse(v) { const t = String(v === null || v === undefined ? "" : v); const neg = /^\s*-/.test(t); const n = Number(t.replace(/\D/g, "")) || 0; return neg ? -n : n; }
+    function cpFmtInput(el) { const t = el.value, neg = /^\s*-/.test(t), dg = t.replace(/\D/g, ""); el.value = (neg ? "-" : "") + dg.replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
+    function cpSetMt(d, key, val) { const row = cpRow(d, key); row.mt = String(val).trim() === "" ? "" : cpParse(val); save(); }
+    function cpSetObs(d, key, val) { const row = cpRow(d, key); row.obs = val; save(); }
+    function cpCells(d, key) {
+      const row = cpRow(d, key);
+      const lk = arretOf(d) ? " disabled" : "";
+      return `<td style="padding:3px 4px;text-align:center"><input type="text" inputmode="numeric" class="cp-mt-input"${lk} value="${row.mt === "" ? "" : fmtMil(row.mt)}" placeholder="0" style="width:92px;background:var(--card2);border:1px solid var(--line);border-radius:6px;color:var(--ink);padding:4px 6px;font-size:12.5px;text-align:right" oninput="cpFmtInput(this);cpUpdateTotals()" onchange="cpSetMt('${d}','${esc(key)}',this.value)"></td>`
+        + `<td style="padding:3px 4px"><input type="text" class="cp-obs-input"${lk} value="${esc(row.obs)}" placeholder="Obs" style="width:120px;background:var(--card2);border:1px solid var(--line);border-radius:6px;color:var(--ink);padding:4px 6px;font-size:12px" onchange="cpSetObs('${d}','${esc(key)}',this.value)"></td>`;
+    }
+    function cpUpdateTotals() {
+      const inputs = document.querySelectorAll(".cp-mt-input");
+      let total = 0; inputs.forEach(i => total += cpParse(i.value));
+      const totalEl = $("cpTotalVal"), diffEl = $("cpDiffVal");
+      if (totalEl) totalEl.textContent = fmt(total) + " DA";
+      if (diffEl) {
+        const sf = Number(diffEl.dataset.soldefin) || 0, diff = total - sf;
+        diffEl.textContent = (diff > 0 ? "+" : "") + fmt(diff) + " DA";
+        diffEl.style.color = diff === 0 ? "var(--green)" : "var(--red)";
+      }
+    }
     function soldeFourn(fid) {
       let du = 0, paye = 0;
       DB.factures.filter(f => String(f.fournisseurId) === String(fid)).forEach(f => { du += Number(f.montant); paye += Number(f.regle); });
@@ -1421,13 +1502,13 @@
     function addTresoOp(compte, sens, libelle, montant, obs, date) {
       if (!montant || montant <= 0) { toast("Mt invalide", "err"); return false; }
       if (!libelle.trim()) { toast("Libellé obligatoire", "err"); return false; }
-      DB.tresorerie.push({ id: uid(), compte, sens, libelle: libelle.trim(), montant: Number(montant), obs: obs || "Aucune", date: date || todayISO() });
+      pushTreso({ id: uid(), compte, sens, libelle: libelle.trim(), montant: Number(montant), obs: obs || "Aucune", date: date || todayISO() });
       save(); return true;
     }
     function virementTreso(de, vers, montant, date, obs) {
       if (!montant || montant <= 0) { toast("Mt invalide", "err"); return; }
-      DB.tresorerie.push({ id: uid(), compte: de, sens: "S", libelle: "Virement → " + (vers === "banque" ? "Banque" : "Caisse"), montant: Number(montant), obs: obs || "Virement", date: date || todayISO() });
-      DB.tresorerie.push({ id: uid(), compte: vers, sens: "E", libelle: "Virement ← " + (de === "banque" ? "Banque" : "Caisse"), montant: Number(montant), obs: obs || "Virement", date: date || todayISO() });
+      pushTreso({ id: uid(), compte: de, sens: "S", libelle: "Virement → " + (vers === "banque" ? "Banque" : "Caisse"), montant: Number(montant), obs: obs || "Virement", date: date || todayISO() });
+      pushTreso({ id: uid(), compte: vers, sens: "E", libelle: "Virement ← " + (de === "banque" ? "Banque" : "Caisse"), montant: Number(montant), obs: obs || "Virement", date: date || todayISO() });
       save(); render(); toast("Virement de " + fmt(montant) + " DA enregistré", "ok");
     }
     function delTresoOp(id) { DB.tresorerie = DB.tresorerie.filter(t => t.id !== id); save(); render(); toast("Opération supprimée", "ok"); }
@@ -1459,8 +1540,10 @@
       const mt = Number($('etMt').value), lib = $('etLib').value.trim();
       if (!mt || mt <= 0) { toast("Mt invalide", "err"); return; }
       if (!lib) { toast("Libellé obligatoire", "err"); return; }
-      t.compte = $('etCompte').value; t.sens = $('etSens').value;
-      t.date = $('etDate').value || todayISO(); t.montant = mt;
+      const oldCompte = t.compte, newCompte = $('etCompte').value, newD = $('etDate').value || todayISO();
+      if (newD !== t.date || newCompte !== oldCompte) { delete t.rep; if (newCompte === "caisse") withRep(t, newD); }
+      t.compte = newCompte; t.sens = $('etSens').value;
+      t.date = newD; t.montant = mt;
       t.libelle = lib; t.obs = $('etObs').value;
       save(); render(); closeModal(); toast("Opération modifiée", "ok");
     }
@@ -2168,6 +2251,60 @@
       lpCancel();
       _lpT = setTimeout(() => { _lpT = null; sel.jsearch = true; sel.jq = ""; render(); setTimeout(() => { const i = $("jqInput"); if (i) i.focus(); }, 30); }, 600);
     }
+    /* ---- Appui long sur « Lubrifiants » → Mouvements & Stock des articles lubrifiants ---- */
+    let _lubLpT = null;
+    function lubLpCancel() { if (_lubLpT) { clearTimeout(_lubLpT); _lubLpT = null; } }
+    function lubLpStart() {
+      lubLpCancel();
+      _lubLpT = setTimeout(() => { _lubLpT = null; if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) { } openLubMouv(sel.jdate || todayISO()); }, 600);
+    }
+    function lubMouvData(d) {
+      // Lubrifiants : qs = magasin (les achats y entrent), qs_vitrine = vitrine (les ventes en sortent).
+      // Solde à la date d = soldes actuels − mouvements postérieurs à d. Article masqué si Vit + Mag = 0.
+      const sensOf = {}; DB.mouvements.forEach(m => { sensOf[String(m.operation_id)] = { s: m.sens, d: m.date_m }; });
+      return DB.articles.filter(a => Number(a.type_a) === 0).map(a => {
+        let ent = 0, sor = 0, entApres = 0, sorApres = 0;
+        DB.mouv_detail.forEach(md => {
+          if (String(md.id_art) !== String(a.art_id)) return;
+          const o = sensOf[String(md.id_operation)]; if (!o) return;
+          const q = Number(md.quantite) || 0;
+          if (o.d === d) { if (o.s === "E") ent += q; else if (o.s === "S") sor += q; }
+          else if (o.d > d) { if (o.s === "E") entApres += q; else if (o.s === "S") sorApres += q; }
+        });
+        const mag = (Number(a.qs) || 0) - entApres;
+        const vit = (Number(a.qs_vitrine) || 0) + sorApres;
+        return { a, ent, sor, mag, vit };
+      }).filter(r => (r.vit + r.mag) !== 0);
+    }
+    function lubMouvBody(d) {
+      const rows = lubMouvData(d);
+      // Valeur de la journée (qté × PU) : achats (sens E) et ventes (sens S) de tous les articles lubrifiants
+      const tot = { achat: 0, vente: 0 };
+      DB.mouv_detail.forEach(md => {
+        const a = article(md.id_art); if (!a || Number(a.type_a) !== 0) return;
+        const o = DB.mouvements.find(m => String(m.operation_id) === String(md.id_operation)); if (!o || o.date_m !== d) return;
+        const v = (Number(md.quantite) || 0) * (Number(md.prix_u) || 0);
+        if (o.sens === "E") tot.achat += v; else if (o.sens === "S") tot.vente += v;
+      });
+      const mv = r => (r.ent ? '<span style="color:var(--red);font-weight:700">' + fmtQ(r.ent) + '</span>' : '') + (r.ent && r.sor ? ' ' : '') + (r.sor ? '<span style="color:var(--green);font-weight:700">' + fmtQ(r.sor) + '</span>' : '') + (!r.ent && !r.sor ? '<span class="subtle">0</span>' : '');
+      const totHtml = '<div style="display:flex;gap:10px;margin-bottom:12px">'
+        + '<div class="stat" style="flex:1"><div class="v" style="color:var(--red)">' + fmt(tot.achat) + '</div><div class="l">Total Achats (DA)</div></div>'
+        + '<div class="stat" style="flex:1"><div class="v" style="color:var(--green)">' + fmt(tot.vente) + '</div><div class="l">Total Ventes (DA)</div></div>'
+        + '</div>';
+      return totHtml + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:1px solid var(--line)">'
+        + '<th style="text-align:left;padding:6px 4px;font-size:12px">Article</th>'
+        + '<th class="num" style="padding:6px 4px;font-size:12px">E/S</th>'
+        + '<th class="num" style="padding:6px 4px;font-size:12px">Solde (Vit/Mag)</th>'
+        + '</tr></thead><tbody>'
+        + (rows.length ? rows.map(r => '<tr style="border-bottom:1px solid var(--line)"><td style="padding:7px 4px;font-size:13px">' + esc(r.a.article) + '</td><td class="num" style="padding:7px 4px;font-size:13px;white-space:nowrap">' + mv(r) + '</td><td class="num" style="padding:7px 4px;font-size:13px;font-weight:700">' + fmtQ(r.vit) + ' <span class="subtle">/</span> ' + fmtQ(r.mag) + '</td></tr>').join("") : '<tr><td colspan="3" class="subtle" style="padding:10px 4px">Aucun article lubrifiant.</td></tr>')
+        + '</tbody>'
+        + '</table></div>';
+    }
+    function openLubMouv(d) {
+      openModal('<h2>🛢️ Lubrifiants — ' + frDate(d) + '</h2>'
+        + lubMouvBody(d)
+        + '<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="closeModal()">Fermer</button></div>');
+    }
     function caisseSearchHtml() {
       const q = (sel.jq || "").trim().toLowerCase(), qd = q.replace(/\s/g, "");
       const norm = n => fmt(n).replace(/[\s\u00a0\u202f]/g, "");
@@ -2269,6 +2406,10 @@
       const paiementsDetails = getLedger("caisse").filter(l => l.date === d && l.source !== "agent" && l.sens === "S");
       const autresEncDetails = getLedger("caisse").filter(l => l.date === d && l.source !== "agent" && l.sens === "E");
       const autresEnc = autresEncDetails.reduce((s, l) => s + l.montant, 0);
+      // détail comptage caisse physique
+      const lastA = lastArretDate();
+      const nRep = getLedger("caisse").filter(l => l.rep && l.date === d).length;
+      const repNote = nRep ? `<div class="subtle" style="margin-bottom:8px">↪ ${nRep} mouvement(s) saisi(s) après l'arrêt précédent sont comptés dans ce suivi.</div>` : "";
 
       /* ---- Suivi banque du jour ---- */
       const ledBanque = getLedger("banque").filter(l => l.date === d);
@@ -2311,13 +2452,13 @@
       <td class="num" style="padding:6px 4px;color:var(--red);font-weight:700;border-right:1px solid var(--line)">${r.reste > 0 ? fmt(r.reste) : "✔"}</td>
      </tr>`;
       }
-      function facSubtotalLine(label, t) {
-        return `<tr style="background:rgba(255,255,255,0.05);font-weight:700">
-      <td style="padding:6px 8px;border-left:1px solid var(--line);border-right:1px solid var(--line)">${label}</td>
-      <td class="num" style="padding:6px 8px;border-right:1px solid var(--line)">${fmtQ(t.qte)}</td>
-      <td class="num" style="padding:6px 4px;border-right:1px solid var(--line)">${fmt(t.mt)}</td>
+      function facSubtotalLine(label, t, col, bg) {
+        return `<tr style="background:${bg};font-weight:800;font-size:14px;border-top:2px solid ${col};border-bottom:2px solid ${col}">
+      <td style="padding:8px;color:${col};border-left:1px solid var(--line);border-right:1px solid var(--line)">${label}</td>
+      <td class="num" style="padding:8px;color:${col};border-right:1px solid var(--line)">${fmtQ(t.qte)}</td>
+      <td class="num" style="padding:8px 4px;color:${col};border-right:1px solid var(--line)">${fmt(t.mt)}</td>
       <td style="border-right:1px solid var(--line)"></td>
-      <td class="num" style="padding:6px 4px;color:var(--red);border-right:1px solid var(--line)">${fmt(t.reste)}</td>
+      <td class="num" style="padding:8px 4px;color:var(--red);border-right:1px solid var(--line)">${fmt(t.reste)}</td>
      </tr>`;
       }
 
@@ -2352,15 +2493,24 @@
    </div>
 
    <!-- SUIVI CAISSE -->
-   <div class="card" style="margin-bottom:12px">
-    <h2 style="margin-top:0;margin-bottom:10px">💵 Suivi de Caisse${sel.jsearch ? ' <span class="subtle">— recherche (toutes les dates)</span>' : ''}</h2>
-    ${sel.jsearch ? `<div id="caisseSearchWrap">${caisseSearchHtml()}</div>` : `
-    <table style="width:100%;max-width:480px">
+   <div class="card" style="margin-bottom:12px"><div class="row between" style="margin-bottom:10px"><h2 style="margin:0">💵 Suivi de Caisse</h2></div>${repNote}
+    ${sel.jsearch ? `<div id="caisseSearchWrap">${caisseSearchHtml()}</div>` : `<div style="overflow-x:auto">
+    <table style="width:100%;max-width:480px;border-collapse:collapse">
+     <thead>
+      <tr style="border-bottom:1px solid var(--line)">
+       <th style="text-align:left;padding:5px 4px;font-size:11px;color:var(--muted);font-weight:600">Désignation</th>
+       <th class="num" style="padding:5px 4px;font-size:11px;color:var(--muted);font-weight:600">Mt</th>
+      </tr>
+     </thead>
+     <tbody>
      <tr>
       <td style="padding:7px 4px">Solde initial (report)</td>
       <td class="num" style="padding:7px 4px;font-weight:700">${fmt(soldePrec)} DA</td>
+      
      </tr>
      <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Carburant</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(tvCarb)} DA</td></tr>
+     <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none" title="Appui long : mouvements et stock des lubrifiants" onmousedown="lubLpStart()" onmouseup="lubLpCancel()" onmouseleave="lubLpCancel()" ontouchstart="lubLpStart()" ontouchend="lubLpCancel()" ontouchmove="lubLpCancel()" ontouchcancel="lubLpCancel()" oncontextmenu="return false">Lubrifiants 🛢️</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowLub.vente)} DA</td></tr>
+     <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Gaz butane</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowGaz.vente)} DA</td></tr>
      ${autresEncDetails.map(l => `<tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` (${esc(l.obs)})` : ""}</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(l.montant)} DA</td></tr>`).join("")}
      ${Object.keys(parType).sort().map(t => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${agentLib(t)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(parType[t])} DA</td></tr>`).join("")}
      ${paiementsDetails.map(l => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${esc(l.libelle)}${l.obs ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td></tr>`).join("")}
@@ -2368,7 +2518,9 @@
       <td style="padding:10px 4px;font-weight:700;font-size:15px">Solde final caisse</td>
       <td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:${soldeFin >= 0 ? "var(--accent)" : "var(--red)"}">${fmt(soldeFin)} DA</td>
      </tr>
-    </table>`}
+     </tbody>
+    </table>
+    </div>`}
    </div>
 
    <!-- CARBURANT -->
@@ -2416,10 +2568,10 @@
       <tbody>
        <tr><td colspan="5" style="padding:6px 8px;font-weight:700;color:var(--accent2);background:rgba(34,211,238,0.08)">🟩 GPL</td></tr>
        ${facRowsGPL.length ? facRowsGPL.map(facRowLine).join("") : `<tr><td colspan="5" class="subtle" style="padding:6px 8px">Aucune facture GPL en attente.</td></tr>`}
-       ${facSubtotalLine("Sous-total GPL", totGPL)}
+       ${facSubtotalLine("Sous-total GPL", totGPL, "#22d3ee", "rgba(34,211,238,0.22)")}
        <tr><td colspan="5" style="padding:6px 8px;font-weight:700;color:var(--accent);background:rgba(245,158,11,0.08)">🟫 Gasoil / Essence</td></tr>
        ${facRowsGE.length ? facRowsGE.map(facRowLine).join("") : `<tr><td colspan="5" class="subtle" style="padding:6px 8px">Aucune facture Gasoil/Essence en attente.</td></tr>`}
-       ${facSubtotalLine("Sous-total Gasoil/Essence", totGE)}
+       ${facSubtotalLine("Sous-total Gasoil/Essence", totGE, "#f59e0b", "rgba(245,158,11,0.22)")}
        <tr style="border-top:2px solid var(--border);font-weight:800;font-size:14px">
         <td style="padding:8px">TOTAL GÉNÉRAL</td>
         <td class="num" style="padding:8px">${fmtQ(totTous.qte)}</td>
@@ -2475,7 +2627,7 @@
       const f = {
         id: uid(), type: "carburant", fournisseurId: fid, numero: fnum, date: fdate,
         mode: nm, lignes: factLines, montant: montant, regle: nm === "T" ? 0 : montant, operation_id: opsens, cheque: fcheque,
-        paiements: nm === "T" ? [] : [{ date: fdate, montant: montant, source: nm === "C" ? "banque" : (nm === "B" ? "bons" : "caisse"), cheque: fcheque }]
+        paiements: nm === "T" ? [] : [repPay({ date: fdate, montant: montant, source: nm === "C" ? "banque" : (nm === "B" ? "bons" : "caisse"), cheque: fcheque })]
       };
       DB.factures.push(f);
       DB.mouvements.push({ mouvement_id: opsens, operation_id: opsens, date_m: f.date, sens: "E", mode_paiement: nm, id_tier: fid, remise: 0, montant_paye: montant, obs: "Facture carburant " + (f.numero || ""), type_m: "AC" });
@@ -2499,7 +2651,7 @@
       DB.factures.push({
         id: uid(), type: "divers", fournisseurId: fourn, numero: "", date: date, mode: nm,
         lignes: [{ artId: artId, qte: qte, pu: pu }], montant: montant, regle: nm === "T" ? 0 : montant, operation_id: opsens,
-        paiements: nm === "T" ? [] : [{ date: date, montant: montant, source: nm === "C" ? "banque" : (nm === "B" ? "bons" : "caisse") }]
+        paiements: nm === "T" ? [] : [repPay({ date: date, montant: montant, source: nm === "C" ? "banque" : (nm === "B" ? "bons" : "caisse") })]
       });
       DB.mouvements.push({ mouvement_id: opsens, operation_id: opsens, date_m: date, sens: "E", mode_paiement: nm, id_tier: fourn, remise: 0, montant_paye: montant, obs: "Achat " + a.article, type_m: "AD" });
       DB.mouv_detail.push({ mouv_detail_id: uid(), id_operation: opsens, id_art: artId, quantite: qte, prix_u: pu, prix_v: 0, qte_r: 0 });
@@ -2582,6 +2734,8 @@
       const newFourn = $("editFourn").value, newNum = $("editNum").value, newDate = $("editDate").value || f.date, newMode = $("editMode").value;
       const newCheque = $("editCheque") ? $("editCheque").value.trim() : "";
       const oldMode = f.mode;
+      const oldP0 = (f.paiements || [])[0] ? Object.assign({}, f.paiements[0]) : null;
+      if (oldP0 && !oldP0.source) oldP0.source = normMode(f.mode) === "E" ? "caisse" : "autre";
       (f.lignes || []).forEach(l => { const a = article(l.artId); if (a) a.qs = (Number(a.qs) || 0) - Number(l.qte); });
       editFactLines.forEach(l => { const a = article(l.artId); if (a) a.qs = (Number(a.qs) || 0) + Number(l.qte); });
       if (f.operation_id) {
@@ -2596,9 +2750,9 @@
       const nm = newMode;
       if (nm !== normMode(oldMode)) {
         if (nm === "T") { f.regle = 0; f.paiements = []; }
-        else { f.regle = newMt; f.paiements = [{ date: newDate, montant: newMt, source: nm === "C" ? "banque" : (nm === "B" ? "bons" : "caisse"), cheque: newCheque }]; }
+        else { f.regle = newMt; f.paiements = [repKeep({ date: newDate, montant: newMt, source: nm === "C" ? "banque" : (nm === "B" ? "bons" : "caisse"), cheque: newCheque }, oldP0)]; }
       } else if (nm !== "T") {
-        f.regle = newMt; f.paiements = [{ date: newDate, montant: newMt, source: nm === "C" ? "banque" : (nm === "B" ? "bons" : "caisse"), cheque: newCheque }];
+        f.regle = newMt; f.paiements = [repKeep({ date: newDate, montant: newMt, source: nm === "C" ? "banque" : (nm === "B" ? "bons" : "caisse"), cheque: newCheque }, oldP0)];
       } else {
         f.regle = Math.min(Number(f.regle) || 0, newMt);
       }
@@ -2709,6 +2863,7 @@
       const chequeNum = $("payCheque") ? $("payCheque").value.trim() : "";
       const p = { date: $("payDate").value || todayISO(), montant: mt, source: src === "C" ? "banque" : (src === "B" ? "bons" : "caisse") };
       if (chequeNum) p.cheque = chequeNum;
+      repPay(p);
       f.paiements.push(p);
       save(); closeModal(); render(); toast("Règlement de " + fmt(mt) + " DA enregistré", "ok");
     }
@@ -3072,7 +3227,7 @@
         return `<table style="margin-top:10px;font-size:12.5px">
   <tr><th>Date</th><th>Sens</th><th>Source</th><th>Libellé / Obs.</th><th class="num">Mt</th><th class="num">Solde progressif</th></tr>
   ${ops.map(t => `<tr ${t.source === "treso" ? `ondblclick="openEditTresoOp('${t.id}')" style="cursor:pointer" title="Dl_clic pour modifier"` : ""}>
-   <td>${frDate(t.date)}</td>
+   <td>${frDate(t.date)}${t.dateReelle && t.dateReelle !== t.date ? '<div class="subtle" style="font-size:11px">saisi le ' + frDate(t.dateReelle) + ' (après arrêt)</div>' : ""}</td>
    <td>${t.sens === "E" ? '<span class="pill ok">Débit (+)</span>' : '<span class="pill warn">Crédit (-)</span>'}</td>
    <td><span class="pill neutral">${t.source}</span></td>
    <td><b>${esc(t.libelle)}</b><div class="subtle">${esc(t.obs || "—")}</div></td>
@@ -3297,7 +3452,7 @@
         const caisseDir = RUB_CAISSE_SENS[rub] || "S";
         const libTreso = "Paie — " + RUBRIQUES[rub] + " — " + tierNom(tid);
         tresoId = uid();
-        DB.tresorerie.push({ id: tresoId, compte: "caisse", sens: caisseDir, libelle: libTreso, montant: total, obs: "Automatique paie", date: dateL, source: "paie", paie_cle: cle });
+        pushTreso({ id: tresoId, compte: "caisse", sens: caisseDir, libelle: libTreso, montant: total, obs: "Automatique paie", date: dateL, source: "paie", paie_cle: cle });
       }
       DB.paie.push({ cle: cle, annee: sel.paieAnnee, mois: sel.paieMois, date_p: dateL, idp_tier: tid, rubrique: rub, sens: RUB_SENS[rub] || 1, nj: nj, prix: prixUnit, treso_id: tresoId });
       save(); closeModal(); render();
@@ -3310,7 +3465,7 @@
       if (montant <= 0) { toast("Montant invalide", "err"); return; }
       const a = sel.paieAnnee, m = sel.paieMois, dateP = todayISO(), cle = nextPaieCle(), tresoId = uid();
       DB.paie.push({ cle: cle, annee: a, mois: m, date_p: dateP, idp_tier: tid, rubrique: 10, sens: -1, nj: 1, prix: montant, treso_id: tresoId });
-      DB.tresorerie.push({ id: tresoId, compte: "caisse", sens: "S", libelle: "Paiement salaire — " + tierNom(tid) + " (" + m + "/" + a + ")", montant: montant, obs: "Paie directe", date: dateP, source: "paie", paie_cle: cle });
+      pushTreso({ id: tresoId, compte: "caisse", sens: "S", libelle: "Paiement salaire — " + tierNom(tid) + " (" + m + "/" + a + ")", montant: montant, obs: "Paie directe", date: dateP, source: "paie", paie_cle: cle });
       save(); render(); toast("💳 Paiement de " + fmt(montant) + " DA enregistré (paie + caisse)", "ok");
     }
     function openEditPaieLineModal(cle) {
@@ -3351,7 +3506,7 @@
       ligne.nj = nj; ligne.prix = px; ligne.date_p = dateL;
       if (ligne.treso_id) {
         const tr = DB.tresorerie.find(t => t.id === ligne.treso_id);
-        if (tr) { tr.montant = nj * px; tr.date = dateL; tr.libelle = "Paie — " + (RUBRIQUES[ligne.rubrique] || ligne.rubrique) + " — " + tierNom(ligne.idp_tier); }
+        if (tr) { if (tr.date !== dateL) { delete tr.rep; withRep(tr, dateL); } tr.montant = nj * px; tr.date = dateL; tr.libelle = "Paie — " + (RUBRIQUES[ligne.rubrique] || ligne.rubrique) + " — " + tierNom(ligne.idp_tier); }
       }
       save(); closeModal(); render(); toast("Ligne modifiée" + (ligne.treso_id ? " + caisse mise à jour" : ""), "ok");
     }
