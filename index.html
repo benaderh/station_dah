@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon_index.svg" type="image/svg+xml">
   <meta name="theme-color" content="#0a0e18">
-  <script>try { var _t = localStorage.getItem("sp_theme"); if (_t === "light") { document.documentElement.setAttribute("data-theme", "light"); } } catch (e) { }</script>
+  <script>try { var _t = localStorage.getItem("sp_theme"); if (_t && _t !== "dark") { document.documentElement.setAttribute("data-theme", _t); } } catch (e) { }</script>
   <style>
     * {
       box-sizing: border-box;
@@ -983,7 +983,7 @@
       color: var(--label)
     }
 
-    html[data-theme="light"] {
+    html:is([data-theme="light"],[data-theme="sand"]) {
       color-scheme: light;
       --bg: #eef2f8;
       --panel: #ffffff;
@@ -1003,45 +1003,56 @@
       --orange: #c2410c
     }
 
-    html[data-theme="light"] .sidebar {
+    html:is([data-theme="light"],[data-theme="sand"]) .sidebar {
       background: linear-gradient(180deg, #ffffff, #f1f5fb)
     }
 
-    html[data-theme="light"] .topbar {
+    html:is([data-theme="light"],[data-theme="sand"]) .topbar {
       background: rgba(255, 255, 255, .92)
     }
 
-    html[data-theme="light"] .btn.accent {
+    html:is([data-theme="light"],[data-theme="sand"]) .btn.accent {
       background: linear-gradient(90deg, #f59e0b, #fb923c);
       color: #1a1206
     }
 
-    html[data-theme="light"] tbody tr:hover {
+    html:is([data-theme="light"],[data-theme="sand"]) tbody tr:hover {
       background: rgba(0, 0, 0, .04)
     }
 
-    html[data-theme="light"] tr[style*="rgba(255,255,255"],
-    html[data-theme="light"] thead tr {
+    html:is([data-theme="light"],[data-theme="sand"]) tr[style*="rgba(255,255,255"],
+    html:is([data-theme="light"],[data-theme="sand"]) thead tr {
       background: #e9eef7 !important
     }
 
-    html[data-theme="light"] ::-webkit-scrollbar-thumb {
+    html:is([data-theme="light"],[data-theme="sand"]) ::-webkit-scrollbar-thumb {
       background: #b4c0d8
     }
 
-    html[data-theme="light"] input::placeholder,
-    html[data-theme="light"] textarea::placeholder {
+    html:is([data-theme="light"],[data-theme="sand"]) input::placeholder,
+    html:is([data-theme="light"],[data-theme="sand"]) textarea::placeholder {
       color: #7a879f
     }
 
-    html[data-theme="light"] .modal {
+    html:is([data-theme="light"],[data-theme="sand"]) .modal {
       box-shadow: 0 30px 80px rgba(15, 26, 48, .25)
     }
 
-    html[data-theme="light"] .toast {
+    html:is([data-theme="light"],[data-theme="sand"]) .toast {
       box-shadow: 0 10px 30px rgba(15, 26, 48, .2)
     }
 
+
+    /* ===== THÈMES SUPPLÉMENTAIRES (variables uniquement) ===== */
+    html[data-theme="sand"] { color-scheme: light; --bg: #f6f1e7; --panel: #fffdf8; --card: #fffdf8; --card2: #f1ead9; --line: #d6c9ad; --ink: #2a2118; --muted: #6b5d48; --label: #3d3224; --input-bg: #ffffff; --input-line: #a8987a; --accent: #b45309; --accent2: #0f766e; --blue: #2563eb; --green: #15803d; --red: #dc2626; --orange: #c2410c }
+    html[data-theme="ocean"] { --bg: #07131f; --panel: #0c1d2e; --card: #10263b; --card2: #153049; --line: #27506f; --ink: #e6f3ff; --muted: #9db9d1; --label: #cfe4f5; --input-bg: #14304a; --input-line: #3f6f94; --accent: #38bdf8; --accent2: #2dd4bf }
+    html[data-theme="forest"] { --bg: #0a140f; --panel: #0f1d15; --card: #13261b; --card2: #193223; --line: #2d5a40; --ink: #e8f5ec; --muted: #a3bfae; --label: #d3e8da; --input-bg: #183324; --input-line: #4a7d5e; --accent: #a3e635; --accent2: #34d399 }
+    html[data-theme="slate"] { --bg: #121214; --panel: #1a1a1e; --card: #212126; --card2: #2a2a30; --line: #3d3d46; --ink: #f0f0f3; --muted: #b0b0bb; --label: #dcdce3; --input-bg: #2b2b33; --input-line: #5a5a68; --accent: #a78bfa; --accent2: #22d3ee }
+    html[data-theme="contrast"] { --bg: #000000; --panel: #0a0a0a; --card: #111111; --card2: #1b1b1b; --line: #8a8a8a; --ink: #ffffff; --muted: #e0e0e0; --label: #ffffff; --input-bg: #000000; --input-line: #ffffff; --accent: #ffd60a; --accent2: #5ce1ff }
+    html:is([data-theme="ocean"],[data-theme="forest"],[data-theme="slate"],[data-theme="contrast"]) .sidebar { background: linear-gradient(180deg, var(--panel), var(--bg)) }
+    html:is([data-theme="ocean"],[data-theme="forest"],[data-theme="slate"],[data-theme="contrast"]) .topbar { background: color-mix(in srgb, var(--panel) 88%, transparent) }
+    html[data-theme="sand"] .sidebar { background: linear-gradient(180deg, #fffdf8, #f1ead9) }
+    html[data-theme="sand"] .topbar { background: rgba(255, 253, 248, .92) }
     @media print {
       #netPill {
         display: none !important
@@ -1189,7 +1200,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="logo">⛽ Station<b>Pro</b></div>
       <div id="nav"></div>
-      <div class="side-foot">HB Soft · v2.0<br>Supabase · <span id="netBadge"></span><br><span id="pendingBadge"></span><br><span id="conflictBadge" style="cursor:pointer;color:var(--accent)" onclick="openConflicts()"></span><br><button onclick="doAdminLogout()" style="margin-top:8px;padding:4px 10px;background:#263350;color:#8d99b5;border:none;border-radius:6px;font-size:11px;cursor:pointer">Déconnexion</button> <button onclick="toggleTheme()" title="Basculer thème sombre / clair" style="margin-top:8px;padding:4px 10px;background:#263350;color:#e8edf7;border:none;border-radius:6px;font-size:11px;cursor:pointer">🌓 Thème</button></div>
+      <div class="side-foot">HB Soft · v2.0<br>Supabase · <span id="netBadge"></span><br><span id="pendingBadge"></span><br><span id="conflictBadge" style="cursor:pointer;color:var(--accent)" onclick="openConflicts()"></span><br><button onclick="doAdminLogout()" style="margin-top:8px;padding:4px 10px;background:#263350;color:#8d99b5;border:none;border-radius:6px;font-size:11px;cursor:pointer">Déconnexion</button> <select id="themeSel" title="Thème" onchange="setTheme(this.value)" style="margin-top:8px;padding:4px 6px;background:#263350;color:#e8edf7;border:none;border-radius:6px;font-size:11px;cursor:pointer;max-width:120px"><option value="dark">🌙 Sombre</option><option value="light">☀️ Clair</option><option value="sand">📜 Sable</option><option value="ocean">🌊 Océan</option><option value="forest">🌲 Forêt</option><option value="slate">🪨 Ardoise</option><option value="contrast">◐ Contraste</option></select></div>
     </aside>
     <div class="main">
       <header class="topbar">
@@ -1199,6 +1210,7 @@
             <h1 id="vTitle"></h1>
             <p id="vSub"></p>
           </div>
+          <div id="topLeft" style="display:flex;align-items:center;gap:8px"></div>
         </div>
         <div class="top-right" id="topRight"></div>
       </header>
@@ -2199,39 +2211,82 @@
           { id: "referentiel", ico: "⚙️", label: "Référentiel" }]
       },
       { sec: "Données", items: [{ id: "donnees", ico: "💾", label: "Import / Export" }] }];
-    const TITLES = { cafe: ["☕ Café", "Stock au prix de vente, achats, versements et arrêté de compte"], dashboard: ["Tableau de bord", ""], journee: ["Journée & Index", "Relevé des compteurs, ventes par pompiste et comptes de caisse"], achats: ["Achats", "Factures carburant et achats divers (lubrifiants, gaz butane)"], etats: ["État Achats/CA", "Liste et totaux des achats et du chiffre d'affaires entre deux dates (Du / Au)"], fournisseurs: ["Fournisseurs & Soldes", "Suivi des factures à crédit et règlements"], stock: ["Stock & Historique", "État des stocks et historique complet des mouvements"], tresorerie: ["Trésorerie", ""], tiers: ["Tiers", "Pompistes, fournisseurs et clients — rotation via « ord »"], articles: ["Articles", "Carburants, lubrifiants et gaz butane"], categories: ["Catégories", ""], referentiel: ["Référentiel", "Types de règlements et paramètres"], donnees: ["Import / Export", "Sauvegarde et transfert des données"], paie: ["Paie", "Salaires, primes, prêts, avances et manques du personnel"] };
+    const TITLES = { cafe: ["☕ Café", "Stock au prix de vente, achats, versements et arrêté de compte"], dashboard: ["Tableau de bord", ""], journee: ["Journée & Index", ""], achats: ["Achats", "Factures carburant et achats divers (lubrifiants, gaz butane)"], etats: ["État Achats/CA", "Liste et totaux des achats et du chiffre d'affaires entre deux dates (Du / Au)"], fournisseurs: ["Fournisseurs & Soldes", "Suivi des factures à crédit et règlements"], stock: ["Stock & Historique", "État des stocks et historique complet des mouvements"], tresorerie: ["Trésorerie", ""], tiers: ["Tiers", "Pompistes, fournisseurs et clients — rotation via « ord »"], articles: ["Articles", "Carburants, lubrifiants et gaz butane"], categories: ["Catégories", ""], referentiel: ["Référentiel", "Types de règlements et paramètres"], donnees: ["Import / Export", "Sauvegarde et transfert des données"], paie: ["Paie", "Salaires, primes, prêts, avances et manques du personnel"] };
     let view = "dashboard";
     let sel = { date: null, tierId: null, jourTab: "lub", jdate: null, tresoTab: "caisse", paieAnnee: String(new Date().getFullYear()).slice(-2), paieMois: String(new Date().getMonth() + 1).padStart(2, "0"), etDu: null, etAu: null };
     let state = { artFilter: "", tierFilter: "", tierTab: "P", histFilter: "", histSens: "", factFilter: "", lubArt: "", lubSearch: "", lubListOpen: false };
     let factLines = [], factType = "CE";
     let factForm = { fourn: "", num: "", date: todayISO(), mode: "credit", cheque: "" };
     /* thème sombre / clair : choix mémorisé sur ce poste */
-    function toggleTheme() {
-      const d = document.documentElement, n = d.getAttribute("data-theme") === "light" ? "dark" : "light";
-      if (n === "light") d.setAttribute("data-theme", "light"); else d.removeAttribute("data-theme");
+    const THEME_BAR = { dark: "#0a0e18", light: "#eef2f8", sand: "#f6f1e7", ocean: "#07131f", forest: "#0a140f", slate: "#121214", contrast: "#000000" };
+    function setTheme(n) {
+      if (!THEME_BAR[n]) n = "dark";
+      const d = document.documentElement;
+      if (n === "dark") d.removeAttribute("data-theme"); else d.setAttribute("data-theme", n);
       try { localStorage.setItem("sp_theme", n); } catch (e) { }
-      const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute("content", n === "light" ? "#eef2f8" : "#0a0e18");
+      const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute("content", THEME_BAR[n]);
+      const sel = document.getElementById("themeSel"); if (sel) sel.value = n;
     }
+    (function () { let t = "dark"; try { t = localStorage.getItem("sp_theme") || "dark"; } catch (e) { } setTheme(t); })();
     function toggleSidebar() { const s = $("sidebar"), o = $("sbOverlay"); if (!s) return; const open = s.classList.toggle("open"); if (o) o.classList.toggle("show", open); }
     function closeSidebar() { const s = $("sidebar"), o = $("sbOverlay"); if (s) s.classList.remove("open"); if (o) o.classList.remove("show"); }
     function setView(v) { view = v; closeSidebar(); render(); }
     function metaCD() { const m = DB.meta.clientsDiversId; return DB.tiers.some(t => String(t.tier_id) === String(m)) ? m : (DB.tiers.find(t => t.type === "C") || {}).tier_id; }
+    /* ---- Appui long sur la date → recherche dans le Suivi de Caisse (Date / Libellé / Mt, date décroissante) ---- */
+    let _lpT = null;
+    function lpCancel() { if (_lpT) { clearTimeout(_lpT); _lpT = null; } }
+    function lpStart() {
+      lpCancel();
+      if (!cafeSec.db_caisse) return;   /* uniquement si la carte « Suivi de caisse » est dépliée */
+      _lpT = setTimeout(() => { _lpT = null; if (!cafeSec.db_caisse) return; sel.jsearch = true; sel.jq = ""; render(); setTimeout(() => { const i = $("jqInput"); if (i) i.focus(); }, 30); }, 600);
+    }
+    function caisseSearchHtml() {
+      const q = (sel.jq || "").trim().toLowerCase(), qd = q.replace(/\s/g, "");
+      const norm = n => fmt(n).replace(/[\s\u00a0\u202f]/g, "");
+      const all = getLedger("caisse").slice().reverse().sort((a, b) => b.date.localeCompare(a.date));
+      const rows = all.filter(l => {
+        if (!q) return true;
+        const txt = (l.libelle + " " + (l.obs && l.obs !== "Aucune" ? l.obs : "")).toLowerCase();
+        return txt.includes(q) || (qd !== "" && (String(Math.round(l.montant)).includes(qd) || norm(l.montant).includes(qd)));
+      });
+      const tot = rows.reduce((s, l) => s + (l.sens === "E" ? l.montant : -l.montant), 0);
+      return `<p class="subtle" style="margin-bottom:8px">${rows.length} ligne(s)${rows.length > 300 ? " (300 premières affichées)" : ""} — Total : <b>${fmt(tot)} DA</b></p>
+   <table style="width:100%">
+    <thead><tr style="background:rgba(255,255,255,0.04)"><th style="padding:6px 4px">Date</th><th style="padding:6px 4px">Libellé</th><th class="num" style="padding:6px 4px">Mt</th></tr></thead>
+    <tbody>${rows.slice(0, 300).map(l => `<tr><td style="padding:4px;font-size:13px;white-space:nowrap">${frDate(l.date)}</td><td style="padding:4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}</td><td class="num" style="padding:4px;font-size:13px;color:${l.sens === "E" ? "var(--green)" : "var(--red)"}">${l.sens === "E" ? "+" : "−"} ${fmt(l.montant)} DA</td></tr>`).join("") || `<tr><td colspan="3" class="subtle" style="padding:8px">Aucun résultat.</td></tr>`}</tbody>
+   </table>`;
+    }
     /* tableau de bord : sélecteur de date + PDF placés dans la barre du haut (évite le titre en double) */
     function dashTop() {
       const ds = allDates().slice().reverse(), today = todayISO();
       if (!ds.length) return "";
       if (!sel.jdate || !ds.includes(sel.jdate)) sel.jdate = ds.includes(today) ? today : ds[0];
-      return `<select style="padding:7px 12px;border-radius:9px;background:#fff;border:1px solid var(--accent);color:#000;font-size:14px;font-weight:600;min-width:140px;cursor:pointer" onchange="sel.jdate=this.value;render()">${ds.map(x => `<option value="${x}" ${x === sel.jdate ? "selected" : ""}>${frDate(x)}</option>`).join("")}</select>
+      const picker = sel.jsearch
+        ? `<input id="jqInput" type="text" placeholder="🔍 Libellé ou montant…" value="${esc(sel.jq || "")}" oninput="sel.jq=this.value;$('caisseSearchWrap').innerHTML=caisseSearchHtml()" style="padding:7px 12px;border-radius:9px;background:#fff;border:1px solid var(--accent);color:#000;font-size:14px;font-weight:600;min-width:200px" autocomplete="off">
+  <button class="btn" onclick="sel.jsearch=false;sel.jq='';render()" title="Revenir au sélecteur de date">✕</button>`
+        : `<select title="Appui long : recherche dans la caisse (si « Suivi de caisse » est dépliée)" style="padding:7px 12px;border-radius:9px;background:#fff;border:1px solid var(--accent);color:#000;font-size:14px;font-weight:600;min-width:140px;cursor:pointer" onchange="sel.jdate=this.value;render()"
+    onmousedown="lpStart()" onmouseup="lpCancel()" onmouseleave="lpCancel()" ontouchstart="lpStart()" ontouchend="lpCancel()" ontouchmove="lpCancel()" ontouchcancel="lpCancel()" oncontextmenu="return false">${ds.map(x => `<option value="${x}" ${x === sel.jdate ? "selected" : ""}>${frDate(x)}</option>`).join("")}</select>`;
+      return picker + `
   <button class="btn" style="background:var(--red);color:#fff;border:none" onclick="window.print()">📄 PDF</button>`;
     }
     function cafeTop() {
       if (!cafeD) cafeD = todayISO();
       return `<label class="chip" style="gap:6px">Arrêté au <input type="date" value="${cafeD}" onchange="cafeD=this.value;render()" style="padding:3px 8px"></label>`;
     }
+    /* Journée & Index : sélecteur de date (sans label) + nouvelle journée, dans la barre du haut */
+    function journeeTop() {
+      const ds = datesDesc();
+      if (!ds.length) return "";
+      const cur = sel.date && ds.includes(sel.date) ? sel.date : ds[0];
+      return `<select title="Journée" style="padding:7px 12px;min-width:150px;font-weight:600;cursor:pointer" onchange="selDate(this.value)">${ds.map(d => `<option value="${d}" ${d === cur ? "selected" : ""}>${frDate(d)}${d === ds[0] ? " (dernière)" : ""}</option>`).join("")}</select>
+  <button class="btn accent" onclick="addJournee()">＋ Nouvelle journée</button>`;
+    }
     function render() {
       $("nav").innerHTML = NAV.map(s => `<div class="nav-sec">${s.sec}</div>` + s.items.map(i => `<div class="nav-item ${view === i.id ? "active" : ""}" onclick="setView('${i.id}')"><span class="ico">${i.ico}</span>${i.label}</div>`).join("")).join("");
       $("vTitle").textContent = TITLES[view][0];
       $("vSub").textContent = TITLES[view][1];
+      $("vSub").style.display = TITLES[view][1] ? "" : "none";
+      $("topLeft").innerHTML = view === "journee" ? journeeTop() : "";
       $("topRight").innerHTML = view === "dashboard" ? dashTop() : `${view === "cafe" ? cafeTop() : ""}<span class="chip">📅 ${frDate(todayISO())}</span>
   <span class="chip gold">Caisse <b>${fmt(caisseSolde())} DA</b></span>
   <span class="chip blue">Banque <b>${fmt(banqueSolde())} DA</b></span>`;
@@ -2307,6 +2362,8 @@
       try { localStorage.setItem("cafeSec", JSON.stringify(cafeSec)); } catch (e) { }
       h.closest(".cafe-sec").classList.toggle("closed", !open);
       const w = h.closest(".cafe-wrap"); if (w) w.classList.toggle("has-open", open);
+      /* « Suivi de caisse » replié (ou autre carte ouverte) : on quitte la recherche et la liste des dates revient */
+      if (sel.jsearch && !cafeSec.db_caisse) { sel.jsearch = false; sel.jq = ""; render(); }
     }
     function vCafe() {
       const c = cafe(); if (!cafeD) cafeD = todayISO();
@@ -2749,19 +2806,10 @@
       const tc = totauxCaisse(sel.tierId, sel.date);
       const cd = metaCD();
       return `
- <div class="card"><div class="row between">
-   <div class="row">
-    <div class="field"><label>Journée</label><select onchange="selDate(this.value)">${ds.map(d => `<option value="${d}" ${d === sel.date ? "selected" : ""}>${frDate(d)}${d === ds[0] ? " (dernière)" : ""}</option>`).join("")}</select></div>
-    <div class="field"><label>Vue</label><input value="${sel.date === ds[0] ? "Saisie du jour" : "Consultation / correction"}" disabled style="min-width:180px"></div>
-   </div>
-   <button class="btn accent" onclick="addJournee()">＋ Nouvelle journée</button>
-  </div>
-  <p class="subtle" style="margin-top:8px">Rotation automatique des pompistes selon <b>tiers.ord</b> (1→3→5→1 et 2→4→6→2). Dl_clic sur un pompiste : changement exceptionnel du jour. Prix unitaires repris des articles. Pour chaque pistolet, seul le <b>nouvel index</b> est saisi : l'index veille est rappelé, et la quantité vendue est calculée automatiquement (nouvel index − ancien index).</p>
- </div>
- <div class="card">
-  <div class="row between">
-   <h2 style="margin:0">📨 Relevés pompistes — ${frDate(sel.date)} ${releveList.length ? `<span class="pill warn">${releveList.length}</span>` : ""}</h2>
-   <button class="btn" onclick="loadReleve()">🔄 Charger</button>
+ <div class="card" style="padding:6px 12px;margin-bottom:10px">
+  <div class="row between" style="align-items:center">
+   <h2 style="margin:0;font-size:13px">📨 Relevés pompistes — ${frDate(sel.date)} ${releveList.length ? `<span class="pill warn">${releveList.length}</span>` : ""}</h2>
+   <button class="btn sm" onclick="loadReleve()">🔄 Charger</button>
   </div>
   ${releveList.length ? `<div style="overflow-x:auto"><table style="margin-top:8px;min-width:480px"><tr><th>Pistolet</th><th class="num">Sortant</th><th class="num">Entrant</th><th>Statut</th></tr>
    ${releveGrouped().map(g => {
@@ -2776,7 +2824,7 @@
      <button class="btn" style="opacity:0.8" onclick="validateAllReleve('ALL')">Valider Tout (${frDate(sel.date)})</button>
      <button class="btn" onclick="fermerReleve()">✕ Fermer</button>
     </div>`
-          : `<p class="subtle" style="margin-top:6px">Aucun relevé chargé — clique « Charger » pour vérifier auprès de Supabase.</p>`}
+          : ""}
  </div>
  <div class="grid2">
   <div>
@@ -3453,7 +3501,7 @@
 
    <!-- SUIVI CAISSE -->
    <div class="card ${cafeSecCls('db_caisse')}" style="margin-bottom:12px"><div class="row between cafe-head" style="margin-bottom:10px"><h2 class="cafe-h" style="margin:0" onclick="cafeToggle('db_caisse',this)">💵 Suivi de Caisse</h2>${arretBtn}</div>${arretHtml}${repNote}
-    <div class="cafe-scroll">
+    ${sel.jsearch ? `<div class="cafe-scroll" id="caisseSearchWrap">${caisseSearchHtml()}</div>` : `<div class="cafe-scroll">
     <table style="width:100%;max-width:700px;border-collapse:collapse">
      <thead>
       <tr style="border-bottom:1px solid var(--line)">
@@ -3483,7 +3531,7 @@
      </tr>
      </tbody>
     </table>
-    </div>
+    </div>`}
    </div>
 
   </div>
@@ -3535,7 +3583,7 @@
       }
       const cs = cuvesOf(article(artId) ? article(artId).type_a : null);
       if (!cs.length) return `<div class="field"><label>Quantité</label><input id="factQte" type="number" min="1" style="width:100px"></div>`;
-      return cs.map(c => `<div class="field"><label>${esc(c.label)} <span class="subtle" style="font-weight:400">(${c.pumps.join("/")})</span></label><input id="factCuve${c.id}" type="number" min="0" style="width:110px" oninput="updateFactTotalPreview()"></div>`).join("")
+      return cs.map(c => `<div class="field"><label>${esc(c.label)} <span class="subtle" style="font-weight:400">(${c.pumps.join("/")})</span> <span title="Côté de la cuve" style="font-weight:700;color:var(--accent2)">${{ 1: "⟶", 2: "⟵", 3: "⟵", 4: "⟶" }[c.id] || ""}</span></label><input id="factCuve${c.id}" type="number" min="0" style="width:110px" oninput="updateFactTotalPreview()"></div>`).join("")
         + `<div class="field"><label>Total ligne</label><input id="factTotalPreview" type="text" disabled style="width:100px" value="0"></div>`;
     }
     function onFactProduitChange() {
