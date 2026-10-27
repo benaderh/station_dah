@@ -2240,6 +2240,60 @@
       if (!cafeSec.db_caisse) return;   /* uniquement si la carte « Suivi de caisse » est dépliée */
       _lpT = setTimeout(() => { _lpT = null; if (!cafeSec.db_caisse) return; sel.jsearch = true; sel.jq = ""; render(); setTimeout(() => { const i = $("jqInput"); if (i) i.focus(); }, 30); }, 600);
     }
+    /* ---- Appui long sur « Lubrifiants » → Mouvements & Stock des articles lubrifiants ---- */
+    let _lubLpT = null;
+    function lubLpCancel() { if (_lubLpT) { clearTimeout(_lubLpT); _lubLpT = null; } }
+    function lubLpStart() {
+      lubLpCancel();
+      _lubLpT = setTimeout(() => { _lubLpT = null; if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) { } openLubMouv(sel.jdate || todayISO()); }, 600);
+    }
+    function lubMouvData(d) {
+      // Lubrifiants : qs = magasin (les achats y entrent), qs_vitrine = vitrine (les ventes en sortent).
+      // Solde à la date d = soldes actuels − mouvements postérieurs à d. Article masqué si Vit + Mag = 0.
+      const sensOf = {}; DB.mouvements.forEach(m => { sensOf[String(m.operation_id)] = { s: m.sens, d: m.date_m }; });
+      return DB.articles.filter(a => Number(a.type_a) === 0).map(a => {
+        let ent = 0, sor = 0, entApres = 0, sorApres = 0;
+        DB.mouv_detail.forEach(md => {
+          if (String(md.id_art) !== String(a.art_id)) return;
+          const o = sensOf[String(md.id_operation)]; if (!o) return;
+          const q = Number(md.quantite) || 0;
+          if (o.d === d) { if (o.s === "E") ent += q; else if (o.s === "S") sor += q; }
+          else if (o.d > d) { if (o.s === "E") entApres += q; else if (o.s === "S") sorApres += q; }
+        });
+        const mag = (Number(a.qs) || 0) - entApres;
+        const vit = (Number(a.qs_vitrine) || 0) + sorApres;
+        return { a, ent, sor, mag, vit };
+      }).filter(r => (r.vit + r.mag) !== 0);
+    }
+    function lubMouvBody(d) {
+      const rows = lubMouvData(d);
+      // Valeur de la journée (qté × PU) : achats (sens E) et ventes (sens S) de tous les articles lubrifiants
+      const tot = { achat: 0, vente: 0 };
+      DB.mouv_detail.forEach(md => {
+        const a = article(md.id_art); if (!a || Number(a.type_a) !== 0) return;
+        const o = DB.mouvements.find(m => String(m.operation_id) === String(md.id_operation)); if (!o || o.date_m !== d) return;
+        const v = (Number(md.quantite) || 0) * (Number(md.prix_u) || 0);
+        if (o.sens === "E") tot.achat += v; else if (o.sens === "S") tot.vente += v;
+      });
+      const mv = r => (r.ent ? '<span style="color:var(--red);font-weight:700">' + fmtQ(r.ent) + '</span>' : '') + (r.ent && r.sor ? ' ' : '') + (r.sor ? '<span style="color:var(--green);font-weight:700">' + fmtQ(r.sor) + '</span>' : '') + (!r.ent && !r.sor ? '<span class="subtle">0</span>' : '');
+      const totHtml = '<div style="display:flex;gap:10px;margin-bottom:12px">'
+        + '<div class="stat" style="flex:1"><div class="v" style="color:var(--red)">' + fmt(tot.achat) + '</div><div class="l">Total Achats (DA)</div></div>'
+        + '<div class="stat" style="flex:1"><div class="v" style="color:var(--green)">' + fmt(tot.vente) + '</div><div class="l">Total Ventes (DA)</div></div>'
+        + '</div>';
+      return totHtml + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:1px solid var(--line)">'
+        + '<th style="text-align:left;padding:6px 4px;font-size:12px">Article</th>'
+        + '<th class="num" style="padding:6px 4px;font-size:12px">E/S</th>'
+        + '<th class="num" style="padding:6px 4px;font-size:12px">Solde (Vit/Mag)</th>'
+        + '</tr></thead><tbody>'
+        + (rows.length ? rows.map(r => '<tr style="border-bottom:1px solid var(--line)"><td style="padding:7px 4px;font-size:13px">' + esc(r.a.article) + '</td><td class="num" style="padding:7px 4px;font-size:13px;white-space:nowrap">' + mv(r) + '</td><td class="num" style="padding:7px 4px;font-size:13px;font-weight:700">' + fmtQ(r.vit) + ' <span class="subtle">/</span> ' + fmtQ(r.mag) + '</td></tr>').join("") : '<tr><td colspan="3" class="subtle" style="padding:10px 4px">Aucun article lubrifiant.</td></tr>')
+        + '</tbody>'
+        + '</table></div>';
+    }
+    function openLubMouv(d) {
+      openModal('<h2>🛢️ Lubrifiants — ' + frDate(d) + '</h2>'
+        + lubMouvBody(d)
+        + '<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="closeModal()">Fermer</button></div>');
+    }
     function caisseSearchHtml() {
       const q = (sel.jq || "").trim().toLowerCase(), qd = q.replace(/\s/g, "");
       const norm = n => fmt(n).replace(/[\s\u00a0\u202f]/g, "");
@@ -2345,11 +2399,11 @@
       const achats = c.achats.filter(le), ops = c.ops.filter(le);
       const inv = c.inv.filter(le).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
       const som = t => sumBy(ops.filter(o => o.type === t), o => o.montant);
-      const r = { init: Number(c.init.montant) || 0, achatsPV: sumBy(achats, achPV), achatsPA: sumBy(achats, achPA), regle: sumBy(achats, a => Number(a.regle) || 0), inv, invVal: inv ? inv.valeur : 0, vers: som("versement"), perem: som("perem"), frais: som("frais"), sal: som("salaire") };
+      const r = { init: Number(c.init.montant) || 0, achatsPV: sumBy(achats, achPV), achatsPA: sumBy(achats, achPA), regle: sumBy(achats, a => Number(a.regle) || 0), inv, invVal: inv ? inv.valeur : 0, vers: sumBy(ops.filter(o => o.type === "versement" && o.dest !== "caisse"), o => o.montant), versCaisse: sumBy(ops.filter(o => o.type === "versement" && o.dest === "caisse"), o => o.montant), perem: som("perem"), frais: som("frais"), sal: som("salaire") };
       r.marge = r.achatsPV - r.achatsPA;
       r.reglF = sumBy(c.reglements.filter(le), x => Number(x.montant) || 0);
       r.dettes = r.achatsPA - r.regle - r.reglF;   /* achats non payés au comptant, moins règlements fournisseurs */
-      r.attendu = r.init + r.marge + r.dettes; r.justifie = r.invVal + r.vers + r.perem + r.frais + r.sal; r.ecart = r.justifie - r.attendu; return r;
+      r.attendu = r.init + r.marge + r.dettes; r.justifie = r.invVal + r.vers + r.versCaisse + r.perem + r.frais + r.sal; r.ecart = r.justifie - r.attendu; return r;
     }
     let cafeSec = {}; try { cafeSec = JSON.parse(localStorage.getItem("cafeSec") || "{}") || {}; } catch (e) { }
     { let _o = false; Object.keys(cafeSec).forEach(k => { if (cafeSec[k]) { if (_o) cafeSec[k] = false; _o = true; } }); }   /* une seule partie ouverte */
@@ -2375,7 +2429,7 @@
   <div class="cafe-scroll cafe-nosticky"><table style="margin-top:10px"><tr><th colspan="2">À justifier par l'employé</th></tr>
    ${L("Inventaire initial (au PV)" + (c.init.date ? " — " + frDate(c.init.date) : ""), r.init)}${L("＋ Marge des achats (PV − PA)", r.marge)}${r.dettes ? L("＋ Achats à crédit non payés (dettes fournisseurs)", r.dettes) : ""}${L("<b>Solde comptable</b>", r.attendu, "font-weight:700")}
    <tr><th colspan="2">Justifié</th></tr>
-   ${L("Inventaire physique au PV" + (r.inv ? " — " + frDate(r.inv.date) : " — <span style='color:var(--red)'>aucun inventaire</span>"), r.invVal)}${L("Versements reçus", r.vers)}${L("Péremptions (au PV)", r.perem)}${L("Frais", r.frais)}${L("Salaire payé", r.sal)}${L("<b>Total justifié</b>", r.justifie, "font-weight:700")}</table>
+   ${L("Inventaire physique au PV" + (r.inv ? " — " + frDate(r.inv.date) : " — <span style='color:var(--red)'>aucun inventaire</span>"), r.invVal)}${L("Versements reçus", r.vers)}${r.versCaisse ? L("Versements à la caisse de la station", r.versCaisse) : ""}${L("<b>Reste</b> (versements reçus − versements à la caisse de la station)", r.vers - r.versCaisse, "font-weight:700")}${L("Péremptions (au PV)", r.perem)}${L("Frais", r.frais)}${L("Salaire payé", r.sal)}${L("<b>Total justifié</b>", r.justifie, "font-weight:700")}</table>
   <div style="margin-top:14px;text-align:center"><div class="subtle">Écart (justifié − solde comptable)</div>
    <div class="caisse-big" style="color:${col}">${r.ecart > 0 ? "+" : ""}${fmt(r.ecart)} DA</div>
    <div class="subtle">${r.ecart < 0 ? "⛔ Manque à justifier" : r.ecart > 0 ? "⚠ Excédent" : "✔ Compte équilibré"}</div></div>
@@ -2393,7 +2447,7 @@
  <div class="card ${cafeSecCls('ops')}"><div class="row between cafe-head"><h2 class="cafe-h" style="margin:0" onclick="cafeToggle('ops',this)">💵 Versements, péremptions, frais, salaire</h2>
   <div class="row" style="flex-wrap:wrap;justify-content:flex-end">${Object.keys(CAFE_OPS).map(t => `<button class="btn sm" onclick="openCafeOp('${t}')">＋ ${CAFE_OPS[t]}</button>`).join("")}</div></div>
   <div class="cafe-scroll"><table class="sortable" data-sk="cafeOps" style="margin-top:8px"><tr><th>Date</th><th>Type</th><th>Détail</th><th class="num">Qté</th><th class="num">P.U.</th><th class="num">Montant</th><th></th></tr>
-  ${ops.map(o => `<tr ondblclick="openCafeOp('${o.type}','${o.id}')" style="cursor:pointer" title="Dbl-clic pour modifier / supprimer"><td>${frDate(o.date)}</td><td>${CAFE_OPS[o.type]}</td><td style="font-size:12px">${esc(o.note || "")}</td><td class="num">${o.type === "frais" && o.qte ? fmt(o.qte) : ""}</td><td class="num">${o.type === "frais" && o.pu ? fmt(o.pu) : ""}</td><td class="num">${fmt(o.montant)}</td><td>${del("ops", o.id)}</td></tr>`).join("") || `<tr><td colspan="7" class="subtle">Aucune opération.</td></tr>`}</table></div></div>
+  ${ops.map(o => `<tr ondblclick="openCafeOp('${o.type}','${o.id}')" style="cursor:pointer" title="Dbl-clic pour modifier / supprimer"><td>${frDate(o.date)}</td><td>${o.type === "versement" && o.dest === "caisse" ? "🏦 Versement caisse station" : CAFE_OPS[o.type]}</td><td style="font-size:12px">${esc(o.note || "")}</td><td class="num">${o.type === "frais" && o.qte ? fmt(o.qte) : ""}</td><td class="num">${o.type === "frais" && o.pu ? fmt(o.pu) : ""}</td><td class="num">${fmt(o.montant)}</td><td>${del("ops", o.id)}</td></tr>`).join("") || `<tr><td colspan="7" class="subtle">Aucune opération.</td></tr>`}</table></div></div>
  <div class="card ${cafeSecCls('art')}"><div class="row between cafe-head"><h2 class="cafe-h" style="margin:0" onclick="cafeToggle('art',this)">🏷️ Articles café (${cafeArts().length})</h2><button class="btn accent" onclick="openArticleModal(null, true)">＋ Article café</button></div>
   <div class="field" style="margin-top:8px;max-width:260px"><label>Recherche</label><input value="${esc(cafeArtQ)}" oninput="cafeArtQ=this.value;$('cafeArtWrap').innerHTML=cafeArtTable()"></div>
   <div id="cafeArtWrap" class="cafe-scroll">${cafeArtTable()}</div></div>
@@ -2401,7 +2455,7 @@
   <div class="cafe-scroll"><table class="sortable" data-sk="cafeInv" style="margin-top:8px"><tr><th>Date</th><th class="num">Valeur PV</th><th></th></tr>
   ${invs.map(i => `<tr><td>${frDate(i.date)}</td><td class="num">${fmt(i.valeur)}</td><td>${del("inv", i.id)}</td></tr>`).join("") || `<tr><td colspan="3" class="subtle">Aucun inventaire.</td></tr>`}</table></div></div></div>`;
     }
-    function cafeDel(k, id) { cafe()[k] = cafe()[k].filter(x => x.id !== id); save(); render(); }
+    function cafeDel(k, id) { cafe()[k] = cafe()[k].filter(x => x.id !== id); if (k === "ops") cafeSyncTreso(id); save(); render(); }
     function cafeBtns(fn) { return `<div style="text-align:right;margin-top:14px"><button class="btn" onclick="closeModal()">Annuler</button> <button class="btn accent" onclick="${fn}()">✔ Enregistrer</button></div>`; }
     /* ---- Saisie d'un achat café : une ligne = un article (Q colis × coeff unités, PA du colis, PV unitaire) ---- */
     const cafeNrm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g, "");
@@ -2610,12 +2664,23 @@
       openModal(`<h2>${ed ? "Modifier — " : ""}${CAFE_OPS[t]}</h2><input type="hidden" id="coT" value="${t}"><div class="row"><div class="field"><label>Date</label><input id="coD" type="date" value="${ed ? ed.date : todayISO()}"></div>
   ${t === "perem" && !ed ? `<div class="field"><label>Article</label><select id="coA"><option value="">— libre —</option>${arts.map(a => `<option value="${a.art_id}">${esc(a.article)}</option>`).join("")}</select></div><div class="field"><label>Qté</label><input id="coQ" type="number" style="width:80px"></div>` : ""}
   ${t === "frais" ? `<div class="field"><label>Qté</label><input id="coFq" type="number" step="any" min="0" value="${ed && ed.qte ? ed.qte : ""}" oninput="cafeOpAuto()" style="width:80px"></div><div class="field"><label>Prix unitaire</label><input id="coFp" type="number" step="any" min="0" value="${ed && ed.pu ? ed.pu : ""}" oninput="cafeOpAuto()" style="width:100px"></div>` : ""}
+  ${t === "versement" ? `<div class="field"><label>Nature du versement</label><select id="coDest" onchange="cafeOpDestHint()"><option value="">💵 Reçu de l'employé / remboursement à l'employé (cumul des versements)</option><option value="caisse"${ed && ed.dest === "caisse" ? " selected" : ""}>🏦 Versement à la caisse de la station (hors cumul des versements)</option></select><div class="subtle" id="coDestHint" style="font-size:12px;margin-top:4px"></div></div>` : ""}
   <div class="field"><label>Montant (DA)${t === "perem" && !ed ? " — vide = Qté × PV" : ""}${t === "versement" ? " — négatif = remboursé à l'employé" : ""}</label><input id="coM" type="number" step="any" value="${ed ? ed.montant : ""}" style="width:120px"></div></div>
   <div class="field" style="margin-top:8px"><label>Détail</label><input id="coN" value="${esc(ed ? ed.note || "" : dn)}" style="width:100%"></div>
   <div class="row between" style="margin-top:14px">${ed ? `<button class="btn red" onclick="cafeDelOp()">🗑 Supprimer</button>` : "<span></span>"}<div><button class="btn" onclick="closeModal()">Annuler</button> <button class="btn accent" onclick="saveCafeOp()">✔ Enregistrer</button></div></div>`);
     }
+    function cafeOpDestHint() { const h = $("coDestHint"); if (h) h.textContent = $("coDest").value === "caisse" ? "Le cumul « Versements reçus » ne change pas ; le montant est compté dans le justifié (le solde / l'écart change). Il est aussi enregistré en entrée dans la caisse de la station (trésorerie, suivi de caisse, tableau de bord)." : ""; }
+    /* versement à la caisse de la station : écriture liée dans la trésorerie (caisse) — suivi de caisse et tableau de bord la lisent via le grand livre */
+    function cafeSyncTreso(opId) {
+      const tid = "cafe_" + opId;
+      DB.tresorerie = DB.tresorerie.filter(t => t.id !== tid);
+      const o = cafe().ops.find(x => x.id === opId);
+      if (!o || o.type !== "versement" || o.dest !== "caisse" || !Number(o.montant)) return;
+      const m = Number(o.montant);
+      pushTreso({ id: tid, compte: "caisse", sens: m > 0 ? "E" : "S", libelle: "Versement Café → caisse station", montant: Math.abs(m), obs: o.note || "Café", date: o.date, source: "cafe" });
+    }
     function cafeOpAuto() { const q = Number($("coFq").value) || 0, p = Number($("coFp").value) || 0; if (q > 0 && p > 0) $("coM").value = +(q * p).toFixed(2); }
-    function cafeDelOp() { if (!cafeOpEdit || !confirm("Supprimer cette opération ?")) return; cafe().ops = cafe().ops.filter(x => x.id !== cafeOpEdit); cafeOpEdit = ""; save(); closeModal(); render(); toast("Supprimé", "ok"); }
+    function cafeDelOp() { if (!cafeOpEdit || !confirm("Supprimer cette opération ?")) return; cafe().ops = cafe().ops.filter(x => x.id !== cafeOpEdit); cafeSyncTreso(cafeOpEdit); cafeOpEdit = ""; save(); closeModal(); render(); toast("Supprimé", "ok"); }
     function saveCafeOp() {
       const t = $("coT").value; let m = Number($("coM").value) || 0, note = $("coN").value.trim();
       const ex = cafeOpEdit ? cafe().ops.find(x => x.id === cafeOpEdit) : null;
@@ -2624,9 +2689,10 @@
       if (!m) { toast("Montant invalide", "err"); return; }
       if (!$("coD").value) { toast("Date obligatoire", "err"); return; }
       const extra = t === "frais" ? { qte: fq > 0 ? fq : undefined, pu: fp > 0 ? fp : undefined } : {};
-      if (ex) { Object.assign(ex, { date: $("coD").value, montant: m, note }, extra); if (t === "frais") { if (!(fq > 0)) delete ex.qte; if (!(fp > 0)) delete ex.pu; } }
-      else { const o = { id: uid(), date: $("coD").value, type: t, montant: m, note }; if (fq > 0) o.qte = fq; if (fp > 0) o.pu = fp; cafe().ops.push(o); }
-      cafeOpEdit = ""; save(); closeModal(); render(); toast("Enregistré", "ok");
+      const dest = t === "versement" && $("coDest") && $("coDest").value === "caisse" ? "caisse" : "";
+      if (ex) { Object.assign(ex, { date: $("coD").value, montant: m, note }, extra); if (t === "versement") { if (dest) ex.dest = dest; else delete ex.dest; } if (t === "frais") { if (!(fq > 0)) delete ex.qte; if (!(fp > 0)) delete ex.pu; } }
+      else { const o = { id: uid(), date: $("coD").value, type: t, montant: m, note }; if (dest) o.dest = dest; if (fq > 0) o.qte = fq; if (fp > 0) o.pu = fp; cafe().ops.push(o); }
+      cafeSyncTreso(ex ? ex.id : cafe().ops[cafe().ops.length - 1].id); cafeOpEdit = ""; save(); closeModal(); render(); toast("Enregistré", "ok");
     }
     function cafeInvTot() { $("ciTot").textContent = fmt(sumBy(cafeArts(), a => (Number($("ck" + a.art_id).value) || 0) * Number(a.pv))); }
     function openCafeInv() {
@@ -3518,7 +3584,7 @@
       ${cpCells(d, "sinit")}
      </tr>
      <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Carburant</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(tvCarb)} DA</td>${cpCells(d, "carb")}</tr>
-     <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Lubrifiants</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowLub.vente)} DA</td>${cpCells(d, "lub")}</tr>
+     <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none" title="Appui long : mouvements et stock des lubrifiants" onmousedown="lubLpStart()" onmouseup="lubLpCancel()" onmouseleave="lubLpCancel()" ontouchstart="lubLpStart()" ontouchend="lubLpCancel()" ontouchmove="lubLpCancel()" ontouchcancel="lubLpCancel()" oncontextmenu="return false">Lubrifiants 🛢️</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowLub.vente)} DA</td>${cpCells(d, "lub")}</tr>
      <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Gaz butane</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowGaz.vente)} DA</td>${cpCells(d, "gaz")}</tr>
      ${autresEncDetails.map(l => `<tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` (${esc(l.obs)})` : ""}</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(l.montant)} DA</td>${cpCells(d, "enc_" + l.id)}</tr>`).join("")}
      ${Object.keys(parType).sort().map(t => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${agentLib(t)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(parType[t])} DA</td>${cpCells(d, "dec_" + t)}</tr>`).join("")}
@@ -3529,6 +3595,7 @@
       <td class="num" style="padding:10px 4px;font-weight:700;font-size:14px;color:var(--accent2)"><span id="cpTotalVal">${fmt(cpTotal)} DA</span></td>
       <td style="padding:10px 4px;font-weight:700;font-size:14px"><span id="cpDiffVal" data-soldefin="${soldeFin}" style="color:${cpDiff === 0 ? "var(--green)" : "var(--red)"}">${cpDiff > 0 ? "+" : ""}${fmt(cpDiff)} DA</span></td>
      </tr>
+     ${(() => { const cr = cafeArrete(d), cl = (l, v, st) => `<tr><td style="padding:4px 4px;font-size:13px;${st || "color:var(--muted)"}">${l}</td><td class="num" style="padding:4px 4px;font-size:13px;${st || ""}">${fmt(v)} DA</td><td></td><td></td></tr>`; return `<tr style="border-top:2px solid var(--border)"><td colspan="4" style="padding:8px 4px 3px;font-weight:700">☕ Café <span class="subtle" style="font-weight:400;font-size:12px">— cumul au ${frDate(d)}</span></td></tr>` + cl("Versements reçus par le cafetier", cr.vers) + cl("Versements à la caisse de la station", cr.versCaisse) + cl("Reste", cr.vers - cr.versCaisse, "font-weight:700"); })()}
      </tbody>
     </table>
     </div>`}
@@ -5255,7 +5322,7 @@
       S.cafe_init = [{ date: c.init.date || "", montant: Number(c.init.montant) || 0 }];
       S.cafe_init_lignes = (c.init.lignes || []).map(l => ({ artId: l.artId, article: art(l.artId), qte: l.qte, pv: l.pv }));
       S.cafe_achats = []; c.achats.forEach(a => a.lignes.forEach(l => S.cafe_achats.push({ id: a.id, date: a.date, fid: a.fid || "", fournisseur: a.fid ? tierNom(a.fid) : "", num: a.num || "", modele: a.modele || "", regle: a.regle, artId: l.artId, article: art(l.artId), q: l.q, c: l.c, qte: l.qte, pa: l.pa, pv: l.pv })));
-      S.cafe_ops = c.ops.map(o => ({ id: o.id, date: o.date, type: o.type, montant: o.montant, note: o.note || "", artId: o.artId || "", qte: o.qte || "", pu: o.pu || "" }));
+      S.cafe_ops = c.ops.map(o => ({ id: o.id, date: o.date, type: o.type, montant: o.montant, note: o.note || "", artId: o.artId || "", qte: o.qte || "", pu: o.pu || "", dest: o.dest || "" }));
       S.cafe_inv = []; c.inv.forEach(i => { const ks = Object.keys(i.lignes || {}); if (!ks.length) S.cafe_inv.push({ id: i.id, date: i.date, valeur: i.valeur, artId: "", qte: "" }); ks.forEach(k => S.cafe_inv.push({ id: i.id, date: i.date, valeur: i.valeur, artId: k, article: art(k), qte: i.lignes[k] })); });
       S.cafe_reglements = c.reglements.map(x => ({ id: x.id, date: x.date, fid: x.fid, fournisseur: tierNom(x.fid), montant: x.montant, note: x.note || "" }));
       S.cafe_modeles = c.modeles.map(m => ({ id: m.id, nom: m.nom, arts: m.arts.join(","), articles: m.arts.map(art).join(", "), frais: (m.frais || []).join(" | ") }));
@@ -5270,7 +5337,7 @@
       c.init.lignes = (rd("cafe_init_lignes") || []).map(r => ({ artId: r.artId, qte: n(r.qte), pv: n(r.pv) }));
       const ach = {}; (rd("cafe_achats") || []).forEach(r => { const id = s(r.id); const a = ach[id] || (ach[id] = { id, date: s(r.date), fid: s(r.fid), num: s(r.num), regle: n(r.regle), lignes: [] }); if (s(r.modele)) a.modele = s(r.modele); a.lignes.push({ artId: r.artId, qte: n(r.qte), pa: n(r.pa), pv: n(r.pv), q: n(r.q), c: n(r.c) }); });
       c.achats = Object.values(ach);
-      c.ops = (rd("cafe_ops") || []).map(r => Object.assign({ id: s(r.id), date: s(r.date), type: s(r.type), montant: n(r.montant), note: s(r.note) }, r.artId !== "" ? { artId: r.artId, qte: n(r.qte) } : (r.qte !== "" ? { qte: n(r.qte) } : {}), r.pu !== "" && r.pu != null ? { pu: n(r.pu) } : {}));
+      c.ops = (rd("cafe_ops") || []).map(r => Object.assign({ id: s(r.id), date: s(r.date), type: s(r.type), montant: n(r.montant), note: s(r.note) }, r.artId !== "" ? { artId: r.artId, qte: n(r.qte) } : (r.qte !== "" ? { qte: n(r.qte) } : {}), r.pu !== "" && r.pu != null ? { pu: n(r.pu) } : {}, r.dest ? { dest: s(r.dest) } : {}));
       const inv = {}; (rd("cafe_inv") || []).forEach(r => { const id = s(r.id); const i = inv[id] || (inv[id] = { id, date: s(r.date), valeur: n(r.valeur), lignes: {} }); if (r.artId !== "") i.lignes[r.artId] = n(r.qte); });
       c.inv = Object.values(inv);
       c.reglements = (rd("cafe_reglements") || []).map(r => ({ id: s(r.id), date: s(r.date), fid: s(r.fid), montant: n(r.montant), note: s(r.note) }));

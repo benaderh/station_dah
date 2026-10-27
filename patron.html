@@ -2244,6 +2244,13 @@
       DB.indexs.forEach(r => s.add(r.index_date)); DB.mouvements.forEach(m => s.add(m.date_m)); DB.agent_detail.forEach(a => s.add(a.date_agent));
       return [...s].sort();
     }
+    /* ---- Café (lecture seule) : cumul des versements au ... d'après DB.meta.cafe saisi dans index.html ---- */
+    function cafeVersements(d) {
+      const ops = ((DB.meta.cafe || {}).ops || []).filter(o => o.type === "versement" && (!o.date || o.date <= d));
+      const sum = f => ops.filter(f).reduce((s, o) => s + (Number(o.montant) || 0), 0);
+      const vers = sum(o => o.dest !== "caisse"), versCaisse = sum(o => o.dest === "caisse");
+      return { vers, versCaisse, reste: vers - versCaisse, n: ops.length };
+    }
     /* ---- Appui long sur la date → recherche dans le Suivi de Caisse (Date / Libellé / Mt, date décroissante) ---- */
     let _lpT = null;
     function lpCancel() { if (_lpT) { clearTimeout(_lpT); _lpT = null; } }
@@ -2518,6 +2525,7 @@
       <td style="padding:10px 4px;font-weight:700;font-size:15px">Solde final caisse</td>
       <td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:${soldeFin >= 0 ? "var(--accent)" : "var(--red)"}">${fmt(soldeFin)} DA</td>
      </tr>
+     ${(() => { const cr = cafeVersements(d); if (!cr.n) return ""; const cl = (l, v, st) => `<tr><td style="padding:4px 4px;font-size:13px;${st || "color:var(--muted)"}">${l}</td><td class="num" style="padding:4px 4px;font-size:13px;${st || ""}">${fmt(v)} DA</td></tr>`; return `<tr style="border-top:2px solid var(--border)"><td colspan="2" style="padding:8px 4px 3px;font-weight:700">☕ Café <span class="subtle" style="font-weight:400;font-size:12px">— cumul au ${frDate(d)}</span></td></tr>` + cl("Versements reçus par le cafetier", cr.vers) + cl("Versements à la caisse de la station", cr.versCaisse) + cl("Reste", cr.reste, "font-weight:700"); })()}
      </tbody>
     </table>
     </div>`}
