@@ -776,6 +776,13 @@
       width: min(1040px, 96vw)
     }
 
+    /* formulaires Café : barre du haut gelée (titre + boutons) et en-têtes de colonnes gelés */
+    .modal.cafe-modal { padding-top: 0 }
+    .cafe-bar { position: sticky; top: 0; z-index: 6; background: var(--card); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 -22px 12px; padding: 12px 22px; border-bottom: 1px solid var(--line) }
+    .cafe-bar h2 { margin: 0 }
+    .cafe-bar .cafe-actions { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; justify-content: flex-end; margin: 0 }
+    .cafe-bar .cafe-actions > div { display: flex; gap: 8px }
+    .modal.cafe-modal th { position: sticky; top: var(--barh, 56px); z-index: 2; background: var(--card); box-shadow: inset 0 -1px 0 var(--line) }
     .cafe-lines th {
       font-size: 11px;
       white-space: nowrap
@@ -2456,6 +2463,19 @@
   ${invs.map(i => `<tr><td>${frDate(i.date)}</td><td class="num">${fmt(i.valeur)}</td><td>${del("inv", i.id)}</td></tr>`).join("") || `<tr><td colspan="3" class="subtle">Aucun inventaire.</td></tr>`}</table></div></div></div>`;
     }
     function cafeDel(k, id) { cafe()[k] = cafe()[k].filter(x => x.id !== id); if (k === "ops") cafeSyncTreso(id); save(); render(); }
+    /* Formulaires Café : boutons (Annuler / Enregistrer…) déplacés en haut avec le titre, et en-têtes de colonnes gelés */
+    function cafeModal(html) {
+      openModal(html);
+      const m = document.querySelector("#modal-root .modal"); if (!m) return;
+      m.classList.add("cafe-modal");
+      const h2 = m.querySelector(":scope > h2");
+      const btn = [...m.querySelectorAll(":scope > div")].reverse().find(d => d.querySelector("button") && [...d.querySelectorAll("button")].some(b => /Annuler|Enregistrer|Supprimer/.test(b.textContent)));
+      if (!h2 || !btn) return;
+      btn.removeAttribute("style"); btn.classList.add("cafe-actions");
+      const bar = document.createElement("div"); bar.className = "cafe-bar";
+      h2.parentNode.insertBefore(bar, h2); bar.appendChild(h2); bar.appendChild(btn);
+      m.style.setProperty("--barh", bar.offsetHeight + "px");
+    }
     function cafeBtns(fn) { return `<div style="text-align:right;margin-top:14px"><button class="btn" onclick="closeModal()">Annuler</button> <button class="btn accent" onclick="${fn}()">✔ Enregistrer</button></div>`; }
     /* ---- Saisie d'un achat café : une ligne = un article (Q colis × coeff unités, PA du colis, PV unitaire) ---- */
     const cafeNrm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g, "");
@@ -2508,7 +2528,7 @@
     /* fiche fournisseur café (double-clic dans la carte « Fournisseurs café ») : modifier / supprimer */
     function openCafeFourn(id) {
       const f = tier(id); if (!f) return;
-      openModal(`<h2>🚛 Fournisseur café</h2><div class="field"><label>Nom</label><input id="cfN" value="${esc(f.nom)}" style="width:100%"></div>
+      cafeModal(`<h2>🚛 Fournisseur café</h2><div class="field"><label>Nom</label><input id="cfN" value="${esc(f.nom)}" style="width:100%"></div>
   <div class="row between" style="margin-top:14px"><button class="btn red" onclick="cafeDelFourn('${id}')">🗑 Supprimer</button><div><button class="btn" onclick="closeModal()">Annuler</button> <button class="btn accent" onclick="saveCafeFourn('${id}')">✔ Enregistrer</button></div></div>`);
     }
     function saveCafeFourn(id) {
@@ -2531,7 +2551,7 @@
       const mod = modeleId ? cafe().modeles.find(x => x.id === modeleId) : null;
       const labels = [...new Set(["Frais", "Gaz butane", "Sucre", "Jetables"].concat(cafe().ops.filter(o => o.type === "frais").map(o => o.note).filter(Boolean)))];
       const tplArts = mod ? mod.arts.map(id => article(id)).filter(a => a && Number(a.actif)) : [];
-      openModal(`<h2>🧾 ${ed ? "Modifier l'achat du " + frDate(ed.date) : "Achat café" + (mod ? " — " + esc(mod.nom) : "")}</h2>
+      cafeModal(`<h2>🧾 ${ed ? "Modifier l'achat du " + frDate(ed.date) : "Achat café" + (mod ? " — " + esc(mod.nom) : "")}</h2>
   <div class="row"><div class="field"><label>Date</label><input id="caD" type="date" value="${ed ? ed.date : todayISO()}"></div>
    <div class="field"><label>Réglé (vide = tout payé comptant)</label><input id="caR" type="number" step="any" min="0" placeholder="= total" value="${ed && Number(ed.regle) < achPA(ed) - 0.001 ? ed.regle : ""}" oninput="cafeLineCalc()" style="width:140px"></div>
    <div class="field"><label>Fournisseur (obligatoire si règlement partiel ou 0)</label><div class="row" style="flex-wrap:nowrap"><select id="caF" onchange="cafeLineCalc()">${cafeFournOpts(ed ? ed.fid : "")}</select><button class="btn sm" title="Créer un fournisseur" onclick="cafeNewFournForm()">＋ Nouveau</button><button class="btn sm" title="Renommer le fournisseur choisi" onclick="cafeEditFournForm()">✎</button></div></div></div>
@@ -2597,7 +2617,7 @@
     function openCafeReglF() {
       const fs = cafeFourns(); if (!fs.length) { toast("Aucun fournisseur café : il se crée dans un achat non payé en totalité", "err"); return; }
       const st = cafeDettesF();
-      openModal(`<h2>💵 Règlement fournisseur café</h2><div class="row"><div class="field"><label>Date</label><input id="crD" type="date" value="${todayISO()}"></div>
+      cafeModal(`<h2>💵 Règlement fournisseur café</h2><div class="row"><div class="field"><label>Date</label><input id="crD" type="date" value="${todayISO()}"></div>
   <div class="field"><label>Fournisseur</label><select id="crF" onchange="cafeReglSel()">${fs.map(f => { const s = st.find(x => String(x.fid) === String(f.tier_id)); return `<option value="${f.tier_id}">${tierNom(f.tier_id)} — reste ${fmt(s ? s.reste : 0)} DA</option>`; }).join("")}</select></div>
   <div class="field"><label>Montant (DA)</label><input id="crM" type="number" step="any" style="width:120px"></div></div>
   <div class="field" style="margin-top:8px"><label>Détail</label><input id="crN" style="width:100%"></div>${cafeBtns("saveCafeReglF")}`);
@@ -2623,7 +2643,7 @@
     function openCafeModele(id) {
       const m = id ? cafe().modeles.find(x => x.id === id) : null;
       tplEd = { id: m ? m.id : "", arts: m ? m.arts.slice() : [], q: "" };
-      openModal(`<h2>${m ? "Modifier" : "Nouveau"} modèle de saisie rapide</h2>
+      cafeModal(`<h2>${m ? "Modifier" : "Nouveau"} modèle de saisie rapide</h2>
   <div class="row"><div class="field" style="flex:1"><label>Nom du bouton (vous pouvez mettre un emoji)</label><input id="tplN" value="${esc(m ? m.nom : "")}" placeholder="🚬 Tabac"></div>
    <div class="field" style="flex:1"><label>Frais habituels (séparés par des virgules)</label><input id="tplF" value="${esc(m && m.frais ? m.frais.join(", ") : "")}" placeholder="Jetables, Frais"></div></div>
   <div class="field" style="margin-top:8px"><label>Articles du modèle (ordre = ordre de saisie)</label><div id="tplSel" style="display:flex;flex-wrap:wrap;gap:6px"></div></div>
@@ -2661,7 +2681,7 @@
       const ed = editId ? cafe().ops.find(x => x.id === editId) : null; if (editId && !ed) return;
       cafeOpEdit = ed ? ed.id : ""; const arts = cafeArts();
       const dn = !ed && t === "salaire" ? cafe().emp.nom : "";
-      openModal(`<h2>${ed ? "Modifier — " : ""}${CAFE_OPS[t]}</h2><input type="hidden" id="coT" value="${t}"><div class="row"><div class="field"><label>Date</label><input id="coD" type="date" value="${ed ? ed.date : todayISO()}"></div>
+      cafeModal(`<h2>${ed ? "Modifier — " : ""}${CAFE_OPS[t]}</h2><input type="hidden" id="coT" value="${t}"><div class="row"><div class="field"><label>Date</label><input id="coD" type="date" value="${ed ? ed.date : todayISO()}"></div>
   ${t === "perem" && !ed ? `<div class="field"><label>Article</label><select id="coA"><option value="">— libre —</option>${arts.map(a => `<option value="${a.art_id}">${esc(a.article)}</option>`).join("")}</select></div><div class="field"><label>Qté</label><input id="coQ" type="number" style="width:80px"></div>` : ""}
   ${t === "frais" ? `<div class="field"><label>Qté</label><input id="coFq" type="number" step="any" min="0" value="${ed && ed.qte ? ed.qte : ""}" oninput="cafeOpAuto()" style="width:80px"></div><div class="field"><label>Prix unitaire</label><input id="coFp" type="number" step="any" min="0" value="${ed && ed.pu ? ed.pu : ""}" oninput="cafeOpAuto()" style="width:100px"></div>` : ""}
   ${t === "versement" ? `<div class="field"><label>Nature du versement</label><select id="coDest" onchange="cafeOpDestHint()"><option value="">💵 Reçu de l'employé / remboursement à l'employé (cumul des versements)</option><option value="caisse"${ed && ed.dest === "caisse" ? " selected" : ""}>🏦 Versement à la caisse de la station (hors cumul des versements)</option></select><div class="subtle" id="coDestHint" style="font-size:12px;margin-top:4px"></div></div>` : ""}
@@ -2697,7 +2717,7 @@
     function cafeInvTot() { $("ciTot").textContent = fmt(sumBy(cafeArts(), a => (Number($("ck" + a.art_id).value) || 0) * Number(a.pv))); }
     function openCafeInv() {
       const arts = cafeArts(); if (!arts.length) { toast("Créez d'abord des articles café (Articles → Type Café)", "err"); return; }
-      openModal(`<h2>🔢 Inventaire physique café</h2><div class="field"><label>Date</label><input id="ckD" type="date" value="${todayISO()}"></div>
+      cafeModal(`<h2>🔢 Inventaire physique café</h2><div class="field"><label>Date</label><input id="ckD" type="date" value="${todayISO()}"></div>
   <table style="margin-top:10px"><tr><th>Article</th><th class="num">PV</th><th class="num">Qté comptée</th></tr>
   ${arts.map(a => `<tr><td>${esc(a.article)}</td><td class="num">${fmt(a.pv)}</td><td class="num"><input id="ck${a.art_id}" type="number" value="0" style="width:90px" oninput="cafeInvTot()"></td></tr>`).join("")}
   <tr><td colspan="2"><b>Valeur au PV</b></td><td class="num"><b id="ciTot">0</b> DA</td></tr></table>${cafeBtns("saveCafeInv")}`);
@@ -4657,9 +4677,9 @@
     }
     function openMajStock() {
       const fl = msFlux(), arts = msArts();
-      openModal(`<h2>🔄 Mise à jour du stock (magasin / vitrine)</h2>
+      cafeModal(`<h2>🔄 Mise à jour du stock (magasin / vitrine)</h2>
  <p class="subtle" style="margin-bottom:10px">Total recalculé = <b>stock initial + entrées − ventes</b>. Saisissez le <b>stock initial</b> (avant les opérations enregistrées) et le stock <b>vitrine</b> ; le <b>magasin</b> = total − vitrine. Aucune modification tant que vous n'avez pas cliqué sur « Appliquer ».</p>
- <div style="overflow-x:auto"><table style="min-width:760px" id="msTable"><tr><th>Article</th><th class="num">Mag actuel</th><th class="num">Vit actuel</th><th class="num">Entrées</th><th class="num">Ventes</th><th class="num">Stock initial</th><th class="num">Total recalculé</th><th class="num">Vitrine</th><th class="num">Magasin</th></tr>
+ <div><table style="min-width:760px" id="msTable"><tr><th>Article</th><th class="num">Mag actuel</th><th class="num">Vit actuel</th><th class="num">Entrées</th><th class="num">Ventes</th><th class="num">Stock initial</th><th class="num">Total recalculé</th><th class="num">Vitrine</th><th class="num">Magasin</th></tr>
  ${arts.map(a => { const f = fl[String(a.art_id)] || { E: 0, S: 0 }, lub = Number(a.type_a) === 0;
         return `<tr data-id="${a.art_id}" data-e="${f.E}" data-s="${f.S}"><td>${esc(a.article)}</td><td class="num">${fmtQ(a.qs)}</td><td class="num">${lub ? fmtQ(qsVit(a)) : "—"}</td><td class="num">${fmtQ(f.E)}</td><td class="num">${fmtQ(f.S)}</td>
   <td class="num"><input type="number" id="msI_${a.art_id}" value="${Number(a.qs_init) || 0}" style="width:80px" oninput="msUpd(${a.art_id})"></td>
@@ -4667,7 +4687,7 @@
   <td class="num"><input type="number" id="msV_${a.art_id}" value="${lub ? qsVit(a) : 0}" ${lub ? "" : "disabled"} style="width:80px" oninput="msUpd(${a.art_id})"></td>
   <td class="num"><b id="msM_${a.art_id}"></b></td></tr>`; }).join("")}</table></div>
  <div style="text-align:right;margin-top:14px"><button class="btn" onclick="closeModal()">Annuler</button> <button class="btn accent" onclick="msApply()">✔ Appliquer</button></div>`);
-      const mdl = document.querySelector("#modal-root .modal"); if (mdl) mdl.style.width = "min(1100px, 96vw)";
+      const mdl = document.querySelector("#modal-root .modal"); if (mdl) { mdl.style.width = "min(1100px, 96vw)"; const bar = mdl.querySelector(".cafe-bar"); if (bar) mdl.style.setProperty("--barh", bar.offsetHeight + "px"); }
       arts.forEach(a => msUpd(a.art_id));
     }
     function msUpd(id) {
@@ -5456,7 +5476,7 @@
       DB = defaultDB(); save(); render(); toast("Base réinitialisée", "err");
     }
     /* ================= MODAL & TOAST ================= */
-    function openModal(html) { $("modal-root").innerHTML = `<div class="modal-wrap" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`; }
+    function openModal(html) { $("modal-root").innerHTML = `<div class="modal-wrap"><div class="modal">${html}</div></div>`; }
     function closeModal() { $("modal-root").innerHTML = ""; }
     function toast(msg, type) {
       const t = document.createElement("div");
