@@ -1185,6 +1185,12 @@
       .cafe-h::before { content: none !important }
     }
   </style>
+  <style>
+    /* champs numériques : suppression des flèches haut/bas (+1 / −1) */
+    input[type=number] { -moz-appearance: textfield; appearance: textfield }
+    input[type=number]::-webkit-outer-spin-button,
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0 }
+  </style>
   <base target="_blank">
 </head>
 
@@ -5559,6 +5565,23 @@
         else delete SORTS[sk];
         _sortRows(tb); _sortHeads(tb); obs.takeRecords();
       });
+    })();
+    /* ===== SÉLECTION AUTOMATIQUE DU TEXTE À LA PRISE DE FOCUS (tous les champs de saisie, y compris ceux créés dynamiquement) ===== */
+    (function () {
+      const SKIP = ["checkbox", "radio", "button", "submit", "reset", "file", "range", "color", "hidden", "image", "date", "time", "datetime-local", "month", "week"];
+      const ok = el => el && ((el.tagName === "INPUT" && !SKIP.includes((el.type || "text").toLowerCase())) || el.tagName === "TEXTAREA");
+      document.addEventListener("focusin", e => {
+        const el = e.target; if (!ok(el)) return;
+        el.__selOnFocus = true;
+        try { el.select(); } catch (x) { }
+        setTimeout(() => { if (document.activeElement === el) { try { el.select(); } catch (x) { } } }, 0);
+      });
+      /* évite que le relâchement du clic annule la sélection */
+      document.addEventListener("mouseup", e => {
+        const el = e.target; if (!ok(el)) return;
+        if (el.__selOnFocus) { e.preventDefault(); el.__selOnFocus = false; }
+      });
+      document.addEventListener("focusout", e => { if (e.target) e.target.__selOnFocus = false; });
     })();
     /* ===== AUTH ADMIN ===== */
     async function doAdminLogin() {
