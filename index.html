@@ -5583,6 +5583,59 @@
       });
       document.addEventListener("focusout", e => { if (e.target) e.target.__selOnFocus = false; });
     })();
+    /* ===== FLÈCHES HAUT / BAS : défilement de la page, ou déplacement vers le champ précédent / suivant ===== */
+    (function () {
+      const SKIP_TYPES = ["checkbox", "radio", "button", "submit", "reset", "file", "range", "color", "hidden", "image", "date", "time", "datetime-local", "month", "week"];
+      const isField = el => el && el.tagName === "INPUT" && !SKIP_TYPES.includes((el.type || "text").toLowerCase());
+      const visible = el => el.offsetParent !== null && !el.disabled && !el.readOnly;
+
+      function pickScroller() {
+        const sels = ["#modal-root .modal", ".cafe-sec:not(.closed) .cafe-scroll", ".cafe-wrap", ".content", ".main"];
+        for (const s of sels) {
+          const el = document.querySelector(s);
+          if (el && el.scrollHeight > el.clientHeight + 1) return el;
+        }
+        return null;
+      }
+
+      document.addEventListener("keydown", e => {
+        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+        if (e.defaultPrevented || e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) return;
+        const shell = document.getElementById("appShell");
+        if (!shell || shell.style.display === "none") return;
+        const t = e.target, dir = e.key === "ArrowDown" ? 1 : -1;
+
+        /* champs où les flèches ont déjà un rôle : liste déroulante, zone multiligne, suggestions (datalist), dates */
+        if (t.tagName === "SELECT" || t.tagName === "TEXTAREA") return;
+        if (t.tagName === "INPUT" && !isField(t)) { if (!["checkbox", "radio", "button", "submit", "reset"].includes((t.type || "").toLowerCase())) return; }
+        if (t.tagName === "INPUT" && t.getAttribute("list")) return;
+        if (document.getElementById("lub-dropdown") && t.id === "lubArtInput") return;
+
+        if (isField(t)) {
+          /* dans un champ : aller au champ situé directement en bas / en haut (ligne suivante / précédente, colonne la plus proche),
+             même s'il y a d'autres champs sur la même ligne (modal ouvert = champs du modal seulement) */
+          const root = document.querySelector("#modal-root .modal") || document.getElementById("view");
+          const list = [...root.querySelectorAll("input, textarea")].filter(el => (el.tagName === "TEXTAREA" || isField(el)) && visible(el));
+          if (list.indexOf(t) < 0) return;
+          e.preventDefault();
+          const cr = t.getBoundingClientRect(), cx = cr.left + cr.width / 2, cy = cr.top + cr.height / 2;
+          const cands = list.filter(el => el !== t).map(el => {
+            const r = el.getBoundingClientRect();
+            return { el, dy: (r.top + r.height / 2 - cy) * dir, dx: Math.abs(r.left + r.width / 2 - cx), h: r.height };
+          }).filter(c => c.dy > Math.min(cr.height, c.h) / 2);   /* uniquement les champs d'une autre ligne, dans le sens de la flèche */
+          if (!cands.length) return;
+          const minDy = Math.min(...cands.map(c => c.dy));
+          const tol = Math.max(cr.height, 10) / 2;
+          const row = cands.filter(c => c.dy - minDy <= tol);      /* champs de la ligne la plus proche */
+          const nx = row.reduce((a, b) => b.dx < a.dx ? b : a).el;  /* le plus aligné horizontalement */
+          nx.focus(); try { nx.select(); } catch (x) { } nx.scrollIntoView({ block: "nearest" });
+          return;
+        }
+        /* hors champ : défilement de la page */
+        const sc = pickScroller();
+        if (sc) { e.preventDefault(); sc.scrollBy({ top: dir * 70 }); }
+      });
+    })();
     /* ===== AUTH ADMIN ===== */
     async function doAdminLogin() {
       const email = document.getElementById("loginEmail").value.trim();
