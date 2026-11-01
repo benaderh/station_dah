@@ -1191,6 +1191,39 @@
     input[type=number]::-webkit-outer-spin-button,
     input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0 }
   </style>
+  <style>
+    /* mode compact (État Achats/CA, Journée & Index) : moins d'espace vertical ; fitViews() réduit (zoom) si ça dépasse encore */
+    .compact td, .compact th { padding: 3px 7px }
+    .compact .card { padding: 10px 14px; margin-bottom: 10px }
+    .compact .card h2 { margin-bottom: 6px }
+    .compact .card h3 { margin: 6px 0 4px }
+    .compact .pist { padding: 6px 8px; gap: 4px }
+    .compact .pist input { padding: 3px 5px }
+    .compact .pist-grid { gap: 6px }
+    .compact .grp-head { margin-bottom: 6px }
+    .compact .grp-total { margin-top: 6px; padding: 6px 10px }
+    .compact .stat { padding: 10px 14px }
+    .compact .tabs { margin-bottom: 8px }
+    .compact .caisse-big { font-size: 24px }
+    .compact .btn { padding: 6px 12px }
+    .compact .btn.sm { padding: 3px 8px }
+    .compact input, .compact select { padding: 4px 8px }
+    .compact .row { gap: 8px }
+    .compact .agent-lbl { padding: 4px 12px }
+  </style>
+  <style>.content:has(#jFit) { padding-bottom: 12px }
+    /* Journée & Index : colonnes gauche / droite de même largeur et de même hauteur ; la dernière carte de chaque colonne s'étire */
+    @media (min-width: 1101px) {
+      #jFit .grid2 { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); align-items: stretch }
+      #jFit .grid2 > div { display: flex; flex-direction: column; min-width: 0 }
+      #jFit .grid2 > div > .card:last-child { flex: 1 1 auto; margin-bottom: 0 }
+      #jFit .grid2 .card { overflow-x: auto; min-width: 0 }
+      #jFit .pist-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) }
+      #jFit .pist, #jFit .pist input { min-width: 0 }
+      #jFit .pist input { width: 100% }
+      #jFit .grid-stats { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)) }
+    }
+  </style>
   <base target="_blank">
 </head>
 
@@ -2348,17 +2381,37 @@
       return `<select title="Journée" style="padding:7px 12px;min-width:150px;font-weight:600;cursor:pointer" onchange="selDate(this.value)">${ds.map(d => `<option value="${d}" ${d === cur ? "selected" : ""}>${frDate(d)}${d === ds[0] ? " (dernière)" : ""}</option>`).join("")}</select>
   <button class="btn accent" onclick="addJournee()">＋ Nouvelle journée</button>`;
     }
+    /* ajuste (zoom) les vues compactes pour tenir sans défilement vertical ; Journée : seul le bloc du haut est ajusté, le détail des ventes peut défiler */
+    /* zoom adaptatif : cherche le plus grand facteur (réduit OU agrandi) pour lequel le bloc tient dans la hauteur disponible sans débordement horizontal */
+    function fitTo(el, avail, min, max) {
+      const ok = z => { el.style.zoom = z; return el.getBoundingClientRect().height <= avail && el.scrollWidth <= el.clientWidth + 1 && [...el.querySelectorAll(".grid2 .card")].every(c => c.scrollWidth <= c.clientWidth + 1); };
+      let hi = max, step = 0.05, z = max;
+      while (z > min && !ok(z)) { hi = z; z = Math.max(min, z - step); }
+      if (z <= min) { el.style.zoom = min; return; }
+      let lo = z;                       /* lo tient, hi (juste au-dessus) ne tient pas */
+      if (hi > lo && hi !== max || (hi === max && lo < max)) for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (ok(mid)) lo = mid; else hi = mid; }
+      el.style.zoom = lo.toFixed(3);
+    }
+    function fitViews() {
+      requestAnimationFrame(() => {
+        const j = document.getElementById("jFit"), e = document.getElementById("etFit");
+        if (j) { j.style.zoom = ""; if (innerWidth > 1100) fitTo(j, $("view").clientHeight - 34, 0.55, 1.5); }
+        if (e) { e.style.zoom = ""; const par = e.parentElement; if (par && par.offsetParent !== null && par.clientHeight > 100) fitTo(e, par.clientHeight - 6, 0.5, 1.6); }
+      });
+    }
+    window.addEventListener("resize", fitViews);
     function render() {
       $("nav").innerHTML = NAV.map(s => `<div class="nav-sec">${s.sec}</div>` + s.items.map(i => `<div class="nav-item ${view === i.id ? "active" : ""}" onclick="setView('${i.id}')"><span class="ico">${i.ico}</span>${i.label}</div>`).join("")).join("");
       $("vTitle").textContent = TITLES[view][0];
       $("vSub").textContent = TITLES[view][1];
       $("vSub").style.display = TITLES[view][1] ? "" : "none";
-      $("topLeft").innerHTML = view === "journee" ? journeeTop() : "";
+      $("topLeft").innerHTML = view === "journee" ? journeeTop() : view === "etats" ? etTop() : "";
       $("topRight").innerHTML = view === "dashboard" ? dashTop() : `${view === "cafe" ? cafeTop() : ""}<span class="chip">📅 ${frDate(todayISO())}</span>
   <span class="chip gold">Caisse <b>${fmt(caisseSolde())} DA</b></span>
   <span class="chip blue">Banque <b>${fmt(banqueSolde())} DA</b></span>`;
       const V = { dashboard: vJournal, journee: vJournee, achats: vAchats, cafe: vCafe, etats: vEtats, fournisseurs: vFournisseurs, stock: vStock, tresorerie: vTresorerie, paie: vPaie, tiers: vTiers, articles: vArticles, categories: vCategories, referentiel: vReferentiel, donnees: vDonnees };
       $("view").innerHTML = V[view]();
+      fitViews();
     }
     /* ================= MODULE CAFÉ (stock valorisé au prix de vente, données dans meta.cafe) ================= */
     const CAFE_TYPE = 4, CAFE_OPS = { versement: "💵 Versement reçu", perem: "🗑️ Péremption", frais: "🧾 Frais", salaire: "👤 Salaire payé" };
@@ -2429,6 +2482,7 @@
       try { localStorage.setItem("cafeSec", JSON.stringify(cafeSec)); } catch (e) { }
       h.closest(".cafe-sec").classList.toggle("closed", !open);
       const w = h.closest(".cafe-wrap"); if (w) w.classList.toggle("has-open", open);
+      fitViews();
       /* « Suivi de caisse » replié (ou autre carte ouverte) : on quitte la recherche et la liste des dates revient */
       if (sel.jsearch && !cafeSec.db_caisse) { sel.jsearch = false; sel.jq = ""; render(); }
     }
@@ -2897,7 +2951,7 @@
       if (!sel.tierId || ![g.t1, g.t2, metaCD()].map(String).includes(String(sel.tierId))) sel.tierId = g.t1;
       const tc = totauxCaisse(sel.tierId, sel.date);
       const cd = metaCD();
-      return `
+      return `<div id="jFit" class="compact">
  <div class="card" style="padding:6px 12px;margin-bottom:10px">
   <div class="row between" style="align-items:center">
    <h2 style="margin:0;font-size:13px">📨 Relevés pompistes — ${frDate(sel.date)} ${releveList.length ? `<span class="pill warn">${releveList.length}</span>` : ""}</h2>
@@ -2961,7 +3015,7 @@
     </div>
    </div>
   </div>
- </div>
+ </div></div>
   ${detailVentesJour(sel.date)}`;
     }
     function detailVentesJour(d) {
@@ -4062,10 +4116,26 @@
       const du = sel.etDu, au = sel.etAu;
       return DB.factures.filter(f => (!du || f.date >= du) && (!au || f.date <= au)).slice().sort((a, b) => a.date.localeCompare(b.date) || String(a.id).localeCompare(String(b.id)));
     }
-    function setEtDu(v) { sel.etDu = v || null; render(); }
-    function setEtAu(v) { sel.etAu = v || null; render(); }
+    /* saisie libre de l'année : on ne reconstruit pas la barre du haut (sinon le champ perd le focus) ; dates incomplètes ignorées */
+    function etDateOk(v) { return !v || (/^\d{4}-\d{2}-\d{2}$/.test(v) && Number(v.slice(0, 4)) >= 2000); }
+    function etRefresh() { $("view").innerHTML = vEtats(); fitViews(); }
+    function setEtDu(v) { if (!etDateOk(v)) return; sel.etDu = v || null; sel.etMois = ""; sel.etAn = ""; etRefresh(); }
+    function setEtAu(v) { if (!etDateOk(v)) return; sel.etAu = v || null; sel.etMois = ""; sel.etAn = ""; etRefresh(); }
+    const MOIS_FR = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+    function etAnnees() { return [...new Set(allDates().map(d => d.slice(0, 4)))].sort().reverse(); }
+    function etPickAnnee(y) {
+      if (!y) return;
+      sel.etAn = y; sel.etMois = ""; sel.etDu = y + "-01-01"; sel.etAu = y + "-12-31"; render();
+    }
+    function etPickMois(m) {
+      if (!m) return;
+      const y = sel.etAn || (sel.etDu ? sel.etDu.slice(0, 4) : "") || etAnnees()[0] || todayISO().slice(0, 4), mm = String(m).padStart(2, "0");
+      sel.etAn = y; sel.etMois = mm; sel.etDu = y + "-" + mm + "-01";
+      sel.etAu = y + "-" + mm + "-" + String(new Date(Number(y), Number(m), 0).getDate()).padStart(2, "0"); render();
+    }
     function etQuick(kind) {
       const t = todayISO();
+      sel.etMois = ""; sel.etAn = "";
       if (kind === "today") { sel.etDu = t; sel.etAu = t; }
       else if (kind === "month") { sel.etDu = t.slice(0, 8) + "01"; sel.etAu = t; }
       else if (kind === "year") { sel.etDu = t.slice(0, 4) + "-01-01"; sel.etAu = t; }
@@ -4171,6 +4241,87 @@
       const caGlobal = rowSTotal.ventesVal + rowGaz.marge;
       return { rowEssence, rowGasoil, rowGpl, rowSTotal, rowGaz, rowLub, rowCafe, rowTotal, caGlobal };
     }
+    /* ---- Détail par pistolet (Du / Au) : Carburant, Gaz butane, Lubrifiants ---- */
+    function etPumpData() {
+      const dates = etDates(), out = {};
+      PIST.forEach(p => { out[p.c] = { idx0: 0, idx1: 0, diff: 0, ca: 0 }; });
+      if (!dates.length) return out;
+      const first = dates[0], prev = prevDateOf(first);
+      PIST.forEach(p => {
+        const o = out[p.c];
+        o.idx0 = prev ? idxVal(prev, p.c) : idxVal(first, p.c);
+        let i1 = o.idx0;
+        dates.forEach(d => { const r = idxRow(d, p.c); if (r && r.index !== null && r.index !== "") i1 = Number(r.index); });
+        o.idx1 = i1;
+      });
+      dates.forEach(d => calcGroup(d).rows.forEach(r => { out[r.code].diff += r.diff; out[r.code].ca += r.mt; }));
+      return out;
+    }
+    function etDetailHtml() {
+      const du = sel.etDu, au = sel.etAu, data = etPumpData();
+      const dd = etDates(), lblDu = dd.length ? frDate(dd[0]) : "—", lblAu = dd.length ? frDate(dd[dd.length - 1]) : "—";
+      const td = 'style="padding:3px 8px;border-bottom:1px solid var(--line)"';
+      const FUELS = [
+        { label: "Gasoil", typeA: 1, blocks: [{ cuve: "C1", pumps: ["P01", "P02"] }, { cuve: "C2", pumps: ["P03", "P04"] }] },
+        { label: "Essence", typeA: 2, blocks: [{ cuve: "C3", pumps: ["P05", "P06"] }, { cuve: "C4", pumps: ["P07", "P08"] }] },
+        { label: "GPL", typeA: 3, blocks: [{ cuve: "", pumps: ["P09", "P10", "P11", "P12"] }] }];
+      let rowsHtml = "", totA = 0, totC = 0;
+      FUELS.forEach(f => {
+        const a = DB.articles.find(x => Number(x.type_a) === f.typeA), pa = a ? Number(a.pa) || 0 : 0, pv = a ? Number(a.pv) || 0 : 0;
+        let sd = 0, sc = 0, first = true;
+        f.blocks.forEach(b => b.pumps.forEach((c, i) => {
+          const o = data[c]; sd += o.diff; sc += o.ca;
+          rowsHtml += `<tr><td ${td}><b>${first ? f.label : ""}</b></td><td ${td}>${i === 0 ? b.cuve : ""}</td><td ${td}>${c}</td><td class="num" ${td}>${fmtIdx(o.idx0)}</td><td class="num" ${td}>${fmtIdx(o.idx1)}</td><td class="num" ${td}>${fmtQ(o.diff)}</td><td ${td}></td><td ${td}></td><td ${td}></td><td ${td}></td></tr>`;
+          first = false;
+        }));
+        const ach = sd * pa; totA += ach; totC += sc;
+        rowsHtml += `<tr style="font-weight:800;background:rgba(255,255,255,.03)"><td ${td}></td><td ${td}></td><td ${td}>Total :</td><td ${td}></td><td ${td}></td><td class="num" ${td}>${fmtQ(sd)}</td><td class="num" ${td}>${fmt(pa)}</td><td class="num" ${td}>${fmt(pv)}</td><td class="num" ${td}>${fmt(ach)}</td><td class="num" ${td}>${fmt(sc)}</td></tr>`;
+      });
+      const margeCarb = totC - totA;
+      const gz = DB.articles.find(x => Number(x.type_a) === 9);
+      const gq = gz ? mvArticlePeriodQty(gz.art_id, "S", du, au) : 0, gvv = gz ? mvArticlePeriodVal(gz.art_id, "S", du, au) : 0;
+      const gpa = gz ? Number(gz.pa) || 0 : 0, gpv = gq ? gvv / gq : (gz ? Number(gz.pv) || 0 : 0), gma = gq * gpa;
+      const lub = etDiversRow(0, "Lubrifiant"), lma = lub.ventesVal - lub.marge;
+      const mg = v => `<b style="color:${v >= 0 ? "var(--green)" : "var(--red)"}">${fmt(v)}</b>`;
+      if (!sel.etInc) sel.etInc = { carb: true, gaz: true, lub: true };
+      const inc = sel.etInc;
+      const items = [{ k: "carb", l: "⛽ Carburant", a: totA, v: totC, m: margeCarb }, { k: "gaz", l: "🔥 Gaz butane", a: gma, v: gvv, m: gvv - gma }, { k: "lub", l: "🛢️ Lubrifiant", a: lma, v: lub.ventesVal, m: lub.marge }];
+      const gt = items.filter(i => inc[i.k]).reduce((s, i) => ({ a: s.a + i.a, v: s.v + i.v, m: s.m + i.m }), { a: 0, v: 0, m: 0 });
+      const recap = `<table style="width:100%"><thead><tr style="background:rgba(255,255,255,.04)"><th colspan="4" style="padding:3px 8px">📊 Récapitulatif — sélectionnez les parties à totaliser</th></tr><tr><th>Partie</th><th class="num">Achats</th><th class="num">Ventes</th><th class="num">Marge</th></tr></thead><tbody>
+   ${items.map(i => `<tr style="${inc[i.k] ? "" : "opacity:.45"}"><td ${td}><button class="btn sm ${inc[i.k] ? "accent" : ""}" onclick="etToggleInc('${i.k}')">${inc[i.k] ? "☑" : "☐"} ${i.l}</button></td><td class="num" ${td}>${fmt(i.a)}</td><td class="num" ${td}>${fmt(i.v)}</td><td class="num" ${td}>${mg(i.m)}</td></tr>`).join("")}
+   <tr style="font-weight:800;border-top:2px solid var(--line)"><td ${td}>Total général</td><td class="num" ${td}>${fmt(gt.a)}</td><td class="num" ${td}>${fmt(gt.v)}</td><td class="num" ${td}>${mg(gt.m)}</td></tr>
+  </tbody></table>`;
+      const cell = 'style="padding:3px 8px"';
+      return `<div id="etFit" class="compact"><table style="width:100%;min-width:720px"><thead><tr style="background:rgba(255,255,255,.04)">
+   <th colspan="10" style="padding:3px 8px">⛽ Carburant</th></tr><tr>
+   <th></th><th></th><th></th><th class="num">Index0<br><span class="subtle" style="font-weight:400">Du ${lblDu}</span></th><th class="num">Index1<br><span class="subtle" style="font-weight:400">Au ${lblAu}</span></th><th class="num">Diff</th><th class="num">P/Achat</th><th class="num">P/Vente</th><th class="num">Achats</th><th class="num">CA</th></tr></thead><tbody>
+   ${rowsHtml}
+   <tr style="font-weight:800"><td colspan="8" class="num" ${td}>Total :</td><td class="num" ${td}>${fmt(totA)}</td><td class="num" ${td}>${fmt(totC)}</td></tr>
+   <tr style="font-weight:800"><td colspan="8" class="num" ${td}>Marge :</td><td class="num" ${td} colspan="2">${mg(margeCarb)}</td></tr>
+  </tbody></table>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin-top:16px"><div style="flex:1 1 440px;min-width:0">
+  <table style="width:100%;max-width:640px"><thead><tr style="background:rgba(255,255,255,.04)"><th colspan="5" style="padding:3px 8px">🔥 Gaz butane</th></tr></thead><tbody>
+   <tr><td ${cell}>Nbre/Bouteille</td><td class="num" ${cell}>${fmtQ(gq)}</td><td ${cell}>×</td><td ${cell}>Prix/Achat <b>${fmt(gpa)}</b></td><td class="num" ${cell}>= Mt/Achats <b>${fmt(gma)}</b></td></tr>
+   <tr><td ${cell}>Nbre/Bouteille</td><td class="num" ${cell}>${fmtQ(gq)}</td><td ${cell}>×</td><td ${cell}>Prix/Vente <b>${fmt(gpv)}</b></td><td class="num" ${cell}>= Mt/Vente <b>${fmt(gvv)}</b></td></tr>
+   <tr style="font-weight:800"><td colspan="4" class="num" ${cell}>Marge :</td><td class="num" ${cell}>${mg(gvv - gma)}</td></tr>
+  </tbody></table>
+  <table style="width:100%;max-width:640px;margin-top:16px"><thead><tr style="background:rgba(255,255,255,.04)"><th colspan="2" style="padding:3px 8px">🛢️ Lubrifiant</th></tr></thead><tbody>
+   <tr><td ${cell}>Σ (Articles vendus × Prix/Achat) = Mt/Achats</td><td class="num" ${cell}><b>${fmt(lma)}</b></td></tr>
+   <tr><td ${cell}>Σ (Articles vendus × Prix/Vente) = Mt/Ventes</td><td class="num" ${cell}><b>${fmt(lub.ventesVal)}</b></td></tr>
+   <tr style="font-weight:800"><td class="num" ${cell}>Marge :</td><td class="num" ${cell}>${mg(lub.marge)}</td></tr>
+  </tbody></table></div>
+  <div style="flex:1 1 380px;min-width:0">${recap}</div></div></div>`;
+    }
+    function etToggleInc(k) { sel.etInc = sel.etInc || { carb: true, gaz: true, lub: true }; sel.etInc[k] = !sel.etInc[k]; etRefresh(); }
+    function etTop() {
+      return `<input type="date" title="Du" value="${sel.etDu || ""}" onchange="setEtDu(this.value)" style="padding:6px 8px">
+  <input type="date" title="Au" value="${sel.etAu || ""}" onchange="setEtAu(this.value)" style="padding:6px 8px">
+  <button class="btn sm" onclick="etQuick('today')">Aujourd'hui</button>
+  <select title="Mois" onchange="etPickMois(this.value)" style="padding:6px 8px"><option value="">Mois</option>${MOIS_FR.map((n, i) => `<option value="${i + 1}" ${sel.etMois === String(i + 1).padStart(2, "0") ? "selected" : ""}>${n}</option>`).join("")}</select>
+  <select title="Année" onchange="etPickAnnee(this.value)" style="padding:6px 8px"><option value="">Année</option>${etAnnees().map(y => `<option value="${y}" ${sel.etAn === y ? "selected" : ""}>${y}</option>`).join("")}</select>
+  <button class="btn sm" onclick="etQuick('all')">Tout</button>
+  <button class="btn sm accent" onclick="doExportEtatXlsx()">⬇️ Excel</button>`;
+    }
     function vEtats() {
       const fs = etFactures();
       const { rowEssence, rowGasoil, rowGpl, rowSTotal, rowGaz, rowLub, rowCafe, rowTotal, caGlobal } = etBuildRows();
@@ -4181,31 +4332,9 @@
       const etRows = [rowEssence, rowGasoil, rowGpl, rowSTotal, rowGaz, rowLub, rowCafe, rowTotal];
       const etRow = r => `<tr${r.label === "S/Total" || r.label === "Total" ? ' style="border-top:2px solid var(--line);font-weight:800"' : ""}><td>${esc(r.label)}</td><td>${periodeLbl}</td><td class="num">${fmt(r.stockDepartVal)}</td><td class="num">${fmt(r.achatsVal)}</td><td class="num">${fmt(r.ventesVal)}</td><td class="num">${fmt(r.stockFinalVal)}</td><td class="num ${r.marge >= 0 ? "diff-pos" : "diff-neg"}">${fmt(r.marge)}</td></tr>`;
       return `
- <div class="cafe-wrap">
- <div class="card">
-  <h2>📅 Sélection de la période</h2>
-  <div class="row">
-   <div class="field"><label>Du</label><input type="date" value="${sel.etDu || ""}" onchange="setEtDu(this.value)"></div>
-   <div class="field"><label>Au</label><input type="date" value="${sel.etAu || ""}" onchange="setEtAu(this.value)"></div>
-   <div class="field"><label>Raccourcis</label>
-    <div class="row" style="gap:6px">
-     <button class="btn" onclick="etQuick('today')">Aujourd'hui</button>
-     <button class="btn" onclick="etQuick('month')">Ce mois-ci</button>
-     <button class="btn" onclick="etQuick('year')">Cette année</button>
-     <button class="btn" onclick="etQuick('all')">Tout</button>
-    </div>
-   </div>
-   <div class="field"><label>&nbsp;</label><button class="btn accent" onclick="doExportEtatXlsx()">⬇️ Exporter (Excel)</button></div>
-  </div>
-  <p class="subtle" style="margin-top:8px">Période : <b>${periodeLbl}</b></p>
- </div>
- <div class="grid-stats" style="margin-top:16px">
-  <div class="stat gold"><div class="v">${fmt(caGlobal)}</div><div class="l">Chiffre d'affaires — Total période<br><span style="font-weight:400;opacity:.8">(Ventes Carburant + Marge Gaz butane, hors Lubrifiants)</span></div></div>
-  <div class="stat"><div class="v">${fmt(rowSTotal.ventesVal)}</div><div class="l">Ventes Carburant</div></div>
-  <div class="stat"><div class="v">${fmt(rowLub.ventesVal + rowGaz.ventesVal)}</div><div class="l">Ventes Lubrifiants + Gaz butane</div></div>
-  <div class="stat red"><div class="v">${fmt(achTotal)}</div><div class="l">Achats — Total période</div></div>
-  <div class="stat"><div class="v">${fmt(achCarb)}</div><div class="l">Achats Carburant</div></div>
-  <div class="stat"><div class="v">${fmt(achDiv)}</div><div class="l">Achats Divers (lub./gaz)</div></div>
+ <div class="cafe-wrap db-wrap${['et_sel','et_stock','et_ach'].some(k=>cafeSec[k])?' has-open':''}">
+ <div class="card ${cafeSecCls('et_sel')}"><div class="row between cafe-head"><h2 class="cafe-h" style="margin:0" onclick="cafeToggle('et_sel',this)">⚡ Sélection rapide par <span class="subtle" style="font-weight:400;font-size:12.5px">— ${periodeLbl}</span></h2></div>
+  <div class="cafe-scroll">${etDetailHtml()}</div>
  </div>
  <div class="card ${cafeSecCls('et_stock')}" style="margin-top:16px"><div class="row between cafe-head"><h2 class="cafe-h" style="margin:0" onclick="cafeToggle('et_stock',this)">📊 État Achats/CA — par désignation</h2></div>
   <div class="cafe-scroll"><table class="sortable" data-sk="etStock"><thead><tr><th>Désignation</th><th>Date</th><th class="num">Stocks/Départ</th><th class="num">Achats</th><th class="num">Ventes</th><th class="num">Stocks/Final</th><th class="num">Marge</th></tr></thead><tbody>
@@ -5612,23 +5741,14 @@
         if (document.getElementById("lub-dropdown") && t.id === "lubArtInput") return;
 
         if (isField(t)) {
-          /* dans un champ : aller au champ situé directement en bas / en haut (ligne suivante / précédente, colonne la plus proche),
-             même s'il y a d'autres champs sur la même ligne (modal ouvert = champs du modal seulement) */
+          /* dans un champ : aller au champ précédent / suivant (modal ouvert = champs du modal seulement) */
           const root = document.querySelector("#modal-root .modal") || document.getElementById("view");
           const list = [...root.querySelectorAll("input, textarea")].filter(el => (el.tagName === "TEXTAREA" || isField(el)) && visible(el));
-          if (list.indexOf(t) < 0) return;
+          const i = list.indexOf(t);
+          if (i < 0) return;
           e.preventDefault();
-          const cr = t.getBoundingClientRect(), cx = cr.left + cr.width / 2, cy = cr.top + cr.height / 2;
-          const cands = list.filter(el => el !== t).map(el => {
-            const r = el.getBoundingClientRect();
-            return { el, dy: (r.top + r.height / 2 - cy) * dir, dx: Math.abs(r.left + r.width / 2 - cx), h: r.height };
-          }).filter(c => c.dy > Math.min(cr.height, c.h) / 2);   /* uniquement les champs d'une autre ligne, dans le sens de la flèche */
-          if (!cands.length) return;
-          const minDy = Math.min(...cands.map(c => c.dy));
-          const tol = Math.max(cr.height, 10) / 2;
-          const row = cands.filter(c => c.dy - minDy <= tol);      /* champs de la ligne la plus proche */
-          const nx = row.reduce((a, b) => b.dx < a.dx ? b : a).el;  /* le plus aligné horizontalement */
-          nx.focus(); try { nx.select(); } catch (x) { } nx.scrollIntoView({ block: "nearest" });
+          const nx = list[i + dir];
+          if (nx) { nx.focus(); try { nx.select(); } catch (x) { } nx.scrollIntoView({ block: "nearest" }); }
           return;
         }
         /* hors champ : défilement de la page */
