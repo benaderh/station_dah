@@ -675,6 +675,13 @@
       z-index: 100
     }
 
+    /* Lubrifiants (appui long) : barre du haut + totaux fixes, seule la liste défile, en-têtes de colonnes gelés */
+    .modal.lub-modal { display: flex; flex-direction: column; overflow: hidden; padding-top: 0 }
+    .lub-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 -22px 12px; padding: 12px 22px; border-bottom: 1px solid var(--line); flex: none }
+    .lub-bar h2 { margin: 0 }
+    .lub-modal > div:not(.lub-bar):not(.lub-scroll) { flex: none }
+    .lub-scroll { flex: 1 1 auto; min-height: 0; overflow: auto }
+    .lub-scroll th { position: sticky; top: 0; z-index: 2; background: var(--card); box-shadow: inset 0 -1px 0 var(--line) }
     .modal {
       background: var(--card);
       border: 1px solid var(--line);
@@ -1392,7 +1399,7 @@
       const ledger = [];
       DB.tresorerie.forEach(t => { if (t.compte === compte) ledger.push({ id: t.id, date: (compte === "caisse" && t.rep) || t.date, dateReelle: t.date, rep: (compte === "caisse" && t.rep) || null, libelle: t.libelle, obs: t.obs || "", sens: t.sens, montant: Number(t.montant), source: t.source || "treso", paie_cle: t.paie_cle || null }); });
       const agGroup = {}; DB.agent_detail.forEach(a => { const ty = Number(a.type_agent), mt = Number(a.mt_agent), d = a.date_agent; const k = d + "_" + ty; if (!agGroup[k]) agGroup[k] = { date: d, ty: ty, mt: 0, cle_id: a.cle_id }; agGroup[k].mt += mt; }); Object.values(agGroup).forEach(g => { if (compte === "caisse") { if (g.ty === 1) ledger.push({ id: g.cle_id, date: g.date, libelle: "دفعة " + agentLib(1) + " (Total)", obs: "", sens: "E", montant: g.mt, source: "agent" }); if (g.ty === 5 || g.ty === 6) ledger.push({ id: g.cle_id, date: g.date, libelle: "Retrait " + agentLib(g.ty) + " (Total)", obs: "", sens: "S", montant: g.mt, source: "agent" }); } });
-      DB.factures.forEach(f => { (f.paiements || []).forEach((p, idx) => { let isCaisse = p.source === "caisse", isBanque = p.source === "banque"; if (!p.source) { const nm = normMode(f.mode); isCaisse = nm === "E"; isBanque = nm === "C"; } if ((compte === "caisse" && isCaisse) || (compte === "banque" && isBanque)) { const chq = String(p.cheque || "").trim() || ((f.paiements || []).length === 1 ? String(f.cheque || "").trim() : ""); ledger.push({ id: f.id + "_p" + idx, date: (compte === "caisse" && p.rep) || p.date, dateReelle: p.date, rep: (compte === "caisse" && p.rep) || null, libelle: "Paiement Facture " + (f.numero ? f.numero : (f.type === "carburant" ? "Carb" : "Div")), obs: tierNom(f.fournisseurId), sens: "S", montant: Number(p.montant), source: "facture", cheque: chq }); } }); });
+      DB.factures.forEach(f => { (f.paiements || []).forEach((p, idx) => { let isCaisse = p.source === "caisse", isBanque = p.source === "banque"; if (!p.source) { const nm = normMode(f.mode); isCaisse = nm === "E"; isBanque = nm === "C"; } if ((compte === "caisse" && isCaisse) || (compte === "banque" && isBanque)) { const chq = String(p.cheque || "").trim() || ((f.paiements || []).length === 1 ? String(f.cheque || "").trim() : ""); ledger.push({ id: f.id + "_p" + idx, date: (compte === "caisse" && p.rep) || p.date, dateReelle: p.date, rep: (compte === "caisse" && p.rep) || null, libelle: "Paiement Facture " + (f.numero ? f.numero : (f.type === "carburant" ? "Carb" : "Div")), obs: tierNom(f.fournisseurId), sens: "S", montant: Number(p.montant), source: "facture", cheque: chq, factId: f.id }); } }); });
       ledger.sort((a, b) => a.date.localeCompare(b.date));
       let solde = compte === "caisse" ? (Number(DB.meta.caisseInit) || 0) : (Number(DB.meta.banqueInit) || 0);
       ledger.forEach(l => { if (l.sens === "E") solde += l.montant; else solde -= l.montant; l.solde = solde; });
@@ -2298,19 +2305,87 @@
         + '<div class="stat" style="flex:1"><div class="v" style="color:var(--red)">' + fmt(tot.achat) + '</div><div class="l">Total Achats (DA)</div></div>'
         + '<div class="stat" style="flex:1"><div class="v" style="color:var(--green)">' + fmt(tot.vente) + '</div><div class="l">Total Ventes (DA)</div></div>'
         + '</div>';
-      return totHtml + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:1px solid var(--line)">'
+      return totHtml + '<div class="lub-scroll"><table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:1px solid var(--line)">'
         + '<th style="text-align:left;padding:6px 4px;font-size:12px">Article</th>'
         + '<th class="num" style="padding:6px 4px;font-size:12px">E/S</th>'
         + '<th class="num" style="padding:6px 4px;font-size:12px">Solde (Vit/Mag)</th>'
         + '</tr></thead><tbody>'
-        + (rows.length ? rows.map(r => '<tr style="border-bottom:1px solid var(--line)"><td style="padding:7px 4px;font-size:13px">' + esc(r.a.article) + '</td><td class="num" style="padding:7px 4px;font-size:13px;white-space:nowrap">' + mv(r) + '</td><td class="num" style="padding:7px 4px;font-size:13px;font-weight:700">' + fmtQ(r.vit) + ' <span class="subtle">/</span> ' + fmtQ(r.mag) + '</td></tr>').join("") : '<tr><td colspan="3" class="subtle" style="padding:10px 4px">Aucun article lubrifiant.</td></tr>')
+        + (rows.length ? rows.map(r => '<tr' + (lubRowAttrs(r, d) || ' style="border-bottom:1px solid var(--line)"') + '><td style="padding:7px 4px;font-size:13px">' + esc(r.a.article) + '</td><td class="num" style="padding:7px 4px;font-size:13px;white-space:nowrap">' + mv(r) + '</td><td class="num" style="padding:7px 4px;font-size:13px;font-weight:700">' + fmtQ(r.vit) + ' <span class="subtle">/</span> ' + fmtQ(r.mag) + '</td></tr>').join("") : '<tr><td colspan="3" class="subtle" style="padding:10px 4px">Aucun article lubrifiant.</td></tr>')
         + '</tbody>'
         + '</table></div>';
     }
+    /* ---- Appui long sur une ligne de la liste Lubrifiants → message avec l'achat / la vente du jour (article, qté, prix, mt) ---- */
+    let _lubRowT = null;
+    function lubRowCancel() { if (_lubRowT) { clearTimeout(_lubRowT); _lubRowT = null; } }
+    function lubRowStart(artId, d) {
+      lubRowCancel();
+      _lubRowT = setTimeout(() => { _lubRowT = null; if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) { } lubRowDetail(artId, d); }, 600);
+    }
+    function lubRowAttrs(r, d) {
+      if (!(r.ent || r.sor)) return "";
+      return ' style="border-bottom:1px solid var(--line);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none" title="Appui long : détail de l\'achat / de la vente"'
+        + ' onmousedown="lubRowStart(' + r.a.art_id + ',\'' + d + '\')" onmouseup="lubRowCancel()" onmouseleave="lubRowCancel()" ontouchstart="lubRowStart(' + r.a.art_id + ',\'' + d + '\')" ontouchend="lubRowCancel()" ontouchmove="lubRowCancel()" ontouchcancel="lubRowCancel()" oncontextmenu="return false"';
+    }
+    function lubRowDetail(artId, d) {
+      const a = article(artId); if (!a) return;
+      const ops = new Map(DB.mouvements.map(m => [String(m.operation_id), m]));
+      const L = { E: [], S: [] };
+      DB.mouv_detail.forEach(md => {
+        if (String(md.id_art) !== String(artId)) return;
+        const o = ops.get(String(md.id_operation)); if (!o || o.date_m !== d || !L[o.sens]) return;
+        L[o.sens].push({ tier: o.id_tier, q: Number(md.quantite) || 0, pu: Number(md.prix_u) || 0 });
+      });
+      const bloc = (titre, couleur, arr) => {
+        if (!arr.length) return "";
+        const tq = arr.reduce((s, x) => s + x.q, 0), tm = arr.reduce((s, x) => s + x.q * x.pu, 0);
+        return '<div style="margin-top:12px"><div style="font-weight:700;color:' + couleur + ';margin-bottom:4px">' + titre + '</div>'
+          + '<table style="width:100%"><tr><th>Tiers</th><th class="num">Qté</th><th class="num">Prix</th><th class="num">Mt</th></tr>'
+          + arr.map(x => '<tr><td>' + tierNom(x.tier) + '</td><td class="num">' + fmtQ(x.q) + '</td><td class="num">' + fmt(x.pu) + '</td><td class="num">' + fmt(x.q * x.pu) + '</td></tr>').join("")
+          + (arr.length > 1 ? '<tr style="font-weight:800"><td>Total</td><td class="num">' + fmtQ(tq) + '</td><td></td><td class="num">' + fmt(tm) + ' DA</td></tr>' : '')
+          + '</table></div>';
+      };
+      if (!L.E.length && !L.S.length) return;
+      const old = document.getElementById("lubRowPop"); if (old) old.remove();
+      const w = document.createElement("div"); w.id = "lubRowPop";
+      w.style.cssText = "position:fixed;inset:0;background:rgba(4,7,14,.6);display:flex;align-items:center;justify-content:center;z-index:300;padding:12px";
+      w.onclick = e => { if (e.target === w) w.remove(); };
+      w.innerHTML = '<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;width:min(460px,94vw);max-height:80vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 style="margin:0;font-size:15px">' + esc(a.article) + ' <span class="subtle" style="font-weight:400">— ' + frDate(d) + '</span></h2><button class="btn sm" onclick="document.getElementById(\'lubRowPop\').remove()">Fermer</button></div>'
+        + bloc("🟥 Achat (entrée magasin)", "var(--red)", L.E) + bloc("🟩 Vente (sortie vitrine)", "var(--green)", L.S) + '</div>';
+      document.body.appendChild(w);
+    }
     function openLubMouv(d) {
-      openModal('<h2>🛢️ Lubrifiants — ' + frDate(d) + '</h2>'
-        + lubMouvBody(d)
-        + '<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="closeModal()">Fermer</button></div>');
+      openModal('<div class="lub-bar"><h2>🛢️ Lubrifiants — ' + frDate(d) + '</h2><button class="btn" onclick="closeModal()">Fermer</button></div>'
+        + lubMouvBody(d));
+      const m = document.querySelector("#modal-root .modal"); if (m) m.classList.add("lub-modal");
+    }
+    /* ---- Détail d'une facture « divers » pour le libellé du Suivi de Caisse ----
+       1 article (gaz butane ou lubrifiant) : « Article : qté × PU » ; plusieurs articles : lien « N articles » → fenêtre de détail */
+    function factDivDetail(fid) {
+      const f = DB.factures.find(x => String(x.id) === String(fid));
+      if (!f || f.type !== "divers" || !(f.lignes || []).length) return null;
+      if (f.lignes.length === 1) {
+        const l = f.lignes[0], a = article(l.artId);
+        return { multi: false, txt: (a ? a.article : "—") + " : " + fmtQ(l.qte) + " × " + fmt(l.pu) };
+      }
+      return { multi: true, txt: f.lignes.length + " articles" };
+    }
+    function factDetailHtml(l) {
+      if (!l || !l.factId) return "";
+      const d = factDivDetail(l.factId); if (!d) return "";
+      return d.multi
+        ? ` <a href="#" class="no-print" onclick="event.preventDefault();openFactDivDetail('${esc(l.factId)}')" title="Voir le détail des articles" style="color:var(--accent2);text-decoration:underline;font-size:12px;font-weight:600">🔍 ${esc(d.txt)}</a>`
+        : ` <span style="font-size:12px;color:var(--accent2);font-weight:600">— ${esc(d.txt)}</span>`;
+    }
+    function openFactDivDetail(fid) {
+      const f = DB.factures.find(x => String(x.id) === String(fid)); if (!f) return;
+      const L = f.lignes || [], tot = L.reduce((s, l) => s + Number(l.qte) * Number(l.pu), 0);
+      openModal(`<h2>🧾 Détail de l'achat du ${frDate(f.date)}</h2>
+ <p class="subtle" style="margin:-8px 0 10px">Fournisseur : <b>${tierNom(f.fournisseurId)}</b></p>
+ <table><tr><th>Article</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Mt</th></tr>
+ ${L.map(l => { const a = article(l.artId); return `<tr><td>${a ? esc(a.article) : "—"}</td><td class="num">${fmtQ(l.qte)}</td><td class="num">${fmt(l.pu)}</td><td class="num">${fmt(Number(l.qte) * Number(l.pu))}</td></tr>`; }).join("")}
+ <tr><td colspan="3"><b>Total facture</b></td><td class="num"><b>${fmt(tot)} DA</b></td></tr></table>
+ <div style="text-align:right;margin-top:14px"><button class="btn" onclick="closeModal()">Fermer</button></div>`);
     }
     function caisseSearchHtml() {
       const q = (sel.jq || "").trim().toLowerCase(), qd = q.replace(/\s/g, "");
@@ -2325,7 +2400,7 @@
       return `<p class="subtle" style="margin-bottom:8px">${rows.length} ligne(s)${rows.length > 300 ? " (300 premières affichées)" : ""} — Total : <b>${fmt(tot)} DA</b></p>
    <table style="width:100%">
     <thead><tr style="background:rgba(255,255,255,0.04)"><th style="padding:6px 4px">Date</th><th style="padding:6px 4px">Libellé</th><th class="num" style="padding:6px 4px">Mt</th></tr></thead>
-    <tbody>${rows.slice(0, 300).map(l => `<tr><td style="padding:4px;font-size:13px;white-space:nowrap">${frDate(l.date)}</td><td style="padding:4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}</td><td class="num" style="padding:4px;font-size:13px;color:${l.sens === "E" ? "var(--green)" : "var(--red)"}">${l.sens === "E" ? "+" : "−"} ${fmt(l.montant)} DA</td></tr>`).join("") || `<tr><td colspan="3" class="subtle" style="padding:8px">Aucun résultat.</td></tr>`}</tbody>
+    <tbody>${rows.slice(0, 300).map(l => `<tr><td style="padding:4px;font-size:13px;white-space:nowrap">${frDate(l.date)}</td><td style="padding:4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}${factDetailHtml(l)}</td><td class="num" style="padding:4px;font-size:13px;color:${l.sens === "E" ? "var(--green)" : "var(--red)"}">${l.sens === "E" ? "+" : "−"} ${fmt(l.montant)} DA</td></tr>`).join("") || `<tr><td colspan="3" class="subtle" style="padding:8px">Aucun résultat.</td></tr>`}</tbody>
    </table>`;
     }
     function vJournal() {
@@ -2520,7 +2595,7 @@
      <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Gaz butane</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowGaz.vente)} DA</td></tr>
      ${autresEncDetails.map(l => `<tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` (${esc(l.obs)})` : ""}</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(l.montant)} DA</td></tr>`).join("")}
      ${Object.keys(parType).sort().map(t => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${agentLib(t)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(parType[t])} DA</td></tr>`).join("")}
-     ${paiementsDetails.map(l => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${esc(l.libelle)}${l.obs ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td></tr>`).join("")}
+     ${paiementsDetails.map(l => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${esc(l.libelle)}${l.obs ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}${factDetailHtml(l)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td></tr>`).join("")}
      <tr style="border-top:2px solid var(--border)">
       <td style="padding:10px 4px;font-weight:700;font-size:15px">Solde final caisse</td>
       <td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:${soldeFin >= 0 ? "var(--accent)" : "var(--red)"}">${fmt(soldeFin)} DA</td>
