@@ -1934,6 +1934,27 @@
       PIST.forEach(p => DB.indexs.push({ index_id: uid(), index_date: d, index_name: p.c, index_agent: p.t === "L" ? (t2 ? t2.tier_id : null) : (t1 ? t1.tier_id : null), index: 0, index_prix: prixFor(p.t) }));
       save(); sel.date = d; sel.tierId = t1 ? t1.tier_id : null; render(); toast("Première journée créée : " + frDate(d), "ok");
     }
+    /* ---- Annuler / supprimer la dernière journée si elle est vide (aucune saisie pompiste) ---- */
+    function derniereJourneeVide() {
+      const asc = datesAsc(); if (asc.length < 2) return null;
+      const d = asc[asc.length - 1], prev = asc[asc.length - 2];
+      if (DB.mouvements.some(m => m.date_m === d && m.sens === "S")) return null;
+      if (DB.agent_detail.some(x => x.date_agent === d)) return null;
+      if (PIST.some(p => idxVal(d, p.c) !== idxVal(prev, p.c))) return null;
+      return { d: d, prev: prev };
+    }
+    function supprimerDerniereJournee() {
+      const v = derniereJourneeVide();
+      if (!v) { toast("La dernière journée contient des saisies : suppression impossible", "err"); render(); return; }
+      if (!confirm("Supprimer la journée vide du " + frDate(v.d) + " ?\n\nAucune saisie pompiste n'existe pour cette journée.")) return;
+      DB.indexs = DB.indexs.filter(r => r.index_date !== v.d);
+      sel.date = v.prev; sel.tierId = null;
+      save(); render(); toast("Journée " + frDate(v.d) + " supprimée", "ok");
+    }
+    function btnSupprJournee() {
+      const v = derniereJourneeVide();
+      return v && sel.date === v.d ? ` <button class="btn" style="color:var(--red)" onclick="supprimerDerniereJournee()" title="La dernière journée est vide : l'annuler">🗑 Annuler la dernière journée</button>` : "";
+    }
     function addJournee() {
       const asc = datesAsc();
       if (!asc.length) { createFirstDay(); return; }
@@ -1946,6 +1967,7 @@
       }
       const dNew = addDays(last, 1);
       if (datesDesc().includes(dNew)) { toast("La journée du " + frDate(dNew) + " existe déjà", "err"); return; }
+      if (!confirm("Créer la nouvelle journée du " + frDate(dNew) + " ?")) return;
       const aT1 = nouvelAgent(idxRow(last, "P01").index_agent);
       const aT2 = nouvelAgent(idxRow(last, "P09").index_agent);
       PIST.forEach(p => {
@@ -2400,7 +2422,7 @@
       return `<p class="subtle" style="margin-bottom:8px">${rows.length} ligne(s)${rows.length > 300 ? " (300 premières affichées)" : ""} — Total : <b>${fmt(tot)} DA</b></p>
    <table style="width:100%">
     <thead><tr style="background:rgba(255,255,255,0.04)"><th style="padding:6px 4px">Date</th><th style="padding:6px 4px">Libellé</th><th class="num" style="padding:6px 4px">Mt</th></tr></thead>
-    <tbody>${rows.slice(0, 300).map(l => `<tr><td style="padding:4px;font-size:13px;white-space:nowrap">${frDate(l.date)}</td><td style="padding:4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}${factDetailHtml(l)}</td><td class="num" style="padding:4px;font-size:13px;color:${l.sens === "E" ? "var(--green)" : "var(--red)"}">${l.sens === "E" ? "+" : "−"} ${fmt(l.montant)} DA</td></tr>`).join("") || `<tr><td colspan="3" class="subtle" style="padding:8px">Aucun résultat.</td></tr>`}</tbody>
+    <tbody>${rows.slice(0, 300).map(l => `<tr><td style="padding:4px;font-size:13px;white-space:nowrap">${frDate(l.date)}</td><td style="padding:4px;font-size:13px;color:var(--muted)">${caisseLibHtml(l, true)}</td><td class="num" style="padding:4px;font-size:13px;color:${l.sens === "E" ? "var(--green)" : "var(--red)"}">${l.sens === "E" ? "+" : "−"} ${fmt(l.montant)} DA</td></tr>`).join("") || `<tr><td colspan="3" class="subtle" style="padding:8px">Aucun résultat.</td></tr>`}</tbody>
    </table>`;
     }
     /* tableau de bord : sélecteur de date + PDF placés dans la barre du haut (évite le titre en double) */
@@ -2426,7 +2448,7 @@
       if (!ds.length) return "";
       const cur = sel.date && ds.includes(sel.date) ? sel.date : ds[0];
       return `<select title="Journée" style="padding:7px 12px;min-width:150px;font-weight:600;cursor:pointer" onchange="selDate(this.value)">${ds.map(d => `<option value="${d}" ${d === cur ? "selected" : ""}>${frDate(d)}${d === ds[0] ? " (dernière)" : ""}</option>`).join("")}</select>
-  <button class="btn accent" onclick="addJournee()">＋ Nouvelle journée</button>`;
+  <button class="btn accent" onclick="addJournee()">＋ Nouvelle journée</button>${btnSupprJournee()}`;
     }
     /* ajuste (zoom) les vues compactes pour tenir sans défilement vertical ; Journée : seul le bloc du haut est ajusté, le détail des ventes peut défiler */
     /* zoom adaptatif : cherche le plus grand facteur (réduit OU agrandi) pour lequel le bloc tient dans la hauteur disponible sans débordement horizontal */
@@ -3715,7 +3737,7 @@
      <tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">Gaz butane</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(rowGaz.vente)} DA</td>${cpCells(d, "gaz")}</tr>
      ${autresEncDetails.map(l => `<tr><td style="padding:3px 4px;font-size:13px;color:var(--muted)">${esc(l.libelle)}${l.obs && l.obs !== "Aucune" ? ` (${esc(l.obs)})` : ""}</td><td class="num" style="padding:3px 4px;font-size:13px;color:var(--green)">+ ${fmt(l.montant)} DA</td>${cpCells(d, "enc_" + l.id)}</tr>`).join("")}
      ${Object.keys(parType).sort().map(t => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${agentLib(t)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(parType[t])} DA</td>${cpCells(d, "dec_" + t)}</tr>`).join("")}
-     ${paiementsDetails.map(l => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${esc(l.libelle)}${l.obs ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : ""}${factDetailHtml(l)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td>${cpCells(d, "pay_" + l.id)}</tr>`).join("")}
+     ${paiementsDetails.map(l => `<tr><td style="padding:4px 4px;font-size:13px;color:var(--muted)">− ${caisseLibHtml(l)}</td><td class="num" style="padding:4px 4px;font-size:13px;color:var(--red)">− ${fmt(l.montant)} DA</td>${cpCells(d, "pay_" + l.id)}</tr>`).join("")}
      <tr style="border-top:2px solid var(--border)">
       <td style="padding:10px 4px;font-weight:700;font-size:15px">Solde final caisse</td>
       <td class="num" style="padding:10px 4px;font-weight:700;font-size:15px;color:${soldeFin >= 0 ? "var(--accent)" : "var(--red)"}">${fmt(soldeFin)} DA</td>
@@ -3921,6 +3943,16 @@
       return d.multi
         ? ` <a href="#" class="no-print" onclick="event.preventDefault();openFactDivDetail('${esc(l.factId)}')" title="Voir le détail des articles" style="color:var(--accent2);text-decoration:underline;font-size:12px;font-weight:600">🔍 ${esc(d.txt)}</a>`
         : ` <span style="font-size:12px;color:var(--accent2);font-weight:600">— ${esc(d.txt)}</span>`;
+    }
+    /* Libellé d'une ligne du Suivi de Caisse : pour une facture « divers » (gaz butane / lubrifiants) on n'affiche que le détail
+       (« Article : qté × PU » ou lien « N articles »), sans « Paiement Facture Div (Fourn. gaz & lubrifiants) » */
+    function caisseLibHtml(l, masquerAucune) {
+      const d = l && l.factId ? factDivDetail(l.factId) : null;
+      if (d) return d.multi
+        ? `<a href="#" class="no-print" onclick="event.preventDefault();openFactDivDetail('${esc(l.factId)}')" title="Voir le détail des articles" style="color:var(--accent2);text-decoration:underline;font-weight:600">🔍 ${esc(d.txt)}</a>`
+        : `<span style="color:var(--accent2);font-weight:600">${esc(d.txt)}</span>`;
+      const showObs = l.obs && !(masquerAucune && l.obs === "Aucune");
+      return esc(l.libelle) + (showObs ? ` <span style="font-size:11.5px;opacity:0.8">(${esc(l.obs)})</span>` : "");
     }
     function openFactDivDetail(fid) {
       const f = DB.factures.find(x => String(x.id) === String(fid)); if (!f) return;
